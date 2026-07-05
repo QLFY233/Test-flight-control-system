@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "plugin_context7_context7": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "@upstash/context7-mcp"
+      ],
+      "env": {}
+    }
+  }
+}
