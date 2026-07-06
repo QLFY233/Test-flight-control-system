@@ -1,0 +1,40 @@
+boundary:
+  x: [0.0, 5.0]
+  y: [0.0, 4.0]
+  z: [0.0, 3.0]
+
+home:
+  position: [0.0, 0.0, 0.5]
+  yaw: 0.0
+
+obstacles:
+  - id: 1
+    type: box
+    center: [1.0, 1.0, 1.0]
+    size: [0.5, 0.5, 2.0]
+    label: "柱子(方形)"
+
+  - id: 2
+    type: cylinder
+    center: [3.0, 2.5, 1.0]
+    radius: 0.2
+    height: 3.0
+    label: "圆柱立柱"
+
+  - id: 3
+    type: sphere
+    center: [2.0, 2.0, 2.0]
+    radius: 0.3
+    label: "球形传感器"
+
+  - id: 4
+    type: plane
+    point: [5.0, 0.0, 0.0]
+    normal: [1.0, 0.0, 0.0]
+    label: "右边界(禁止穿越)"
+
+  - id: 5
+    type: sphere
+    center: [1.5, 3.0, 1.0]
+    radius: 0.25
+    label: "操作员站位"

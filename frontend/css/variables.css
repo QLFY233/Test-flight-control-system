@@ -1,0 +1,132 @@
+:root {
+    /* ========== Primary Colors ========== */
+    --color-cyan: #00BCD4;
+    --color-cyan-light: #4DD0E1;
+    --color-cyan-dark: #0097A7;
+    --color-cyan-glow: rgba(0, 188, 212, 0.4);
+    --color-cyan-bg: rgba(0, 188, 212, 0.08);
+
+    /* ========== Semantic Colors ========== */
+    --color-success: #4CAF50;
+    --color-success-bg: rgba(76, 175, 80, 0.12);
+    --color-warning: #FFC107;
+    --color-warning-bg: rgba(255, 193, 7, 0.12);
+    --color-error: #F44336;
+    --color-error-bg: rgba(244, 67, 54, 0.12);
+    --color-info: #2196F3;
+    --color-info-bg: rgba(33, 150, 243, 0.12);
+
+    /* ========== Surface Colors ========== */
+    --color-bg: #000000;
+    --color-surface: #0D0D0D;
+    --color-surface-raised: #141414;
+    --color-surface-overlay: #1A1A1A;
+    --color-border: #2A2A2A;
+    --color-border-light: #3A3A3A;
+
+    /* ========== Text Colors ========== */
+    --color-text-primary: #E0E0E0;
+    --color-text-secondary: #9E9E9E;
+    --color-text-disabled: #616161;
+    --color-text-inverse: #000000;
+
+    /* ========== Spacing ========== */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 12px;
+    --space-lg: 16px;
+    --space-xl: 24px;
+    --space-2xl: 32px;
+    --space-3xl: 48px;
+
+    /* ========== Font Sizes ========== */
+    --font-xs: 10px;
+    --font-sm: 12px;
+    --font-md: 14px;
+    --font-lg: 16px;
+    --font-xl: 18px;
+    --font-2xl: 24px;
+    --font-3xl: 32px;
+
+    /* ========== Font Families ========== */
+    --font-sans: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    --font-mono: 'Cascadia Code', 'Fira Code', 'Consolas', 'Courier New', monospace;
+
+    /* ========== Z-Index Layers ========== */
+    --z-base: 0;
+    --z-dropdown: 100;
+    --z-sticky: 200;
+    --z-overlay: 300;
+    --z-modal: 400;
+    --z-toast: 500;
+    --z-tooltip: 600;
+    --z-max: 9999;
+
+    /* ========== Shadows ========== */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+    --shadow-glow-cyan: 0 0 12px rgba(0, 188, 212, 0.3);
+    --shadow-glow-red: 0 0 12px rgba(244, 67, 54, 0.3);
+
+    /* ========== Border Radius ========== */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --radius-full: 9999px;
+
+    /* ========== Transitions ========== */
+    --transition-fast: 0.15s ease;
+    --transition-base: 0.25s ease;
+    --transition-slow: 0.4s ease;
+
+    /* ========== Button Layers ========== */
+    --btn-primary-bg: #00BCD4;
+    --btn-primary-text: #000000;
+    --btn-primary-hover: #4DD0E1;
+    --btn-primary-active: #0097A7;
+
+    --btn-secondary-bg: rgba(0, 188, 212, 0.12);
+    --btn-secondary-text: #00BCD4;
+    --btn-secondary-border: rgba(0, 188, 212, 0.3);
+    --btn-secondary-hover: rgba(0, 188, 212, 0.2);
+
+    --btn-ghost-bg: transparent;
+    --btn-ghost-text: #9E9E9E;
+    --btn-ghost-hover: rgba(255, 255, 255, 0.06);
+
+    --btn-danger-bg: rgba(244, 67, 54, 0.15);
+    --btn-danger-text: #F44336;
+    --btn-danger-border: rgba(244, 67, 54, 0.3);
+    --btn-danger-hover: rgba(244, 67, 54, 0.25);
+
+    /* ========== 3D Scene Colors ========== */
+    --scene-bg: #0A0A0A;
+    --scene-grid: #1A1A1A;
+    --scene-field-boundary: rgba(0, 188, 212, 0.3);
+    --scene-obstacle: rgba(255, 193, 7, 0.4);
+    --scene-home: rgba(76, 175, 80, 0.6);
+    --scene-trajectory-flown: #4CAF50;
+    --scene-trajectory-planned: rgba(0, 188, 212, 0.6);
+    --scene-waypoint: rgba(0, 188, 212, 0.8);
+    --scene-target-glow: rgba(0, 188, 212, 0.9);
+
+    /* ========== Status Indicator Colors ========== */
+    --status-connected: #4CAF50;
+    --status-connecting: #FFC107;
+    --status-disconnected: #F44336;
+
+    /* ========== Panel Sizes ========== */
+    --status-bar-height: 40px;
+    --bottom-bar-height: 36px;
+    --chat-dock-width: 380px;
+    --left-panel-width: 40%;
+    --tab-bar-height: 56px;
+}
+
+/* ========== Dark Scrollbar (Firefox) ========== */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 188, 212, 0.3) transparent;
+}

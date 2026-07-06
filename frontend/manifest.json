@@ -1,0 +1,24 @@
+{
+  "name": "试飞控制系统",
+  "short_name": "试飞控制",
+  "description": "无人机飞行控制与任务规划系统",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' fill='%23000' rx='32'/%3E%3Ccircle cx='96' cy='96' r='32' fill='none' stroke='%2300BCD4' stroke-width='4'/%3E%3Cline x1='96' y1='28' x2='96' y2='64' stroke='%2300BCD4' stroke-width='3'/%3E%3Cline x1='28' y1='96' x2='64' y2='96' stroke='%2300BCD4' stroke-width='3'/%3E%3Cline x1='128' y1='96' x2='164' y2='96' stroke='%2300BCD4' stroke-width='3'/%3E%3Cline x1='96' y1='128' x2='96' y2='164' stroke='%2300BCD4' stroke-width='3'/%3E%3Ccircle cx='96' cy='96' r='8' fill='%2300BCD4'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%23000' rx='64'/%3E%3Ccircle cx='256' cy='256' r='80' fill='none' stroke='%2300BCD4' stroke-width='8'/%3E%3Cline x1='256' y1='64' x2='256' y2='176' stroke='%2300BCD4' stroke-width='6'/%3E%3Cline x1='64' y1='256' x2='176' y2='256' stroke='%2300BCD4' stroke-width='6'/%3E%3Cline x1='336' y1='256' x2='448' y2='256' stroke='%2300BCD4' stroke-width='6'/%3E%3Cline x1='256' y1='336' x2='256' y2='448' stroke='%2300BCD4' stroke-width='6'/%3E%3Ccircle cx='256' cy='256' r='20' fill='%2300BCD4'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
