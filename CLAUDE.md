@@ -13,6 +13,6 @@
 
 ## 文档约定
 
-- `docs/设计稿/`(初始设计稿.md、ui.md)是项目的**原始 prompt**,反映最初设想,部分内容可能不合理或已过时。
+- `docs/手写设计稿/`(初始设计稿.md、ui.md)是项目的**原始 prompt**,反映最初设想,部分内容可能不合理或已过时。
 - 权威设计以 `docs/superpowers/specs/` 下的 spec 为准;原始 prompt 与 spec 冲突时,一律以 spec 为准。
 - 原始 prompt 仅作为需求背景参考,不再追加更新。
