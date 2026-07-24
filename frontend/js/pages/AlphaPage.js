@@ -8,7 +8,7 @@
 
 import store from '../state.js';
 import bus from '../event-bus.js';
-import { renderTwoColumn, wsManager, sharedDroneModel, sharedTrajectoryLine, sharedWaypointMarker, sharedFieldRenderer } from '../app.js';
+import { renderTwoColumn, wsManager, sharedDroneModel, sharedTrajectoryLine, sharedWaypointMarker, sharedFieldRenderer } from '../shared.js';
 import { ViewModeSelector } from '../components/ViewModeSelector.js';
 import { ViewPanel } from '../components/ViewPanel.js';
 import { FloatingBall } from '../components/FloatingBall.js';
@@ -91,12 +91,20 @@ class AlphaPage {
                                 <div class="progress-bar__fill progress-bar__fill--cyan" style="width: ${flight.progress || 0}%"></div>
                             </div>
                             <div style="font-size: var(--font-sm); color: var(--color-text-secondary); margin-bottom: var(--space-md);">
-                                ${flight.currentAction || '待命'}
+                                ${flight.currentActionCode ? `[${flight.currentActionCode}] ${flight.currentAction}/${flight.totalActions || 0}` : (flight.currentAction > 0 ? `动作 ${flight.currentAction}/${flight.totalActions || 0}` : '待命')}
+                                ${flight.currentActionParams ? `<br><span style="font-size: var(--font-xs); color: var(--color-text-disabled);">参数: ${JSON.stringify(flight.currentActionParams)}</span>` : ''}
                             </div>
                             <div style="font-size: var(--font-sm); color: var(--color-text-secondary);">
-                                段: ${flight.currentSegment || 0} / ${flight.totalSegments || 0}
-                                &nbsp;|&nbsp;模式: ${flight.mode || '--'}
+                                模式: ${flight.mode || '--'}
                                 &nbsp;|&nbsp;状态: ${flight.status || 'idle'}
+                            </div>
+                            <!-- Action sequence list -->
+                            <div class="alpha-page__action-list" style="margin-top: var(--space-sm);">
+                                ${(store.get('trajectory.actionSequence') || []).slice(0, 10).map((a, i) => `
+                                    <div class="alpha-page__action-item ${i === (flight.currentAction || 0) ? 'alpha-page__action-item--active' : ''}" style="padding: 2px 0; font-size: var(--font-xs); ${i === (flight.currentAction || 0) ? 'color: var(--color-cyan);' : 'color: var(--color-text-secondary);'}">
+                                        ${i === (flight.currentAction || 0) ? '▶' : '○'} ${a.code || 'ACTION_'}${a.params && a.params.target ? ` → (${a.params.target.x?.toFixed(1) || '?'}, ${a.params.target.y?.toFixed(1) || '?'}, ${a.params.target.z?.toFixed(1) || '?'})` : ''}
+                                    </div>
+                                `).join('') || ''}
                             </div>
                         </div>
                     </div>
@@ -105,8 +113,7 @@ class AlphaPage {
         `;
 
         // Use renderTwoColumn helper
-        const mainContent = document.getElementById('main-content');
-        renderTwoColumn(mainContent, leftHtml, '', 'Alpha 飞控');
+        renderTwoColumn(this.container, leftHtml, '', 'Alpha 飞控');
 
         // Right toolbar: view mode selector
         const toolbarEl = document.getElementById('right-toolbar');

@@ -2,7 +2,6 @@ global:
   speed_max: 1.5
   accel_max: 2.0
   angular_velocity_max: 0.5
-  keep_clear_distance: 0.5
   ceiling: 2.5
   floor: 0.3
 
@@ -10,12 +9,9 @@ presets:
   careful:
     speed_max: 0.8
     accel_max: 1.0
-    keep_clear_distance: 0.8
   normal:
     speed_max: 1.5
     accel_max: 2.0
-    keep_clear_distance: 0.5
   fast:
     speed_max: 2.5
     accel_max: 3.0
-    keep_clear_distance: 0.3

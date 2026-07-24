@@ -3,7 +3,7 @@
  * Max 300 data points, auto Y-axis, dark theme.
  */
 
-import store from '../store.js';
+import store from '../state.js';
 
 class AltitudeChart {
     constructor() {

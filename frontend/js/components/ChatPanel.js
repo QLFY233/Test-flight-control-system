@@ -5,7 +5,7 @@
 
 import store from '../state.js';
 import bus from '../event-bus.js';
-import { sseManager, wsManager, config } from '../app.js';
+import { sseManager, wsManager, config } from '../shared.js';
 import { ChatMessage } from './ChatMessage.js';
 
 class ChatPanel {
@@ -31,7 +31,9 @@ class ChatPanel {
         });
 
         bus.on('alpha-output', (payload) => {
-            if (payload && payload.waypoints) {
+            if (payload && payload.action_sequence) {
+                this._addSystemMessage('alpha_output', `动作序列更新: ${payload.action_sequence.length} 条动作`);
+            } else if (payload && payload.waypoints) {
                 this._addSystemMessage('alpha_output', `轨迹更新: ${payload.waypoints.length} 个航点`);
             }
         });

@@ -3,7 +3,7 @@
  * Play/pause, seek bar, speed selector.
  */
 
-import store from '../store.js';
+import store from '../state.js';
 import bus from '../event-bus.js';
 
 class TimelineControl {

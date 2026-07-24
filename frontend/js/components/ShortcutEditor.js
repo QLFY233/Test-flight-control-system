@@ -81,7 +81,7 @@ class ShortcutEditor {
 
         // Add shortcut
         overlay.querySelector('#shortcut-editor-add')?.addEventListener('click', () => {
-            this.shortcuts.push({ icon: '\u{1F4AC}', name: '新快捷操作', action: { type: 'chat_message', text: '' } });
+            this.shortcuts.push({ id: 'sc-' + Date.now(), icon: '\u{1F4AC}', name: '新快捷操作', actions: [{ type: 'chat_message', text: '' }] });
             this._refreshList();
         });
 
@@ -234,12 +234,8 @@ class ShortcutEditor {
 
         // Save recorded actions
         if (this.recordedActions.length > 0 && this.shortcuts[this.recordingIndex]) {
-            // Store the sequence (last action in sequence, or combine)
-            // For simplicity, store the first chat message action
-            const chatAction = this.recordedActions.find(a => a.type === 'chat_message');
-            if (chatAction) {
-                this.shortcuts[this.recordingIndex].action = chatAction;
-            }
+            // Store entire recorded sequence
+            this.shortcuts[this.recordingIndex].actions = [...this.recordedActions];
         }
 
         this.recording = false;
@@ -255,10 +251,10 @@ class ShortcutEditor {
             // ignore
         }
         return [
-            { icon: '\u{1F4AC}', name: '发送预设1', action: { type: 'chat_message', text: '请规划飞行路径' } },
-            { icon: '\u{1F4CA}', name: '查看高度图', action: { type: 'chart', chart: 'altitude' } },
-            { icon: '\u{1F3E0}', name: '回到原点', action: { type: 'command', command: 'go_home' } },
-            { icon: '\u{2709}', name: '发送预设2', action: { type: 'chat_message', text: '当前状态如何？' } },
+            { id: 'sc-1', icon: '\u{1F4AC}', name: '预设1', actions: [{ type: 'chat_message', text: '请规划飞行路径' }] },
+            { id: 'sc-2', icon: '\u{1F4CA}', name: '高度', actions: [{ type: 'chat_message', text: '显示高度趋势' }] },
+            { id: 'sc-3', icon: '\u{1F3E0}', name: '回家', actions: [{ type: 'chat_message', text: '回到起飞点' }] },
+            { id: 'sc-4', icon: '\u{2709}', name: '预设2', actions: [{ type: 'chat_message', text: '当前状态如何？' }] },
         ];
     }
 

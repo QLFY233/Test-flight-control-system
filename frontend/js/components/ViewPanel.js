@@ -3,7 +3,7 @@
  * Receives a slot index and source type. Creates and manages lifecycle of the inner component.
  */
 
-import { sharedScene3D, sharedFieldRenderer, sharedDroneModel, sharedTrajectoryLine, sharedWaypointMarker } from '../app.js';
+import { sharedScene3D, sharedFieldRenderer, sharedDroneModel, sharedTrajectoryLine, sharedWaypointMarker } from '../shared.js';
 import { VideoPanel } from './VideoPanel.js';
 import { AltitudeChart } from '../charts/AltitudeChart.js';
 import { VelocityChart } from '../charts/VelocityChart.js';
@@ -33,7 +33,9 @@ class ViewPanel {
         wrapper.className = 'view-panel';
         wrapper.style.width = '100%';
         wrapper.style.height = '100%';
+        wrapper.draggable = true;
 
+        // Drag handle / label
         const label = document.createElement('div');
         label.className = 'view-panel__label';
         label.textContent = this._getLabel();
@@ -46,7 +48,54 @@ class ViewPanel {
 
         container.appendChild(wrapper);
 
+        // Drag events (P4: drag-and-drop swap)
+        wrapper.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', String(this.slotIndex));
+            wrapper.style.opacity = '0.4';
+            wrapper.classList.add('view-panel--dragging');
+        });
+        wrapper.addEventListener('dragend', () => {
+            wrapper.style.opacity = '1';
+            wrapper.classList.remove('view-panel--dragging');
+            document.querySelectorAll('.view-panel--drop-target').forEach(el => el.classList.remove('view-panel--drop-target'));
+        });
+        wrapper.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            wrapper.classList.add('view-panel--drop-target');
+        });
+        wrapper.addEventListener('dragleave', () => {
+            wrapper.classList.remove('view-panel--drop-target');
+        });
+        wrapper.addEventListener('drop', (e) => {
+            e.preventDefault();
+            wrapper.classList.remove('view-panel--drop-target');
+            const fromIdx = parseInt(e.dataTransfer.getData('text/plain'));
+            const toIdx = this.slotIndex;
+            if (fromIdx >= 0 && fromIdx !== toIdx) {
+                // Swap sources in store
+                this._swapViewSources(fromIdx, toIdx);
+            }
+        });
+
         this._createInner(innerContainer);
+    }
+
+    /**
+     * Swap view sources between two slots and emit event for re-render.
+     */
+    _swapViewSources(fromIdx, toIdx) {
+        import('../state.js').then(mod => {
+            const store = mod.default;
+            const sources = [...(store.get('ui.viewSources') || ['3d', 'video', 'chart'])];
+            const temp = sources[fromIdx];
+            sources[fromIdx] = sources[toIdx];
+            sources[toIdx] = temp;
+            store.set('ui.viewSources', sources);
+            // Re-render via event
+            import('../event-bus.js').then(b => {
+                b.default.emit('view-source-swapped', { fromIdx, toIdx, sources });
+            });
+        });
     }
 
     _createInner(innerContainer) {
@@ -68,6 +117,11 @@ class ViewPanel {
     }
 
     _mount3D(container) {
+        if (!sharedScene3D || !sharedScene3D.isReady()) {
+            container.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-secondary); font-size: var(--font-sm);">3D 不可用</div>';
+            this.innerComponent = null;
+            return;
+        }
         sharedScene3D.mount(container);
         this.innerComponent = { unmount: () => sharedScene3D.unmount() };
     }

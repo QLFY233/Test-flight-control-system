@@ -179,9 +179,10 @@ const initial = {
         status: 'idle',         // 'idle' | 'running' | 'paused' | 'completed' | 'aborted'
         taskTitle: '',
         taskDescription: '',
-        currentSegment: 0,
-        totalSegments: 0,
-        currentAction: '',
+        currentAction: 0,       // current action index in actionSequence
+        totalActions: 0,        // total actions in plan
+        currentActionCode: '',  // current ActionCommand code (e.g. "MOVE_TO", "HOVER")
+        currentActionParams: null, // current ActionCommand params (target, speed...)
         progress: 0,            // 0-100
         mode: '',               // current flight mode string
         startTime: null,
@@ -192,7 +193,8 @@ const initial = {
     trajectory: {
         flown: [],              // [{x, y, z, t}, ...]
         planned: [],            // [{x, y, z}, ...]
-        waypoints: [],          // [{x, y, z, label}, ...]
+        actionSequence: [],     // ActionCommand entries: [{code, params: {target, speed, ...}}]
+        waypoints: [],          // [DEPRECATED] use actionSequence instead
         currentTarget: null,    // {x, y, z}
     },
 

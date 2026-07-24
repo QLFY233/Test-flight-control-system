@@ -9,10 +9,12 @@
 import bus from '../event-bus.js';
 
 const DEFAULT_SHORTCUTS = [
-    { icon: '\u{1F4AC}', name: '发送预设1', action: { type: 'chat_message', text: '请规划飞行路径' } },
-    { icon: '\u{1F4CA}', name: '查看高度图', action: { type: 'chart', chart: 'altitude' } },
-    { icon: '\u{1F3E0}', name: '回到原点', action: { type: 'command', command: 'go_home' } },
-    { icon: '\u{2709}', name: '发送预设2', action: { type: 'chat_message', text: '当前状态如何？' } },
+    { id: 'sc-1', icon: '⬆', name: '上升 0.5m', actions: [{ type: 'chat_message', text: '上升 0.5 米' }] },
+    { id: 'sc-2', icon: '⬇', name: '下降 0.5m', actions: [{ type: 'chat_message', text: '下降 0.5 米' }] },
+    { id: 'sc-3', icon: '⏸', name: '悬停', actions: [{ type: 'chat_message', text: '悬停' }] },
+    { id: 'sc-4', icon: '\u{1F3E0}', name: '回到原点', actions: [{ type: 'chat_message', text: '回到起飞点' }] },
+    { id: 'sc-5', icon: '\u{1F4CA}', name: '查看高度', actions: [{ type: 'chat_message', text: '显示高度趋势' }] },
+    { id: 'sc-6', icon: '\u{1F4AC}', name: '状态查询', actions: [{ type: 'chat_message', text: '当前状态如何？' }] },
 ];
 
 class FloatingBall {
@@ -187,21 +189,47 @@ class FloatingBall {
     }
 
     _triggerShortcut(shortcut) {
-        if (!shortcut.action) return;
+        const actions = shortcut.actions || (shortcut.action ? [shortcut.action] : []);
+        if (actions.length === 0) return;
 
-        switch (shortcut.action.type) {
-            case 'chat_message':
-                bus.emit('chat-send', shortcut.action.text);
-                break;
-            case 'chart':
-                bus.emit('view-source-changed', { slot: 0, source: 'chart', chartType: shortcut.action.chart });
-                break;
-            case 'command':
-                bus.emit('command', shortcut.action.command);
-                break;
-            default:
-                console.log('[FloatingBall] unknown action type:', shortcut.action.type);
-        }
+        let cancelled = false;
+        let actionIndex = 0;
+
+        // Esc to cancel within 200ms window
+        const onKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                cancelled = true;
+                document.removeEventListener('keydown', onKeyDown);
+            }
+        };
+        document.addEventListener('keydown', onKeyDown);
+        setTimeout(() => document.removeEventListener('keydown', onKeyDown), 200);
+
+        const executeNext = () => {
+            if (cancelled || actionIndex >= actions.length) return;
+            const action = actions[actionIndex];
+            actionIndex++;
+
+            switch (action.type) {
+                case 'chat_message':
+                    bus.emit('chat-send', action.text);
+                    break;
+                case 'delay':
+                    setTimeout(executeNext, action.ms || 1000);
+                    return; // don't call executeNext immediately
+                case 'chart':
+                    bus.emit('view-source-changed', { slot: 0, source: 'chart', chartType: action.chart });
+                    break;
+                case 'command':
+                    bus.emit('command', action.command);
+                    break;
+                default:
+                    console.log('[FloatingBall] unknown action type:', action.type);
+            }
+            executeNext();
+        };
+
+        executeNext();
     }
 
     _enterEditMode() {
@@ -211,7 +239,14 @@ class FloatingBall {
     _loadShortcuts() {
         try {
             const saved = JSON.parse(localStorage.getItem('floating-ball-shortcuts'));
-            if (Array.isArray(saved) && saved.length > 0) return saved;
+            if (Array.isArray(saved) && saved.length > 0) {
+                // Migrate old format (single action) to new format (actions array)
+                return saved.map(item => {
+                    if (item.actions) return item; // already new format
+                    if (item.action) return { ...item, actions: [item.action] }; // migrate
+                    return item;
+                });
+            }
         } catch (e) {
             // ignore
         }

@@ -6,7 +6,7 @@
 
 import store from '../state.js';
 import bus from '../event-bus.js';
-import { config, apiManager } from '../app.js';
+import { config, apiManager } from '../shared.js';
 import { deepMerge } from '../config.js';
 
 class SettingsPage {

@@ -4,7 +4,7 @@
  * Panels linked by time cursor.
  */
 
-import store from '../store.js';
+import store from '../state.js';
 import bus from '../event-bus.js';
 
 class HistoryChart {

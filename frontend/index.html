@@ -4,43 +4,29 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#000000">
-    <meta name="description" content="试飞控制系统 - 无人机飞行控制与任务规划">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <title>试飞控制系统</title>
-
-    <!-- Stylesheets -->
     <link rel="stylesheet" href="css/reset.css">
     <link rel="stylesheet" href="css/variables.css">
     <link rel="stylesheet" href="css/layout.css">
     <link rel="stylesheet" href="css/components.css">
     <link rel="stylesheet" href="css/pages.css">
-
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="manifest.json">
+    <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js" defer></script>
 </head>
 <body>
-    <div id="app"></div>
-
-    <!-- Three.js (CDN) -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
-
-    <!-- ECharts (CDN) -->
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
-
-    <!-- App Entry -->
-    <script type="module" src="js/app.js"></script>
-
-    <!-- Service Worker -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js').catch(() => {
-                    // SW registration failed — app still works offline via browser cache
-                });
-            });
-        }
-    </script>
+<div id="app"><div id="step" style="display:flex;align-items:center;justify-content:center;height:100vh;background:#000;color:#00BCD4;font-family:sans-serif;font-size:14px;flex-direction:column;gap:8px;">加载中...</div></div>
+<script>
+window.__app = {};
+var stepEl = document.getElementById('step');
+function step(s, c) { stepEl.textContent = s; if (c) stepEl.style.color = c; }
+// Override console.log to show step
+var _log = console.log.bind(console);
+console.log = function() { step(Array.from(arguments).join(' '), '#00BCD4'); _log.apply(console, arguments); };
+window.onerror = function(m,s,l) { step('JS ERROR: ' + m + ' (line ' + l + ')', '#F44336'); return false; };
+window.addEventListener('unhandledrejection', function(e) { step('PROMISE: ' + (e.reason?.message||e.reason), '#F44336'); });
+</script>
+<script type="module" src="js/app.js"></script>
 </body>
 </html>

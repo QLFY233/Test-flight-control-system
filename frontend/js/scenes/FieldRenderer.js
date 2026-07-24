@@ -88,64 +88,12 @@ class FieldRenderer {
     }
 
     _updateObstacles(obstacles) {
-        // Clear old
+        // Phase 1: Pre-compiled obstacles not used (handled by ego-planner in Phase 2/4 with radar point cloud).
+        // Keep obstaclesGroup clean to avoid visual clutter.
         while (this.obstaclesGroup.children.length > 0) {
             const child = this.obstaclesGroup.children[0];
             this._disposeObject(child);
             this.obstaclesGroup.remove(child);
-        }
-
-        if (!obstacles || obstacles.length === 0) return;
-
-        const mat = new THREE.MeshStandardMaterial({
-            color: 0xffc107,
-            roughness: 0.6,
-            metalness: 0.1,
-            transparent: true,
-            opacity: 0.5,
-        });
-
-        for (const obs of obstacles) {
-            const pos = obs.position || { x: 0, y: 0, z: 0 };
-            const size = obs.size || {};
-
-            let geometry;
-            switch (obs.type) {
-                case 'cylinder':
-                    geometry = new THREE.CylinderGeometry(
-                        size.radius || 1,
-                        size.radius || 1,
-                        size.height || 5,
-                        16
-                    );
-                    break;
-                case 'sphere':
-                    geometry = new THREE.SphereGeometry(size.radius || 1, 16, 16);
-                    break;
-                case 'box':
-                default:
-                    geometry = new THREE.BoxGeometry(
-                        size.width || 2,
-                        size.height || 5,
-                        size.depth || 2
-                    );
-                    break;
-            }
-
-            const mesh = new THREE.Mesh(geometry, mat.clone());
-            mesh.position.set(pos.x, (size.height || 5) / 2 + (pos.z || 0), pos.y);
-            mesh.castShadow = true;
-            mesh.receiveShadow = true;
-
-            // Wireframe overlay for visibility
-            const edges = new THREE.EdgesGeometry(geometry);
-            const edgeLine = new THREE.LineSegments(
-                edges,
-                new THREE.LineBasicMaterial({ color: 0xff8f00, transparent: true, opacity: 0.6 })
-            );
-            mesh.add(edgeLine);
-
-            this.obstaclesGroup.add(mesh);
         }
     }
 

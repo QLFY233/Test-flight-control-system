@@ -7,7 +7,7 @@
 
 import store from '../state.js';
 import bus from '../event-bus.js';
-import { renderTwoColumn, wsManager, sharedTrajectoryLine, sharedWaypointMarker } from '../app.js';
+import { renderTwoColumn, wsManager, apiManager, sharedTrajectoryLine, sharedWaypointMarker } from '../shared.js';
 import { ViewModeSelector } from '../components/ViewModeSelector.js';
 import { ViewPanel } from '../components/ViewPanel.js';
 import { FlightPlanCard } from '../components/FlightPlanCard.js';
@@ -79,8 +79,7 @@ class BetaPage {
             </div>
         `;
 
-        const mainContent = document.getElementById('main-content');
-        renderTwoColumn(mainContent, leftHtml, '', 'Beta 规划');
+        renderTwoColumn(this.container, leftHtml, '', 'Beta 规划');
 
         // Right panel: FieldMap2D by default
         const toolbarEl = document.getElementById('right-toolbar');
@@ -133,26 +132,60 @@ class BetaPage {
         planArea.innerHTML = '';
 
         const flightPlanCard = new FlightPlanCard(plan, {
-            onApprove: (p) => {
-                wsManager.send('approve_plan', { plan: p });
-                planArea.innerHTML = '<div style="padding: var(--space-lg); color: var(--color-success); text-align: center;">计划已批准 ✓</div>';
+            onApprove: async (p) => {
+                const proposalId = p.proposalId || p.id;
+                if (proposalId) {
+                    try {
+                        await apiManager.approveProposal(proposalId);
+                        planArea.innerHTML = '<div style="padding: var(--space-lg); color: var(--color-success); text-align: center;">计划已批准 ✓</div>';
+                    } catch (e) {
+                        planArea.innerHTML = `<div style="padding: var(--space-lg); color: var(--color-error); text-align: center;">批准失败: ${e.message}</div>`;
+                    }
+                } else {
+                    // Fallback: send via WS if no proposalId
+                    wsManager.send('approve_plan', { plan: p });
+                    planArea.innerHTML = '<div style="padding: var(--space-lg); color: var(--color-success); text-align: center;">计划已批准 ✓</div>';
+                }
             },
             onModify: (p) => {
                 wsManager.send('modify_plan', { plan: p });
             },
-            onReject: (p) => {
-                wsManager.send('reject_plan', { plan: p });
-                planArea.innerHTML = '<div style="padding: var(--space-lg); color: var(--color-error); text-align: center;">计划已驳回</div>';
+            onReject: async (p) => {
+                const proposalId = p.proposalId || p.id;
+                if (proposalId) {
+                    try {
+                        await apiManager.rejectProposal(proposalId, 'user rejected');
+                        planArea.innerHTML = '<div style="padding: var(--space-lg); color: var(--color-error); text-align: center;">计划已驳回</div>';
+                    } catch (e) {
+                        planArea.innerHTML = `<div style="padding: var(--space-lg); color: var(--color-error); text-align: center;">驳回失败: ${e.message}</div>`;
+                    }
+                } else {
+                    wsManager.send('reject_plan', { plan: p });
+                    planArea.innerHTML = '<div style="padding: var(--space-lg); color: var(--color-error); text-align: center;">计划已驳回</div>';
+                }
             },
             onOverlay3D: (p) => {
-                // Set planned trajectory on 3D
-                if (p.segments) {
-                    const allWaypoints = [];
-                    p.segments.forEach(seg => {
-                        if (seg.waypoints) allWaypoints.push(...seg.waypoints);
+                // Set planned trajectory on 3D (preview only — not approved)
+                const segments = p.segments || [];
+                const actions = p.actions || [];
+                const points = [];
+
+                // Try actions first (new format), fallback to segments/waypoints
+                if (actions.length > 0) {
+                    actions.forEach(a => {
+                        if (a.params && a.params.target) {
+                            points.push(a.params.target);
+                        }
                     });
-                    sharedTrajectoryLine.setPlanned(allWaypoints);
-                    sharedWaypointMarker.setWaypoints(allWaypoints);
+                } else {
+                    segments.forEach(seg => {
+                        if (seg.waypoints) points.push(...seg.waypoints);
+                    });
+                }
+
+                if (points.length > 0) {
+                    sharedTrajectoryLine.setPlanned(points);
+                    sharedWaypointMarker.setWaypoints(points);
                     store.set('beta.fieldOverlay', true);
                 }
             },

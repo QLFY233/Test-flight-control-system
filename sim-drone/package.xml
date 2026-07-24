@@ -2,21 +2,11 @@
 <package format="2">
   <name>sim_drone</name>
   <version>0.1.0</version>
-  <description>Fake drone simulator node for the flight control system.</description>
-
-  <maintainer email="dev@flight-control.local">Flight Control Dev</maintainer>
+  <description>Fake drone simulation for flight control testing</description>
+  <maintainer email="dev@example.com">dev</maintainer>
   <license>MIT</license>
-
   <buildtool_depend>catkin</buildtool_depend>
-
-  <build_depend>rospy</build_depend>
-  <build_depend>geometry_msgs</build_depend>
-  <build_depend>sensor_msgs</build_depend>
-
-  <exec_depend>rospy</exec_depend>
-  <exec_depend>geometry_msgs</exec_depend>
-  <exec_depend>sensor_msgs</exec_depend>
-
-  <export>
-  </export>
+  <depend>rospy</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
 </package>

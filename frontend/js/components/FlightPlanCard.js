@@ -29,9 +29,16 @@ class FlightPlanCard {
         if (this.modifyMode) {
             container.innerHTML = this._renderModifyMode();
         } else {
-            let segmentsHtml = '';
-            if (this.plan.segments && this.plan.segments.length > 0) {
-                segmentsHtml = this.plan.segments.map((seg, i) => `
+            // Support both legacy segments/waypoints and new actions format
+            const segments = this.plan.segments || [];
+            const actions = this.plan.actions || [];
+            const hasActions = actions.length > 0;
+
+            let bodyHtml = '';
+            if (hasActions) {
+                bodyHtml = this._renderActions(actions);
+            } else if (segments.length > 0) {
+                bodyHtml = segments.map((seg, i) => `
                     <div class="flight-plan-card__segment">
                         <div class="flight-plan-card__segment-header">
                             <span class="flight-plan-card__segment-id">${i + 1}</span>
@@ -56,24 +63,25 @@ class FlightPlanCard {
                     </div>
                 `).join('');
             } else {
-                segmentsHtml = '<div style="padding: var(--space-md); color: var(--color-text-disabled);">无航段数据</div>';
+                bodyHtml = '<div style="padding: var(--space-md); color: var(--color-text-disabled);">无动作数据</div>';
             }
 
             container.innerHTML = `
                 <div class="flight-plan-card__header">
                     <span class="flight-plan-card__title">${FlightPlanCard._esc(title)}</span>
-                    <span style="font-size: var(--font-xs); color: var(--color-text-disabled);">
+                    ${hasActions ? '<span class="flight-plan-card__badge" style="font-size: var(--font-xs); color: var(--color-cyan); border: 1px solid var(--color-cyan); border-radius: var(--radius-sm); padding: 0 6px;">动作序列</span>' : ''}
+                    <span style="font-size: var(--font-xs); color: var(--color-text-disabled); margin-left: auto;">
                         ${this.plan.total_distance ? `总距: ${this.plan.total_distance}m` : ''}
                     </span>
                 </div>
                 <div class="flight-plan-card__body">
-                    ${segmentsHtml}
+                    ${bodyHtml}
                 </div>
                 <div class="flight-plan-card__actions">
                     <button class="btn btn--primary btn--sm approve-btn">✓ 批准</button>
                     <button class="btn btn--secondary btn--sm modify-btn">✎ 修改</button>
                     <button class="btn btn--danger btn--sm reject-btn">✗ 驳回</button>
-                    <button class="btn btn--ghost btn--sm overlay-btn">叠加到3D</button>
+                    <button class="btn btn--ghost btn--sm overlay-btn" title="预览(未批准)">叠加到3D</button>
                 </div>
             `;
 
@@ -97,6 +105,42 @@ class FlightPlanCard {
 
         this.element = container;
         return container;
+    }
+
+    /**
+     * Render action-based plan entries (new format: ActionCommand codes).
+     */
+    _renderActions(actions) {
+        return actions.map((a, i) => {
+            const code = a.code || a.action_code || 'UNKNOWN';
+            const params = a.params || {};
+            const target = params.target || {};
+            const speed = params.speed != null ? params.speed : '';
+            return `
+                <div class="flight-plan-card__segment">
+                    <div class="flight-plan-card__segment-header">
+                        <span class="flight-plan-card__segment-id">${i + 1}</span>
+                        <span class="flight-plan-card__segment-name" style="font-family: var(--font-mono);">${code}</span>
+                        <span style="font-size: var(--font-xs); color: var(--color-text-disabled);">
+                            ${a.description || ''}
+                        </span>
+                    </div>
+                    <div class="flight-plan-card__waypoint">
+                        <span>&#9679;</span>
+                        <span style="font-family: var(--font-mono);">
+                            目标: (${target.x != null ? target.x.toFixed(2) : '?'}, ${target.y != null ? target.y.toFixed(2) : '?'}, ${target.z != null ? target.z.toFixed(2) : '?'})
+                            ${speed ? `| 速度: ${speed} m/s` : ''}
+                        </span>
+                    </div>
+                    ${params.hold_time ? `
+                        <div class="flight-plan-card__waypoint">
+                            <span>&#9201;</span>
+                            <span>悬停: ${params.hold_time}s</span>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
     }
 
     _renderModifyMode() {

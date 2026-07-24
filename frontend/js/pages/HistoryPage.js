@@ -6,7 +6,7 @@
 
 import store from '../state.js';
 import bus from '../event-bus.js';
-import { apiManager, sharedTrajectoryLine, sharedWaypointMarker } from '../app.js';
+import { apiManager, sharedTrajectoryLine, sharedWaypointMarker } from '../shared.js';
 import { SessionCard } from '../components/SessionCard.js';
 import { TimelineControl } from '../components/TimelineControl.js';
 import { ViewPanel } from '../components/ViewPanel.js';

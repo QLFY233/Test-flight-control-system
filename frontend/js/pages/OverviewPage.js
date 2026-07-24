@@ -5,7 +5,7 @@
 
 import store from '../state.js';
 import bus from '../event-bus.js';
-import { apiManager, router } from '../app.js';
+import { apiManager, router } from '../shared.js';
 import { SessionCard } from '../components/SessionCard.js';
 import { EmptyState } from '../components/EmptyState.js';
 

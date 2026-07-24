@@ -14,9 +14,22 @@ class Scene3D {
         this.container = null;
         this.paused = false;
         this.renderCallbacks = [];
+        this._webglFailed = false;
 
         // Build the scene
-        this._init();
+        try {
+            this._init();
+        } catch (e) {
+            console.warn('[Scene3D] WebGL init failed:', e.message);
+            this._webglFailed = true;
+        }
+    }
+
+    /**
+     * Check if WebGL is available and scene is ready.
+     */
+    isReady() {
+        return !this._webglFailed && this.renderer !== null;
     }
 
     _init() {

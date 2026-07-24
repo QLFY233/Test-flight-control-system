@@ -18,15 +18,23 @@ class ApiManager {
      * GET request.
      * @param {string} path - e.g. '/api/overview'
      * @param {object} [params] - query parameters
+     * @param {number} [timeout] - request timeout in ms (default: 10000)
      * @returns {Promise<any>}
      */
-    async get(path, params = {}) {
+    async get(path, params = {}, timeout = 10000) {
         const url = this._buildUrl(path, params);
-        const res = await fetch(url, {
-            method: 'GET',
-            headers: this._headers(),
-        });
-        return this._handleResponse(res);
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeout);
+        try {
+            const res = await fetch(url, {
+                method: 'GET',
+                headers: this._headers(),
+                signal: controller.signal,
+            });
+            return await this._handleResponse(res);
+        } finally {
+            clearTimeout(timer);
+        }
     }
 
     /**

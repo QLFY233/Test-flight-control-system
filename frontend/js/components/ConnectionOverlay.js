@@ -2,8 +2,8 @@
  * ConnectionOverlay — Semi-transparent overlay when WebSocket disconnects.
  */
 
-import store from '../store.js';
-import { wsManager } from '../app.js';
+import store from '../state.js';
+import { wsManager } from '../shared.js';
 
 class ConnectionOverlay {
     constructor(container) {

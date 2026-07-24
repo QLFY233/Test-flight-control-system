@@ -2,7 +2,7 @@
  * ViewModeSelector — Controls the right panel view layout (1/2/3 views) and per-slot source selection.
  */
 
-import store from '../store.js';
+import store from '../state.js';
 import bus from '../event-bus.js';
 
 class ViewModeSelector {

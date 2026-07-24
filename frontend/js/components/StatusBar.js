@@ -23,8 +23,8 @@ class StatusBar {
             : wsStatus === 'connecting' ? '连接中...'
             : '断开';
 
-        const seg = flight.currentSegment || 0;
-        const total = flight.totalSegments || 0;
+        const seg = flight.currentAction || 0;
+        const total = flight.totalActions || 0;
         const segPct = total > 0 ? ((seg / total) * 100) : 0;
 
         this.container.innerHTML = `
@@ -48,7 +48,7 @@ class StatusBar {
                     <span>${flight.mode || '--'}</span>
                 </div>
                 <div class="status-bar__indicator">
-                    <span>段: ${seg}/${total}</span>
+                    <span>动作: ${seg}/${total}</span>
                     <div class="status-bar__seg-progress">
                         <div class="status-bar__seg-fill" style="width: ${segPct}%"></div>
                     </div>

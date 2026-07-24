@@ -4,7 +4,7 @@
  * Supports zoom, pan, and click to select reference point.
  */
 
-import store from '../store.js';
+import store from '../state.js';
 import bus from '../event-bus.js';
 
 class FieldMap2D {
