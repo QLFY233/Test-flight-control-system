@@ -230,18 +230,17 @@ class SettingsPage {
         const theme = this._getSelectVal('cfg-display-theme');
         if (theme) this.localConfig.display = { ...(this.localConfig.display || {}), theme };
 
-        // Read environment (if on env tab, save those values too)
+        // Read environment (preserve existing saved values, update from DOM if on env tab)
         const envTemp = this._getInputVal('cfg-env-temp');
-        if (envTemp) {
-            this.localConfig.environment = {
-                temperature: parseFloat(envTemp) || 25,
-                humidity: parseFloat(this._getInputVal('cfg-env-humidity')) || 60,
-                windSpeed: parseFloat(this._getInputVal('cfg-env-wind-speed')) || 0,
-                windDirection: parseFloat(this._getInputVal('cfg-env-wind-dir')) || 0,
-                pressure: parseFloat(this._getInputVal('cfg-env-pressure')) || 1013,
-                location: this._getInputVal('cfg-env-location') || '',
-            };
-        }
+        const savedEnv = this.localConfig.environment || {};
+        this.localConfig.environment = {
+            temperature: (envTemp ? parseFloat(envTemp) : savedEnv.temperature) ?? 25,
+            humidity: (envTemp ? parseFloat(this._getInputVal('cfg-env-humidity')) : savedEnv.humidity) ?? 60,
+            windSpeed: (envTemp ? parseFloat(this._getInputVal('cfg-env-wind-speed')) : savedEnv.windSpeed) ?? 0,
+            windDirection: (envTemp ? parseFloat(this._getInputVal('cfg-env-wind-dir')) : savedEnv.windDirection) ?? 0,
+            pressure: (envTemp ? parseFloat(this._getInputVal('cfg-env-pressure')) : savedEnv.pressure) ?? 1013,
+            location: (envTemp ? this._getInputVal('cfg-env-location') : savedEnv.location) || '',
+        };
 
         localStorage.setItem('flight-control-config', JSON.stringify(this.localConfig));
 
