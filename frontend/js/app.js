@@ -46,6 +46,7 @@ function renderRootLayout(appEl) {
             <a class="nav-strip__item" href="#/history"><span class="nav-strip__code">HST</span> 历史</a>
             <a class="nav-strip__item" href="#/settings"><span class="nav-strip__code">CFG</span> 设置</a>
             <span class="nav-strip__sep">///</span>
+            <button class="nav-strip__item" id="btn-toggle-chat" style="cursor:pointer;"><span class="nav-strip__code">&#9654;</span> AI</button>
             <span class="nav-strip__info">REV 2.6 · UNIT D-01</span>
         </nav>
         <div id="main-content" class="main-content">
@@ -191,10 +192,20 @@ async function init() {
     // Visibility
     document.addEventListener('visibilitychange', () => { const s = a.scene3D; if (s?.isReady()) { document.hidden ? s.pause() : s.resume(); } });
 
-    // Tab bar + Nav strip
-    const syncTabs = () => { const h = window.location.hash || '#/overview'; document.querySelectorAll('.tab-bar__item, .nav-strip__item').forEach(x => { const match = x.getAttribute('href') === h; x.classList.toggle('tab-bar__item--active', match); x.classList.toggle('nav-strip__item--active', match); }); };
+    // Tab bar + Nav strip (skip button elements)
+    const syncTabs = () => { const h = window.location.hash || '#/overview'; document.querySelectorAll('.tab-bar__item[href], .nav-strip__item[href]').forEach(x => { const match = x.getAttribute('href') === h; x.classList.toggle('tab-bar__item--active', match); x.classList.toggle('nav-strip__item--active', match); }); };
     window.addEventListener('hashchange', syncTabs);
     syncTabs();
+
+    // Chat toggle button
+    document.getElementById('btn-toggle-chat')?.addEventListener('click', () => {
+        const open = store.get('ui.chatOpen');
+        store.set('ui.chatOpen', !open);
+        store.set('ui.chatCollapsed', false);
+        if (!open && a.chatPanel && !document.querySelector('#chat-dock-inner')) {
+            a.chatPanel.mount();
+        }
+    });
 
     // Save config
     window.addEventListener('beforeunload', () => { const c = a.config; const s = { theme: c?.display?.theme, language: c?.display?.language }; const e = JSON.parse(localStorage.getItem('flight-control-config') || '{}'); Object.assign(e, { display: { ...(e.display || {}), ...s } }); localStorage.setItem('flight-control-config', JSON.stringify(e)); });
