@@ -77,7 +77,7 @@ class DashboardGrid {
 
     _render() {
         this.container.innerHTML = `
-            <div class="dashboard-grid">
+            <div class="dashboard-grid" style="grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); grid-auto-rows: minmax(200px, auto);">
                 ${this.panelOrder.map((id, i) => `
                     <div class="dashboard-grid__cell" data-panel-id="${id}" draggable="true" style="border:var(--border-hair);background:var(--color-surface);min-height:180px;display:flex;flex-direction:column;position:relative;">
                         <div class="dashboard-grid__drag-handle" style="cursor:grab;padding:2px 6px;text-align:center;color:var(--color-text-disabled);font-family:var(--font-mono);font-size:var(--text-2xs);border-bottom:var(--border-hair);" title="DRAG">:::</div>
@@ -161,9 +161,13 @@ class DashboardGrid {
 
     _defaultPanels() {
         return [
-            { id: 'altitude', spec: { type: 'altitude_line', title: '高度时序', window: '60s' } },
-            { id: 'velocity', spec: { type: 'velocity_line', title: '速度三维', window: '60s' } },
-            { id: 'progress', spec: { type: 'value', title: '任务进度', value: 0, unit: '%' } },
+            { id: 'altitude', spec: { type: 'altitude_line', title: 'ALTITUDE · 高度时序', window: '60s' } },
+            { id: 'velocity', spec: { type: 'velocity_line', title: 'VELOCITY · 速度三维', window: '60s' } },
+            { id: 'accel', spec: { type: 'accel_line', title: 'ACCEL · 加速度', window: '60s' } },
+            { id: 'progress', spec: { type: 'value', title: 'PROGRESS · 任务进度', value: 47.2, unit: '%' } },
+            { id: 'anomalies', spec: { type: 'bar', title: 'ANOMALIES · 异常统计', window: '24h' } },
+            { id: 'altitude_val', spec: { type: 'value', title: 'ALT · 当前高度', value: 28.7, unit: 'm' } },
+            { id: 'speed_val', spec: { type: 'value', title: 'SPD · 当前速度', value: 1.43, unit: 'm/s' } },
         ];
     }
 }
