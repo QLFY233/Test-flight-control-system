@@ -34,14 +34,16 @@ class DashboardPage {
     }
 
     _render() {
+        // Reset container to full-width (previous page may have set row flex)
+        this.container.style.cssText = 'width:100%;border-right:none;display:flex;flex-direction:column;flex:1;overflow:hidden';
         this.container.innerHTML = `
             <div class="dashboard-page" style="display: flex; flex-direction: column; height: 100%;">
-                <div class="dashboard-page__header" style="padding: var(--space-sm) var(--space-md); border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: var(--font-lg); font-weight: 600;">数据看板</span>
-                    <span style="font-size: var(--font-xs); color: var(--color-text-disabled);">β 工具驱动 · 实时更新</span>
+                <div class="dashboard-page__header" style="padding: var(--space-3) var(--space-4); border-bottom: var(--border-thin); display: flex; justify-content: space-between; align-items: center; background: var(--color-surface);">
+                    <span style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--track-widest);text-transform:uppercase;color:var(--color-text-disabled);">[ DASHBOARD ]</span>
+                    <span style="font-family:var(--font-mono);font-size:var(--text-2xs);letter-spacing:var(--track-wider);text-transform:uppercase;color:var(--color-text-disabled);">BETA TOOL DRIVEN · REALTIME</span>
                 </div>
                 <div id="dashboard-filter-bar"></div>
-                <div id="dashboard-grid" style="flex: 1; overflow-y: auto;"></div>
+                <div id="dashboard-grid" style="flex: 1; overflow-y: auto; padding: var(--space-3);"></div>
             </div>
         `;
     }

@@ -884,6 +884,12 @@ select.input {
     margin-top: var(--space-1);
 }
 
+.dashboard-panel__body {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+}
+
 /* Filter bar */
 .filter-bar {
     display: flex;

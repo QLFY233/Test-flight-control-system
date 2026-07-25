@@ -77,16 +77,16 @@ class DashboardGrid {
 
     _render() {
         this.container.innerHTML = `
-            <div class="dashboard-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-sm); padding: var(--space-sm); height: 100%;">
+            <div class="dashboard-grid">
                 ${this.panelOrder.map((id, i) => `
-                    <div class="dashboard-grid__cell" data-panel-id="${id}" draggable="true" style="border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-raised); min-height: 180px; display: flex; flex-direction: column; position: relative;">
-                        <div class="dashboard-grid__drag-handle" style="cursor: grab; padding: 2px 6px; text-align: center; color: var(--color-text-disabled); font-size: 10px; border-bottom: 1px solid var(--color-border);" title="拖拽排序">⠿</div>
-                        <div class="dashboard-grid__panel-content" style="flex: 1; min-height: 0;" id="dash-panel-${id}"></div>
-                        <button class="dashboard-grid__close-btn" data-panel-id="${id}" style="position: absolute; top: 2px; right: 4px; background: none; border: none; color: var(--color-text-disabled); cursor: pointer; font-size: 12px; padding: 2px;">✕</button>
+                    <div class="dashboard-grid__cell" data-panel-id="${id}" draggable="true" style="border:var(--border-hair);background:var(--color-surface);min-height:180px;display:flex;flex-direction:column;position:relative;">
+                        <div class="dashboard-grid__drag-handle" style="cursor:grab;padding:2px 6px;text-align:center;color:var(--color-text-disabled);font-family:var(--font-mono);font-size:var(--text-2xs);border-bottom:var(--border-hair);" title="DRAG">:::</div>
+                        <div class="dashboard-grid__panel-content" style="flex:1;min-height:0;" id="dash-panel-${id}"></div>
+                        <button class="dashboard-grid__close-btn" data-panel-id="${id}" style="position:absolute;top:2px;right:4px;background:none;border:none;color:var(--color-text-disabled);cursor:pointer;font-family:var(--font-mono);font-size:var(--text-xs);padding:2px;">×</button>
                     </div>
                 `).join('')}
-                <div class="dashboard-grid__add-cell" style="border: 1px dashed var(--color-border); border-radius: var(--radius-md); min-height: 180px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-disabled);">
-                    + 添加面板
+                <div class="dashboard-grid__add-cell" style="border:1px dashed var(--color-border);min-height:180px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--color-text-disabled);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--track-wide);transition:all var(--duration-fast) var(--ease-out-expo);">
+                    [ + ADD PANEL ]
                 </div>
             </div>
         `;
@@ -118,7 +118,7 @@ class DashboardGrid {
             });
             cell.addEventListener('dragover', (e) => {
                 e.preventDefault();
-                cell.style.borderColor = 'var(--color-cyan)';
+                cell.style.borderColor = '#FF2A2A';
             });
             cell.addEventListener('dragleave', () => {
                 cell.style.borderColor = '';

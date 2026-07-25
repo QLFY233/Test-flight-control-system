@@ -47,12 +47,12 @@ class DashboardPanel {
 
         const title = this.spec.title || this.spec.type || '面板';
         this.container.innerHTML = `
-            <div class="dashboard-panel" style="width: 100%; height: 100%; display: flex; flex-direction: column;">
-                <div class="dashboard-panel__header" style="padding: 4px 8px; font-size: var(--font-xs); color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
+            <div class="dashboard-panel">
+                <div class="dashboard-panel__header">
                     <span>${title}</span>
-                    <span style="font-size: 10px; color: var(--color-text-disabled);">${this.spec.window || ''}</span>
+                    <span style="font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-disabled);">${this.spec.window || ''}</span>
                 </div>
-                <div class="dashboard-panel__body" style="flex: 1; min-height: 0;" id="dp-body-${this.panelId}"></div>
+                <div class="dashboard-panel__body" id="dp-body-${this.panelId}"></div>
             </div>
         `;
 
@@ -112,49 +112,49 @@ class DashboardPanel {
                 return {
                     ...baseOption,
                     xAxis: { type: 'time', axisLabel: { color: '#616161', fontSize: 9 } },
-                    yAxis: { type: 'value', name: '高度 (m)', nameTextStyle: { fontSize: 9 }, axisLabel: { color: '#616161' }, splitLine: { lineStyle: { color: '#1A1A1A' } } },
+                    yAxis: { type: 'value', name: 'ALT (m)', nameTextStyle: { fontSize: 9, color: '#888' }, axisLabel: { color: '#616161' }, splitLine: { lineStyle: { color: '#1C1C1C' } } },
                     series: [{
                         type: 'line',
                         data: this._mockData(20, 0.5, 3.0),
                         symbol: 'none',
-                        lineStyle: { color: '#00BCD4', width: 1.5 },
-                        areaStyle: { color: 'rgba(0,188,212,0.1)' },
+                        lineStyle: { color: '#FF2A2A', width: 1.5 },
+                        areaStyle: { color: 'rgba(255,42,42,0.08)' },
                     }],
                 };
             case 'velocity_line':
                 return {
                     ...baseOption,
                     xAxis: { type: 'time', axisLabel: { color: '#616161', fontSize: 9 } },
-                    yAxis: { type: 'value', name: '速度 (m/s)', nameTextStyle: { fontSize: 9 }, axisLabel: { color: '#616161' }, splitLine: { lineStyle: { color: '#1A1A1A' } } },
+                    yAxis: { type: 'value', name: 'VEL (m/s)', nameTextStyle: { fontSize: 9, color: '#888' }, axisLabel: { color: '#616161' }, splitLine: { lineStyle: { color: '#1C1C1C' } } },
                     series: ['vx', 'vy', 'vz'].map((name, i) => ({
                         type: 'line',
                         name,
                         data: this._mockData(20, -1.0, 1.0),
                         symbol: 'none',
-                        lineStyle: { color: ['#00BCD4', '#4CAF50', '#FFC107'][i], width: 1 },
+                        lineStyle: { color: ['#FF2A2A', '#4AF626', '#FFB300'][i], width: 1 },
                     })),
-                    legend: { textStyle: { color: '#9E9E9E', fontSize: 9 }, itemWidth: 10, itemHeight: 6 },
+                    legend: { textStyle: { color: '#888', fontSize: 9 }, itemWidth: 10, itemHeight: 6 },
                 };
             case 'accel_line':
                 return {
                     ...baseOption,
                     xAxis: { type: 'time', axisLabel: { color: '#616161', fontSize: 9 } },
-                    yAxis: { type: 'value', name: '加速度 (m/s²)', nameTextStyle: { fontSize: 9 }, axisLabel: { color: '#616161' }, splitLine: { lineStyle: { color: '#1A1A1A' } } },
+                    yAxis: { type: 'value', name: 'ACC (m/s²)', nameTextStyle: { fontSize: 9, color: '#888' }, axisLabel: { color: '#616161' }, splitLine: { lineStyle: { color: '#1C1C1C' } } },
                     series: ['ax', 'ay', 'az'].map((name, i) => ({
                         type: 'line',
                         name,
                         data: this._mockData(20, -0.5, 0.5),
                         symbol: 'none',
-                        lineStyle: { color: ['#F44336', '#E040FB', '#00BCD4'][i], width: 1 },
+                        lineStyle: { color: ['#FF2A2A', '#888', '#FFB300'][i], width: 1 },
                     })),
-                    legend: { textStyle: { color: '#9E9E9E', fontSize: 9 }, itemWidth: 10, itemHeight: 6 },
+                    legend: { textStyle: { color: '#888', fontSize: 9 }, itemWidth: 10, itemHeight: 6 },
                 };
             case 'bar':
                 return {
                     ...baseOption,
                     xAxis: { type: 'category', data: ['异常1', '异常2', '异常3', '异常4', '异常5'], axisLabel: { color: '#616161', fontSize: 9 } },
                     yAxis: { type: 'value', name: '次数', nameTextStyle: { fontSize: 9 }, axisLabel: { color: '#616161' }, splitLine: { lineStyle: { color: '#1A1A1A' } } },
-                    series: [{ type: 'bar', data: [3, 7, 2, 5, 1], itemStyle: { color: '#FFC107' } }],
+                    series: [{ type: 'bar', data: [3, 7, 2, 5, 1], itemStyle: { color: '#FF2A2A' } }],
                 };
             default:
                 return baseOption;
@@ -162,12 +162,12 @@ class DashboardPanel {
     }
 
     _renderValueCard(container) {
-        const value = this.spec.value ?? Math.round(Math.random() * 100) / 10;
+        const value = this.spec.value ?? (Math.random() * 100).toFixed(1);
         const unit = this.spec.unit || '';
         container.innerHTML = `
-            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: var(--space-md);">
-                <div style="font-size: var(--font-2xl); font-weight: 300; color: var(--color-cyan);">${value}</div>
-                <div style="font-size: var(--font-xs); color: var(--color-text-disabled); margin-top: 4px;">${unit}</div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:var(--space-4);">
+                <div class="dashboard-panel__value">${value}</div>
+                <div class="dashboard-panel__unit">${unit}</div>
             </div>
         `;
     }
