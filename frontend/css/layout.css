@@ -14,8 +14,72 @@
     background: var(--color-bg);
 }
 
+/* ===== NAV STRIP (Desktop) ===== */
+.nav-strip {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-1);
+    height: 32px;
+    padding: 0 var(--space-4);
+    background: var(--color-surface);
+    border-bottom: var(--border-thin);
+    flex-shrink: 0;
+    z-index: calc(var(--z-sticky) - 1);
+    overflow-x: auto;
+}
+
+.nav-strip__item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-3);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--track-wide);
+    text-transform: uppercase;
+    color: var(--color-text-disabled);
+    text-decoration: none;
+    transition: all var(--duration-fast) var(--ease-out-expo);
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+}
+
+.nav-strip__item:hover {
+    color: var(--color-text-secondary);
+    background: rgba(255,255,255,0.03);
+}
+
+.nav-strip__item--active {
+    color: var(--color-red);
+    border-bottom-color: var(--color-red);
+}
+
+.nav-strip__code {
+    font-weight: 600;
+    color: inherit;
+}
+
+.nav-strip__sep {
+    color: var(--color-text-disabled);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    margin: 0 var(--space-2);
+    opacity: 0.4;
+}
+
+.nav-strip__info {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    letter-spacing: var(--track-wider);
+    text-transform: uppercase;
+    color: var(--color-text-disabled);
+    opacity: 0.5;
+}
+
 /* ============================================================
-   STATUS BAR — Phosphor Header Strip
+   STATUS BAR
    ============================================================ */
 .status-bar {
     display: flex;
@@ -552,6 +616,7 @@
    RESPONSIVE — Mobile
    ============================================================ */
 @media (max-width: 767px) {
+    .nav-strip { display: none; }
     .main-content { flex-direction: column; }
 
     .left-column, .right-column {

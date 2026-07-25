@@ -38,6 +38,16 @@ const PAGE_REGISTRY = {
 function renderRootLayout(appEl) {
     appEl.innerHTML = `<div class="app-container">
         <div id="status-bar" class="status-bar"></div>
+        <nav class="nav-strip" id="nav-strip">
+            <a class="nav-strip__item nav-strip__item--active" href="#/overview"><span class="nav-strip__code">OVR</span> 总览</a>
+            <a class="nav-strip__item" href="#/beta"><span class="nav-strip__code">PLN</span> 规划</a>
+            <a class="nav-strip__item" href="#/dashboard"><span class="nav-strip__code">DSH</span> 看板</a>
+            <a class="nav-strip__item" href="#/alpha"><span class="nav-strip__code">FLT</span> 飞控</a>
+            <a class="nav-strip__item" href="#/history"><span class="nav-strip__code">HST</span> 历史</a>
+            <a class="nav-strip__item" href="#/settings"><span class="nav-strip__code">CFG</span> 设置</a>
+            <span class="nav-strip__sep">///</span>
+            <span class="nav-strip__info">REV 2.6 · UNIT D-01</span>
+        </nav>
         <div id="main-content" class="main-content">
             <div id="page-container" style="width:100%;border-right:none;display:flex;flex-direction:row;flex:1;overflow:hidden"></div>
         </div>
@@ -165,8 +175,8 @@ async function init() {
     // Visibility
     document.addEventListener('visibilitychange', () => { const s = a.scene3D; if (s?.isReady()) { document.hidden ? s.pause() : s.resume(); } });
 
-    // Tab bar
-    const syncTabs = () => { const h = window.location.hash || '#/overview'; document.querySelectorAll('.tab-bar__item').forEach(x => x.classList.toggle('tab-bar__item--active', x.getAttribute('href') === h)); };
+    // Tab bar + Nav strip
+    const syncTabs = () => { const h = window.location.hash || '#/overview'; document.querySelectorAll('.tab-bar__item, .nav-strip__item').forEach(x => { const match = x.getAttribute('href') === h; x.classList.toggle('tab-bar__item--active', match); x.classList.toggle('nav-strip__item--active', match); }); };
     window.addEventListener('hashchange', syncTabs);
     syncTabs();
 
