@@ -4,7 +4,9 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-07-24
+最近更新：2026-07-25
+
+> **2026-07-25**: 前端完成 Brutalist 工业战术遥测风格重设计 (`redesign/brutalist-v1` 分支)，包含：全局 Chat 右侧竖栏、零圆角机械刚性、危险红主色调、JetBrains Mono 全站等宽、CRT扫描线+噪点纹理、双边框卡片、PWA 完整支持、可读性全面增强。
 
 ---
 
@@ -15,15 +17,15 @@
 | 阶段A | 基础设施与协议常量 | ⬜ | venv-A/B + config + bus/protocol + S0 |
 | 阶段B | 后端 B 脊柱 | ⬜ | bus + IPC client + BState |
 | 阶段C | 后端 A 脊柱 | ⬜ | bus + IPC server + AppState + DB |
-| 阶段D | 前端骨架 | ✅ | P0~P1 完成 + 懒加载优化 |
+| 阶段D | 前端骨架 | ✅ | P0~P11 全部完成 + Brutalist 重设计 (redesign/brutalist-v1) |
 | 阶段E | 假无人机 | ⬜ | sim-drone catkin 包 |
 | 阶段F | B 侧 small_model stub + ROS 桥 | ⬜ | S2 |
 | 阶段G | A↔B IPC 通 + α Agent | ⬜ | S3 + S5 前半 |
 | 阶段H | β Agent + SSE + 提议审核 | ⬜ | S5 完整 |
 | 阶段I | 监控回路 | ⬜ | S6 |
-| 阶段J | 前端集成 | ✅ | P2~P11 组件完成，待后端联调 |
+| 阶段J | 前端集成 | ✅ | P2~P11 全部完成，待后端联调 |
 | 阶段K | 安全兜底与 reject 回路 | ⬜ | S4 + S7 |
-| 阶段L | 语音/分析/看板（非阻塞增量） | ⬜ | 讯飞 STT/TTS + analytics + 看板 |
+| 阶段L | 语音/分析/看板（非阻塞增量） | 🚧 | 数据看板P11已完成；语音/analytics待后端API |
 | 阶段M | 远期 PX4 SITL + ego-planner + 真模型 | ⏳ | 不阻塞先导 |
 
 ---
