@@ -866,7 +866,7 @@ select.input {
     font-weight: 600;
     letter-spacing: var(--track-widest);
     text-transform: uppercase;
-    color: var(--color-text-secondary);
+    color: var(--color-text-primary);
     padding-bottom: var(--space-3);
     margin-bottom: var(--space-3);
     border-bottom: var(--border-hair);

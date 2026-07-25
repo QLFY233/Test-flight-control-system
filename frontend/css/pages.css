@@ -104,8 +104,9 @@
     font-weight: 600;
     letter-spacing: var(--track-widest);
     text-transform: uppercase;
-    color: var(--color-text-secondary);
+    color: var(--color-text-primary);
     margin-top: var(--space-3);
+    opacity: 0.7;
 }
 
 /* ============================================================

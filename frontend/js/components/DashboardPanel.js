@@ -103,7 +103,7 @@ class DashboardPanel {
         const baseOption = {
             backgroundColor: 'transparent',
             grid: { left: '8%', right: '8%', top: '15%', bottom: '15%' },
-            textStyle: { color: '#9E9E9E', fontSize: 10 },
+            textStyle: { color: '#AAAAAA', fontSize: 10 },
             tooltip: { trigger: 'axis' },
         };
 
@@ -111,8 +111,8 @@ class DashboardPanel {
             case 'altitude_line':
                 return {
                     ...baseOption,
-                    xAxis: { type: 'time', axisLabel: { color: '#616161', fontSize: 9 } },
-                    yAxis: { type: 'value', name: 'ALT (m)', nameTextStyle: { fontSize: 9, color: '#888' }, axisLabel: { color: '#616161' }, splitLine: { lineStyle: { color: '#1C1C1C' } } },
+                    xAxis: { type: 'time', axisLabel: { color: '#888888', fontSize: 9 } },
+                    yAxis: { type: 'value', name: 'ALT (m)', nameTextStyle: { fontSize: 9, color: '#AAAAAA' }, axisLabel: { color: '#888888' }, splitLine: { lineStyle: { color: '#1C1C1C' } } },
                     series: [{
                         type: 'line',
                         data: this._mockData(20, 0.5, 3.0),
@@ -124,8 +124,8 @@ class DashboardPanel {
             case 'velocity_line':
                 return {
                     ...baseOption,
-                    xAxis: { type: 'time', axisLabel: { color: '#616161', fontSize: 9 } },
-                    yAxis: { type: 'value', name: 'VEL (m/s)', nameTextStyle: { fontSize: 9, color: '#888' }, axisLabel: { color: '#616161' }, splitLine: { lineStyle: { color: '#1C1C1C' } } },
+                    xAxis: { type: 'time', axisLabel: { color: '#888888', fontSize: 9 } },
+                    yAxis: { type: 'value', name: 'VEL (m/s)', nameTextStyle: { fontSize: 9, color: '#AAAAAA' }, axisLabel: { color: '#888888' }, splitLine: { lineStyle: { color: '#1C1C1C' } } },
                     series: ['vx', 'vy', 'vz'].map((name, i) => ({
                         type: 'line',
                         name,
@@ -133,13 +133,13 @@ class DashboardPanel {
                         symbol: 'none',
                         lineStyle: { color: ['#FF2A2A', '#4AF626', '#FFB300'][i], width: 1 },
                     })),
-                    legend: { textStyle: { color: '#888', fontSize: 9 }, itemWidth: 10, itemHeight: 6 },
+                    legend: { textStyle: { color: '#AAAAAA', fontSize: 9 }, itemWidth: 10, itemHeight: 6 },
                 };
             case 'accel_line':
                 return {
                     ...baseOption,
-                    xAxis: { type: 'time', axisLabel: { color: '#616161', fontSize: 9 } },
-                    yAxis: { type: 'value', name: 'ACC (m/s²)', nameTextStyle: { fontSize: 9, color: '#888' }, axisLabel: { color: '#616161' }, splitLine: { lineStyle: { color: '#1C1C1C' } } },
+                    xAxis: { type: 'time', axisLabel: { color: '#888888', fontSize: 9 } },
+                    yAxis: { type: 'value', name: 'ACC (m/s²)', nameTextStyle: { fontSize: 9, color: '#AAAAAA' }, axisLabel: { color: '#888888' }, splitLine: { lineStyle: { color: '#1C1C1C' } } },
                     series: ['ax', 'ay', 'az'].map((name, i) => ({
                         type: 'line',
                         name,
@@ -152,8 +152,8 @@ class DashboardPanel {
             case 'bar':
                 return {
                     ...baseOption,
-                    xAxis: { type: 'category', data: ['异常1', '异常2', '异常3', '异常4', '异常5'], axisLabel: { color: '#616161', fontSize: 9 } },
-                    yAxis: { type: 'value', name: '次数', nameTextStyle: { fontSize: 9 }, axisLabel: { color: '#616161' }, splitLine: { lineStyle: { color: '#1A1A1A' } } },
+                    xAxis: { type: 'category', data: ['异常1', '异常2', '异常3', '异常4', '异常5'], axisLabel: { color: '#888888', fontSize: 9 } },
+                    yAxis: { type: 'value', name: '次数', nameTextStyle: { fontSize: 9, color: '#AAAAAA' }, axisLabel: { color: '#888888' }, splitLine: { lineStyle: { color: '#1C1C1C' } } },
                     series: [{ type: 'bar', data: [3, 7, 2, 5, 1], itemStyle: { color: '#FF2A2A' } }],
                 };
             default:
