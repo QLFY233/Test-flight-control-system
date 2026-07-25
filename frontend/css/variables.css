@@ -1,132 +1,172 @@
+/* ============================================================
+   VARIABLES.CSS — Tactical Telemetry Design System
+   Industrial Brutalism + CRT Terminal + Swiss Typography
+   Zero border-radius. Raw mechanical precision.
+   ============================================================ */
+
 :root {
-    /* ========== Primary Colors ========== */
-    --color-cyan: #00BCD4;
-    --color-cyan-light: #4DD0E1;
-    --color-cyan-dark: #0097A7;
-    --color-cyan-glow: rgba(0, 188, 212, 0.4);
-    --color-cyan-bg: rgba(0, 188, 212, 0.08);
-
-    /* ========== Semantic Colors ========== */
-    --color-success: #4CAF50;
-    --color-success-bg: rgba(76, 175, 80, 0.12);
-    --color-warning: #FFC107;
-    --color-warning-bg: rgba(255, 193, 7, 0.12);
-    --color-error: #F44336;
-    --color-error-bg: rgba(244, 67, 54, 0.12);
-    --color-info: #2196F3;
-    --color-info-bg: rgba(33, 150, 243, 0.12);
-
-    /* ========== Surface Colors ========== */
-    --color-bg: #000000;
-    --color-surface: #0D0D0D;
+    /* ===== SUBSTRATE: Deactivated CRT ===== */
+    --color-bg:             #0A0A0A;
+    --color-surface:        #0E0E0E;
     --color-surface-raised: #141414;
-    --color-surface-overlay: #1A1A1A;
-    --color-border: #2A2A2A;
-    --color-border-light: #3A3A3A;
+    --color-surface-overlay:#1A1A1A;
+    --color-border:         #222222;
+    --color-border-active:  #333333;
+    --color-divider:        #1C1C1C;
 
-    /* ========== Text Colors ========== */
-    --color-text-primary: #E0E0E0;
-    --color-text-secondary: #9E9E9E;
-    --color-text-disabled: #616161;
-    --color-text-inverse: #000000;
+    /* ===== PHOSPHOR FOREGROUND ===== */
+    --color-text-primary:   #EAEAEA;
+    --color-text-secondary: #888888;
+    --color-text-disabled:  #444444;
+    --color-text-inverse:   #0A0A0A;
 
-    /* ========== Spacing ========== */
-    --space-xs: 4px;
-    --space-sm: 8px;
-    --space-md: 12px;
-    --space-lg: 16px;
-    --space-xl: 24px;
-    --space-2xl: 32px;
-    --space-3xl: 48px;
+    /* ===== ACCENT: Aviation Hazard Red ===== */
+    --color-red:            #FF2A2A;
+    --color-red-dim:        rgba(255, 42, 42, 0.15);
+    --color-red-glow:       rgba(255, 42, 42, 0.4);
 
-    /* ========== Font Sizes ========== */
-    --font-xs: 10px;
-    --font-sm: 12px;
-    --font-md: 14px;
-    --font-lg: 16px;
-    --font-xl: 18px;
-    --font-2xl: 24px;
-    --font-3xl: 32px;
+    /* ===== ACCENT: Terminal Green (single use: status indicator) ===== */
+    --color-green:          #4AF626;
+    --color-green-dim:      rgba(74, 246, 38, 0.12);
+    --color-green-glow:     rgba(74, 246, 38, 0.3);
 
-    /* ========== Font Families ========== */
-    --font-sans: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-    --font-mono: 'Cascadia Code', 'Fira Code', 'Consolas', 'Courier New', monospace;
+    /* ===== SIGNAL: Amber Warning ===== */
+    --color-amber:          #FFB300;
+    --color-amber-dim:      rgba(255, 179, 0, 0.12);
 
-    /* ========== Z-Index Layers ========== */
-    --z-base: 0;
-    --z-dropdown: 100;
-    --z-sticky: 200;
-    --z-overlay: 300;
-    --z-modal: 400;
-    --z-toast: 500;
-    --z-tooltip: 600;
-    --z-max: 9999;
+    /* ===== SIGNAL: Info Blue ===== */
+    --color-blue:           #2196F3;
+    --color-blue-dim:       rgba(33, 150, 243, 0.12);
 
-    /* ========== Shadows ========== */
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.5);
-    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
-    --shadow-glow-cyan: 0 0 12px rgba(0, 188, 212, 0.3);
-    --shadow-glow-red: 0 0 12px rgba(244, 67, 54, 0.3);
+    /* ===== SPACING: Rigid 4px grid ===== */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-10: 40px;
+    --space-12: 48px;
+    --space-16: 64px;
+    --space-20: 80px;
 
-    /* ========== Border Radius ========== */
-    --radius-sm: 4px;
-    --radius-md: 8px;
-    --radius-lg: 12px;
-    --radius-xl: 16px;
-    --radius-full: 9999px;
+    /* ===== TYPOGRAPHY: Monospace Dominant ===== */
+    --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', 'Courier New', monospace;
+    --font-sans: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    --font-display: 'Inter', 'PingFang SC', sans-serif;
 
-    /* ========== Transitions ========== */
-    --transition-fast: 0.15s ease;
-    --transition-base: 0.25s ease;
-    --transition-slow: 0.4s ease;
+    /* ===== TYPOGRAPHY SCALE: Extreme Contrast ===== */
+    --text-2xs: 9px;
+    --text-xs:  10px;
+    --text-sm:  12px;
+    --text-md:  13px;
+    --text-lg:  16px;
+    --text-xl:  20px;
+    --text-2xl: 28px;
+    --text-3xl: 40px;
+    --text-4xl: 56px;
 
-    /* ========== Button Layers ========== */
-    --btn-primary-bg: #00BCD4;
-    --btn-primary-text: #000000;
-    --btn-primary-hover: #4DD0E1;
-    --btn-primary-active: #0097A7;
+    /* ===== TYPOGRAPHY TRACKING ===== */
+    --track-tight:  -0.04em;
+    --track-normal:  0em;
+    --track-wide:    0.05em;
+    --track-wider:   0.12em;
+    --track-widest:  0.2em;
 
-    --btn-secondary-bg: rgba(0, 188, 212, 0.12);
-    --btn-secondary-text: #00BCD4;
-    --btn-secondary-border: rgba(0, 188, 212, 0.3);
-    --btn-secondary-hover: rgba(0, 188, 212, 0.2);
+    /* ===== TYPOGRAPHY LEADING ===== */
+    --leading-tight:   1.0;
+    --leading-normal:  1.3;
+    --leading-relaxed: 1.6;
 
-    --btn-ghost-bg: transparent;
-    --btn-ghost-text: #9E9E9E;
-    --btn-ghost-hover: rgba(255, 255, 255, 0.06);
+    /* ===== LAYOUT: Panel Dimensions ===== */
+    --status-bar-h:   36px;
+    --bottom-bar-h:   32px;
+    --tab-bar-h:      52px;
+    --chat-dock-w:    400px;
+    --left-panel-w:   42%;
 
-    --btn-danger-bg: rgba(244, 67, 54, 0.15);
-    --btn-danger-text: #F44336;
-    --btn-danger-border: rgba(244, 67, 54, 0.3);
-    --btn-danger-hover: rgba(244, 67, 54, 0.25);
+    /* ===== Z-INDEX: System Layers ===== */
+    --z-base:     0;
+    --z-panel:    10;
+    --z-sticky:   100;
+    --z-overlay:  200;
+    --z-modal:    300;
+    --z-toast:    400;
+    --z-max:      500;
 
-    /* ========== 3D Scene Colors ========== */
-    --scene-bg: #0A0A0A;
-    --scene-grid: #1A1A1A;
-    --scene-field-boundary: rgba(0, 188, 212, 0.3);
-    --scene-obstacle: rgba(255, 193, 7, 0.4);
-    --scene-home: rgba(76, 175, 80, 0.6);
-    --scene-trajectory-flown: #4CAF50;
-    --scene-trajectory-planned: rgba(0, 188, 212, 0.6);
-    --scene-waypoint: rgba(0, 188, 212, 0.8);
-    --scene-target-glow: rgba(0, 188, 212, 0.9);
+    /* ===== BORDERS: Zero Radius, Mechanical ===== */
+    --border-hair: 1px solid var(--color-border);
+    --border-thin: 1px solid var(--color-border-active);
+    --border-accent: 1px solid var(--color-red);
+    --border-glow: 1px solid var(--color-red-glow);
 
-    /* ========== Status Indicator Colors ========== */
-    --status-connected: #4CAF50;
-    --status-connecting: #FFC107;
-    --status-disconnected: #F44336;
+    /* ===== SHADOWS: Tinted, Not Generic Black ===== */
+    --shadow-panel: 0 0 0 1px var(--color-border);
+    --shadow-raised: 0 0 0 1px var(--color-border-active), 0 2px 0 rgba(0,0,0,0.6);
+    --shadow-glow-red: 0 0 12px var(--color-red-glow);
+    --shadow-glow-green: 0 0 8px var(--color-green-glow);
 
-    /* ========== Panel Sizes ========== */
-    --status-bar-height: 40px;
-    --bottom-bar-height: 36px;
-    --chat-dock-width: 380px;
-    --left-panel-width: 40%;
-    --tab-bar-height: 56px;
+    /* ===== TRANSITIONS: Spring Physics, No Linear ===== */
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-in-out-custom: cubic-bezier(0.32, 0.72, 0, 1);
+    --duration-fast: 150ms;
+    --duration-base: 250ms;
+    --duration-slow: 500ms;
+    --duration-glacial: 800ms;
 }
 
-/* ========== Dark Scrollbar (Firefox) ========== */
+/* ===== GLOBAL NOISE OVERLAY ===== */
+body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-max);
+    pointer-events: none;
+    opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ===== CRT SCANLINES (subtle) ===== */
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--z-max) - 1);
+    pointer-events: none;
+    opacity: 0.03;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.15) 2px,
+        rgba(0,0,0,0.15) 4px
+    );
+}
+
+/* ===== SCROLLBAR: Industrial ===== */
 * {
     scrollbar-width: thin;
-    scrollbar-color: rgba(0, 188, 212, 0.3) transparent;
+    scrollbar-color: var(--color-border-active) transparent;
+}
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: var(--color-bg);
+}
+::-webkit-scrollbar-thumb {
+    background: var(--color-border-active);
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-disabled);
+}
+
+/* ===== SELECTION: Phosphor Invert ===== */
+::selection {
+    background: var(--color-red);
+    color: var(--color-bg);
 }

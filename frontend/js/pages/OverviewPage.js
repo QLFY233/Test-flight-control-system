@@ -44,14 +44,20 @@ class OverviewPage {
         };
 
         const getStatusText = (status) => {
-            const map = { ok: '正常', connected: '已连接', connecting: '连接中', warning: '警告', error: '异常', unknown: '未知' };
-            return map[status] || status;
+            const map = { ok: 'OK', connected: 'ONLINE', connecting: 'CONN', warning: 'WARN', error: 'ERR', unknown: 'UNK' };
+            return map[status] || status.toUpperCase();
         };
 
         this.container.innerHTML = `
             <div class="overview-page">
+                <div class="overview-page__hero">
+                    <div class="overview-page__hero-tag">/// SYS.REV 2.6</div>
+                    <div class="overview-page__hero-title">试飞控制<br>系统</div>
+                    <div class="overview-page__hero-sub">TACTICAL FLIGHT TELEMETRY &amp; CONTROL</div>
+                </div>
+
                 <div class="overview-page__section">
-                    <div class="overview-page__section-title">系统状态</div>
+                    <div class="overview-page__section-title">[ 系统状态 ]</div>
                     <div class="indicator-grid">
                         ${indicators.map(ind => `
                             <div class="indicator-light">
@@ -65,26 +71,28 @@ class OverviewPage {
                     </div>
                 </div>
 
-                <div class="overview-page__section" style="flex: 1; overflow-y: auto;">
-                    <div class="overview-page__section-title">环境概要</div>
-                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-md); margin-bottom: var(--space-lg);">
-                        <div class="card card--raised" style="padding: var(--space-md); text-align: center;">
-                            <div style="font-size: var(--font-2xl); color: var(--color-cyan);">${env.temperature ?? '--'}°C</div>
-                            <div style="font-size: var(--font-sm); color: var(--color-text-secondary); margin-top: var(--space-xs);">温度</div>
+                <div class="overview-page__section">
+                    <div class="overview-page__section-title">[ 环境概要 ]</div>
+                    <div class="overview-page__env-cards">
+                        <div class="overview-page__env-card">
+                            <div class="overview-page__env-card-value">${env.temperature ?? '--'}°</div>
+                            <div class="overview-page__env-card-label">TEMP · 温度</div>
                         </div>
-                        <div class="card card--raised" style="padding: var(--space-md); text-align: center;">
-                            <div style="font-size: var(--font-2xl); color: var(--color-cyan);">${env.humidity ?? '--'}%</div>
-                            <div style="font-size: var(--font-sm); color: var(--color-text-secondary); margin-top: var(--space-xs);">湿度</div>
+                        <div class="overview-page__env-card">
+                            <div class="overview-page__env-card-value">${env.humidity ?? '--'}%</div>
+                            <div class="overview-page__env-card-label">HUM · 湿度</div>
                         </div>
-                        <div class="card card--raised" style="padding: var(--space-md); text-align: center;">
-                            <div style="font-size: var(--font-2xl); color: var(--color-cyan);">${env.windSpeed ?? '--'} m/s</div>
-                            <div style="font-size: var(--font-sm); color: var(--color-text-secondary); margin-top: var(--space-xs);">风速</div>
+                        <div class="overview-page__env-card">
+                            <div class="overview-page__env-card-value">${env.windSpeed ?? '--'}</div>
+                            <div class="overview-page__env-card-label">WIND · 风速 m/s</div>
                         </div>
                     </div>
+                </div>
 
-                    <div class="overview-page__section-title">最近任务</div>
+                <div class="overview-page__section">
+                    <div class="overview-page__section-title">[ 最近任务 ]</div>
                     <div id="recent-sessions" class="overview-page__recent-grid">
-                        <div style="color: var(--color-text-disabled); padding: var(--space-lg);">加载中...</div>
+                        <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-text-disabled);letter-spacing:var(--track-wide);padding:var(--space-4);">/// LOADING...</div>
                     </div>
                 </div>
             </div>

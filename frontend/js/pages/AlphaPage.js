@@ -48,63 +48,65 @@ class AlphaPage {
         // Left panel: environment + task progress
         const leftHtml = `
             <div class="alpha-page">
-                <div class="card card--raised" style="margin-bottom: var(--space-md);">
-                    <div class="card__header">环境信息</div>
-                    <div class="card__body">
-                        <div class="alpha-page__env-info">
+                <div class="card">
+                    <div class="card__inner">
+                        <div class="card__header"><span class="card__header-accent">[ ENV ]</span> 环境信息</div>
+                        <div class="card__body">
+                            <div class="alpha-page__env-info">
+                                <div class="alpha-page__env-item">
+                                    <span class="alpha-page__env-label">TEMP</span>
+                                    <span class="alpha-page__env-value">${env.temperature ?? '--'} °C</span>
+                                </div>
+                                <div class="alpha-page__env-item">
+                                    <span class="alpha-page__env-label">HUM</span>
+                                    <span class="alpha-page__env-value">${env.humidity ?? '--'} %</span>
+                                </div>
                             <div class="alpha-page__env-item">
-                                <span class="alpha-page__env-label">温度</span>
-                                <span class="alpha-page__env-value">${env.temperature ?? '--'} °C</span>
-                            </div>
-                            <div class="alpha-page__env-item">
-                                <span class="alpha-page__env-label">湿度</span>
-                                <span class="alpha-page__env-value">${env.humidity ?? '--'} %</span>
-                            </div>
-                            <div class="alpha-page__env-item">
-                                <span class="alpha-page__env-label">风速</span>
+                                <span class="alpha-page__env-label">WIND</span>
                                 <span class="alpha-page__env-value">${env.windSpeed ?? '--'} m/s</span>
                             </div>
                             <div class="alpha-page__env-item">
-                                <span class="alpha-page__env-label">风向</span>
+                                <span class="alpha-page__env-label">DIR</span>
                                 <span class="alpha-page__env-value">${env.windDirection ?? '--'}°</span>
                             </div>
                             <div class="alpha-page__env-item">
-                                <span class="alpha-page__env-label">气压</span>
+                                <span class="alpha-page__env-label">PRES</span>
                                 <span class="alpha-page__env-value">${env.pressure ?? '--'} hPa</span>
                             </div>
                             <div class="alpha-page__env-item">
-                                <span class="alpha-page__env-label">地点</span>
+                                <span class="alpha-page__env-label">LOC</span>
                                 <span class="alpha-page__env-value">${env.location || '--'}</span>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="card card--raised" style="flex: 1; overflow-y: auto;">
-                    <div class="card__header">任务进度</div>
-                    <div class="card__body">
-                        <div class="alpha-page__task-progress">
-                            <div class="alpha-page__task-title">
-                                ${flight.taskTitle || '无任务'}
-                            </div>
-                            <div class="progress-bar" style="margin-bottom: var(--space-md);">
-                                <div class="progress-bar__fill progress-bar__fill--cyan" style="width: ${flight.progress || 0}%"></div>
-                            </div>
-                            <div style="font-size: var(--font-sm); color: var(--color-text-secondary); margin-bottom: var(--space-md);">
-                                ${flight.currentActionCode ? `[${flight.currentActionCode}] ${flight.currentAction}/${flight.totalActions || 0}` : (flight.currentAction > 0 ? `动作 ${flight.currentAction}/${flight.totalActions || 0}` : '待命')}
-                                ${flight.currentActionParams ? `<br><span style="font-size: var(--font-xs); color: var(--color-text-disabled);">参数: ${JSON.stringify(flight.currentActionParams)}</span>` : ''}
-                            </div>
-                            <div style="font-size: var(--font-sm); color: var(--color-text-secondary);">
-                                模式: ${flight.mode || '--'}
-                                &nbsp;|&nbsp;状态: ${flight.status || 'idle'}
-                            </div>
-                            <!-- Action sequence list -->
-                            <div class="alpha-page__action-list" style="margin-top: var(--space-sm);">
-                                ${(store.get('trajectory.actionSequence') || []).slice(0, 10).map((a, i) => `
-                                    <div class="alpha-page__action-item ${i === (flight.currentAction || 0) ? 'alpha-page__action-item--active' : ''}" style="padding: 2px 0; font-size: var(--font-xs); ${i === (flight.currentAction || 0) ? 'color: var(--color-cyan);' : 'color: var(--color-text-secondary);'}">
-                                        ${i === (flight.currentAction || 0) ? '▶' : '○'} ${a.code || 'ACTION_'}${a.params && a.params.target ? ` → (${a.params.target.x?.toFixed(1) || '?'}, ${a.params.target.y?.toFixed(1) || '?'}, ${a.params.target.z?.toFixed(1) || '?'})` : ''}
-                                    </div>
-                                `).join('') || ''}
+                <div class="card">
+                    <div class="card__inner">
+                        <div class="card__header"><span class="card__header-accent">[ TASK ]</span> 任务进度</div>
+                        <div class="card__body">
+                            <div class="alpha-page__task-progress">
+                                <div class="alpha-page__task-title">
+                                    ${flight.taskTitle || 'NO TASK'}
+                                </div>
+                                <div class="progress-bar" style="margin-bottom: var(--space-3);">
+                                    <div class="progress-bar__fill" style="width: ${flight.progress || 0}%"></div>
+                                </div>
+                                <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-3);">
+                                    ${flight.currentActionCode ? `[${flight.currentActionCode}] ${flight.currentAction}/${flight.totalActions || 0}` : (flight.currentAction > 0 ? `ACTION ${flight.currentAction}/${flight.totalActions || 0}` : 'STANDBY')}
+                                    ${flight.currentActionParams ? `<br><span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-text-disabled);">PARAMS: ${JSON.stringify(flight.currentActionParams)}</span>` : ''}
+                                </div>
+                                <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">
+                                    MODE: ${flight.mode || '--'}
+                                    &nbsp;|&nbsp;STATUS: ${flight.status || 'idle'}
+                                </div>
+                                <div class="alpha-page__action-list" style="margin-top: var(--space-2);">
+                                    ${(store.get('trajectory.actionSequence') || []).slice(0, 10).map((a, i) => `
+                                        <div class="alpha-page__action-item ${i === (flight.currentAction || 0) ? 'alpha-page__action-item--active' : ''}">
+                                            ${i === (flight.currentAction || 0) ? '>>>' : ' · '} ${a.code || 'ACT_'}${a.params && a.params.target ? ` → (${a.params.target.x?.toFixed(1) || '?'}, ${a.params.target.y?.toFixed(1) || '?'}, ${a.params.target.z?.toFixed(1) || '?'})` : ''}
+                                        </div>
+                                    `).join('') || ''}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -113,7 +115,7 @@ class AlphaPage {
         `;
 
         // Use renderTwoColumn helper
-        renderTwoColumn(this.container, leftHtml, '', 'Alpha 飞控');
+        renderTwoColumn(this.container, leftHtml, '', '/// ALPHA FLIGHT CONTROL');
 
         // Right toolbar: view mode selector
         const toolbarEl = document.getElementById('right-toolbar');

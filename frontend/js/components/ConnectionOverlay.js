@@ -19,12 +19,12 @@ class ConnectionOverlay {
 
         this.container.innerHTML = `
             <div class="connection-overlay">
-                <div class="connection-overlay__spinner"></div>
+                <div style="font-family:var(--font-mono);font-size:var(--text-3xl);color:var(--color-red);margin-bottom:var(--space-4);">/// SIGNAL LOST</div>
                 <div class="connection-overlay__text">
-                    连接断开，正在重试 (第${retryCount}次)
+                    连接断开 · 重试 ${retryCount}
                 </div>
                 <button class="btn btn--secondary" id="btn-retry-connection">
-                    手动重连
+                    [ RECONNECT ]
                 </button>
             </div>
         `;

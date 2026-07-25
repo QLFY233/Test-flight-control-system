@@ -43,12 +43,12 @@ function renderRootLayout(appEl) {
         </div>
         <div id="bottom-bar" class="bottom-bar"></div>
         <nav class="tab-bar">
-            <a class="tab-bar__item tab-bar__item--active" href="#/overview"><span class="tab-bar__item-icon">&#9673;</span><span>总览</span></a>
-            <a class="tab-bar__item" href="#/beta"><span class="tab-bar__item-icon">&#9881;</span><span>规划</span></a>
-            <a class="tab-bar__item" href="#/dashboard"><span class="tab-bar__item-icon">&#9636;</span><span>看板</span></a>
-            <a class="tab-bar__item" href="#/alpha"><span class="tab-bar__item-icon">&#9992;</span><span>飞控</span></a>
-            <a class="tab-bar__item" href="#/history"><span class="tab-bar__item-icon">&#9638;</span><span>历史</span></a>
-            <a class="tab-bar__item" href="#/settings"><span class="tab-bar__item-icon">&#9881;</span><span>设置</span></a>
+            <a class="tab-bar__item tab-bar__item--active" href="#/overview"><span class="tab-bar__item-icon">&#9638;</span><span>OVR</span></a>
+            <a class="tab-bar__item" href="#/beta"><span class="tab-bar__item-icon">&#9874;</span><span>PLN</span></a>
+            <a class="tab-bar__item" href="#/dashboard"><span class="tab-bar__item-icon">&#9643;</span><span>DSH</span></a>
+            <a class="tab-bar__item" href="#/alpha"><span class="tab-bar__item-icon">&#9992;</span><span>FLT</span></a>
+            <a class="tab-bar__item" href="#/history"><span class="tab-bar__item-icon">&#8986;</span><span>HST</span></a>
+            <a class="tab-bar__item" href="#/settings"><span class="tab-bar__item-icon">&#9881;</span><span>CFG</span></a>
         </nav>
         <div id="connection-overlay"></div>
     </div>`;

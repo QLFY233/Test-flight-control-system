@@ -79,7 +79,7 @@ class BetaPage {
             </div>
         `;
 
-        renderTwoColumn(this.container, leftHtml, '', 'Beta 规划');
+        renderTwoColumn(this.container, leftHtml, '', '/// BETA PLANNING');
 
         // Right panel: FieldMap2D by default
         const toolbarEl = document.getElementById('right-toolbar');

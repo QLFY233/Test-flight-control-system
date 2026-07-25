@@ -23,13 +23,17 @@ class BottomBar {
         const showAbort = status === 'running' || status === 'paused';
 
         this.container.innerHTML = `
+            <span class="bottom-bar__label">PROGRESS</span>
             <div class="bottom-bar__progress">
                 <div class="bottom-bar__progress-fill" style="width: ${progress}%"></div>
             </div>
+            <span class="bottom-bar__value">${progress}%</span>
+            <span class="bottom-bar__sep"></span>
+            <span class="bottom-bar__label">ACTION</span>
             <span class="bottom-bar__action">${actionLabel}</span>
-            <span style="font-size: var(--font-sm); color: var(--color-text-disabled);">${progress}%</span>
             ${showAbort ? `
-                <button class="btn btn--danger btn--sm" id="btn-abort">紧急中断</button>
+                <span class="bottom-bar__sep"></span>
+                <button class="btn btn--danger btn--sm" id="btn-abort">/// ABORT</button>
             ` : ''}
         `;
 

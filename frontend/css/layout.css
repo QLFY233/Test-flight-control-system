@@ -1,5 +1,7 @@
 /* ============================================================
-   LAYOUT.CSS — Application Shell & Responsive Layout
+   LAYOUT.CSS — Blueprint Grid Architecture
+   Visible compartmentalization. Asymmetric bento.
+   No floating elements — everything anchored to grid.
    ============================================================ */
 
 /* ---- Root Container ---- */
@@ -12,19 +14,24 @@
     background: var(--color-bg);
 }
 
-/* ---- Status Bar ---- */
+/* ============================================================
+   STATUS BAR — Phosphor Header Strip
+   ============================================================ */
 .status-bar {
     display: flex;
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
-    height: var(--status-bar-height);
-    padding: 0 var(--space-lg);
+    height: var(--status-bar-h);
+    padding: 0 var(--space-4);
     background: var(--color-surface);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: var(--border-thin);
     flex-shrink: 0;
     z-index: var(--z-sticky);
-    gap: var(--space-md);
+    gap: var(--space-6);
+    font-size: var(--text-sm);
+    letter-spacing: var(--track-wide);
+    text-transform: uppercase;
 }
 
 .status-bar__left,
@@ -32,74 +39,58 @@
 .status-bar__right {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
+    gap: var(--space-4);
 }
 
-.status-bar__left {
-    flex: 0 0 auto;
-}
-
-.status-bar__center {
-    flex: 1;
-    justify-content: center;
-}
-
-.status-bar__right {
-    flex: 0 0 auto;
-}
+.status-bar__left  { flex: 0 0 auto; }
+.status-bar__center { flex: 1; justify-content: center; }
+.status-bar__right  { flex: 0 0 auto; }
 
 .status-bar__indicator {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
-    font-size: var(--font-sm);
+    gap: var(--space-2);
     color: var(--color-text-secondary);
 }
 
+/* Status dots — squared, not rounded */
 .status-bar__dot {
-    width: 8px;
-    height: 8px;
-    border-radius: var(--radius-full);
+    width: 6px;
+    height: 6px;
     flex-shrink: 0;
+    background: var(--color-text-disabled);
 }
 
 .status-bar__dot--connected {
-    background: var(--status-connected);
-    box-shadow: 0 0 6px rgba(76, 175, 80, 0.5);
+    background: var(--color-green);
+    box-shadow: var(--shadow-glow-green);
 }
 
 .status-bar__dot--connecting {
-    background: var(--status-connecting);
-    box-shadow: 0 0 6px rgba(255, 193, 7, 0.5);
-    animation: pulse-dot 1.5s ease-in-out infinite;
+    background: var(--color-amber);
+    box-shadow: 0 0 6px rgba(255,179,0,0.4);
+    animation: pulse-dot 1.2s steps(2) infinite;
 }
 
 .status-bar__dot--disconnected {
-    background: var(--status-disconnected);
-    box-shadow: 0 0 6px rgba(244, 67, 54, 0.5);
+    background: var(--color-red);
+    box-shadow: var(--shadow-glow-red);
 }
 
 @keyframes pulse-dot {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
+    50%      { opacity: 0.15; }
 }
 
-.status-bar__seg-progress {
-    width: 120px;
-    height: 4px;
-    background: var(--color-border);
-    border-radius: var(--radius-full);
-    overflow: hidden;
+.status-bar__sep {
+    width: 1px;
+    height: 14px;
+    background: var(--color-border-active);
 }
 
-.status-bar__seg-fill {
-    height: 100%;
-    background: var(--color-cyan);
-    border-radius: var(--radius-full);
-    transition: width var(--transition-base);
-}
-
-/* ---- Main Content ---- */
+/* ============================================================
+   MAIN CONTENT — Asymmetric Bento Grid
+   ============================================================ */
 .main-content {
     display: flex;
     flex: 1;
@@ -108,31 +99,44 @@
     min-height: 0;
 }
 
-/* ---- Left Column ---- */
+/* ============================================================
+   LEFT COLUMN — Control Surface
+   ============================================================ */
 .left-column {
-    width: var(--left-panel-width);
+    width: var(--left-panel-w);
     display: flex;
     flex-direction: column;
     background: var(--color-surface);
-    border-right: 1px solid var(--color-border);
+    border-right: var(--border-thin);
     overflow: hidden;
     flex-shrink: 0;
 }
 
 .left-column__header {
-    padding: var(--space-md) var(--space-lg);
-    border-bottom: 1px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-3) var(--space-4);
+    border-bottom: var(--border-hair);
     flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--track-widest);
+    text-transform: uppercase;
+    color: var(--color-text-disabled);
+    background: var(--color-surface-raised);
 }
 
 .left-column__body {
     flex: 1;
     overflow-y: auto;
-    padding: var(--space-md);
+    padding: var(--space-3);
     min-height: 0;
 }
 
-/* ---- Right Column ---- */
+/* ============================================================
+   RIGHT COLUMN — Viewport / Data Display
+   ============================================================ */
 .right-column {
     flex: 1;
     display: flex;
@@ -147,11 +151,11 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-2) var(--space-3);
     background: var(--color-surface);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: var(--border-hair);
     flex-shrink: 0;
-    gap: var(--space-sm);
+    gap: var(--space-2);
 }
 
 .right-column__view-area {
@@ -162,18 +166,15 @@
     min-height: 0;
 }
 
-.right-column__view-area--single {
-    flex-direction: column;
-}
-
-.right-column__view-area--double {
-    flex-direction: row;
-}
+.right-column__view-area--single { flex-direction: column; }
+.right-column__view-area--double { flex-direction: row; }
 
 .right-column__view-area--triple {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
+    gap: 1px;
+    background: var(--color-border);
 }
 
 .right-column__view-area--triple > .view-panel:first-child {
@@ -181,46 +182,65 @@
     grid-row: 1;
 }
 
-.right-column__view-area--triple > .view-panel:nth-child(2) {
-    grid-column: 1;
-    grid-row: 2;
-}
-
-.right-column__view-area--triple > .view-panel:nth-child(3) {
-    grid-column: 2;
-    grid-row: 2;
-}
-
-/* ---- Bottom Bar ---- */
+/* ============================================================
+   BOTTOM BAR — Telemetry Strip
+   ============================================================ */
 .bottom-bar {
     display: flex;
     flex-direction: row;
     align-items: center;
-    height: var(--bottom-bar-height);
-    padding: 0 var(--space-lg);
+    height: var(--bottom-bar-h);
+    padding: 0 var(--space-4);
     background: var(--color-surface);
-    border-top: 1px solid var(--color-border);
+    border-top: var(--border-thin);
     flex-shrink: 0;
-    gap: var(--space-md);
+    gap: var(--space-4);
+    font-size: var(--text-xs);
+    letter-spacing: var(--track-wide);
+    text-transform: uppercase;
+}
+
+.bottom-bar__label {
+    color: var(--color-text-disabled);
+    white-space: nowrap;
+}
+
+.bottom-bar__value {
+    color: var(--color-text-primary);
+    white-space: nowrap;
+}
+
+.bottom-bar__sep {
+    width: 1px;
+    height: 12px;
+    background: var(--color-border-active);
 }
 
 .bottom-bar__progress {
     flex: 1;
-    height: 4px;
+    height: 3px;
     background: var(--color-border);
-    border-radius: var(--radius-full);
-    overflow: hidden;
+    position: relative;
 }
 
 .bottom-bar__progress-fill {
     height: 100%;
-    background: var(--color-cyan);
-    border-radius: var(--radius-full);
-    transition: width var(--transition-base);
+    background: var(--color-red);
+    transition: width var(--duration-slow) var(--ease-out-expo);
+    position: relative;
+}
+
+.bottom-bar__progress-fill::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: -2px;
+    width: 1px;
+    height: 7px;
+    background: var(--color-red);
 }
 
 .bottom-bar__action {
-    font-size: var(--font-sm);
     color: var(--color-text-secondary);
     white-space: nowrap;
     overflow: hidden;
@@ -228,49 +248,103 @@
     max-width: 300px;
 }
 
-/* ---- Chat Dock ---- */
+/* ============================================================
+   TAB BAR — Mobile Navigation
+   ============================================================ */
+.tab-bar {
+    display: none;
+    height: var(--tab-bar-h);
+    background: var(--color-surface);
+    border-top: var(--border-thin);
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-around;
+    flex-shrink: 0;
+    z-index: var(--z-sticky);
+}
+
+.tab-bar__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    letter-spacing: var(--track-wider);
+    text-transform: uppercase;
+    color: var(--color-text-disabled);
+    cursor: pointer;
+    padding: var(--space-1) var(--space-3);
+    transition: color var(--duration-fast) var(--ease-out-expo);
+    position: relative;
+}
+
+.tab-bar__item--active {
+    color: var(--color-red);
+}
+
+.tab-bar__item--active::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: var(--space-3);
+    right: var(--space-3);
+    height: 2px;
+    background: var(--color-red);
+}
+
+.tab-bar__item-icon {
+    font-size: 18px;
+    margin-bottom: 1px;
+}
+
+/* ============================================================
+   CHAT DOCK — Terminal Overlay
+   ============================================================ */
 .chat-dock {
     position: fixed;
-    bottom: calc(var(--bottom-bar-height) + var(--space-sm));
-    right: var(--space-lg);
-    width: var(--chat-dock-width);
-    max-height: 60vh;
+    bottom: calc(var(--bottom-bar-h) + var(--space-2));
+    right: var(--space-4);
+    width: var(--chat-dock-w);
+    max-height: 55vh;
     background: var(--color-surface-overlay);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
+    border: var(--border-thin);
     display: flex;
     flex-direction: column;
     z-index: var(--z-overlay);
-    box-shadow: var(--shadow-lg);
+    box-shadow: var(--shadow-raised);
     overflow: hidden;
-    transition: transform var(--transition-base), opacity var(--transition-base);
+    transition: transform var(--duration-base) var(--ease-out-expo),
+                opacity var(--duration-base) var(--ease-out-expo);
 }
 
 .chat-dock--collapsed {
-    transform: translateY(calc(100% - 48px));
+    transform: translateY(calc(100% - 42px));
 }
 
 .chat-dock__header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-2) var(--space-3);
     background: var(--color-surface);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: var(--border-hair);
     cursor: pointer;
     flex-shrink: 0;
-    min-height: 40px;
+    min-height: 36px;
 }
 
 .chat-dock__header-title {
-    font-size: var(--font-md);
-    font-weight: 600;
-    color: var(--color-cyan);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--track-widest);
+    text-transform: uppercase;
+    color: var(--color-red);
 }
 
 .chat-dock__header-actions {
     display: flex;
-    gap: var(--space-xs);
+    gap: var(--space-1);
 }
 
 .chat-dock__body {
@@ -284,89 +358,99 @@
 .chat-dock__messages {
     flex: 1;
     overflow-y: auto;
-    padding: var(--space-md);
+    padding: var(--space-3);
     min-height: 0;
 }
 
 .chat-dock__input {
     display: flex;
     align-items: center;
-    padding: var(--space-sm) var(--space-md);
-    border-top: 1px solid var(--color-border);
-    gap: var(--space-sm);
+    padding: var(--space-2) var(--space-3);
+    border-top: var(--border-hair);
+    gap: var(--space-2);
     flex-shrink: 0;
 }
 
 .chat-dock__input-field {
     flex: 1;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    padding: var(--space-sm) var(--space-md);
-    font-size: var(--font-md);
+    background: var(--color-bg);
+    border: var(--border-hair);
+    padding: var(--space-2) var(--space-3);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
     color: var(--color-text-primary);
     resize: none;
-    min-height: 36px;
-    max-height: 100px;
+    min-height: 32px;
+    max-height: 80px;
 }
 
 .chat-dock__input-field:focus {
-    border-color: var(--color-cyan);
-    box-shadow: 0 0 0 1px var(--color-cyan-glow);
+    border-color: var(--color-red);
 }
 
-/* ---- Connection Overlay ---- */
+/* ============================================================
+   CONNECTION OVERLAY — Signal Loss
+   ============================================================ */
 .connection-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.75);
+    background: rgba(10,10,10,0.85);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     z-index: var(--z-modal);
-    gap: var(--space-lg);
+    gap: var(--space-6);
 }
 
+/* ASCII spinner — no border-radius circles */
 .connection-overlay__text {
-    font-size: var(--font-lg);
+    font-family: var(--font-mono);
+    font-size: var(--text-lg);
     color: var(--color-text-secondary);
+    letter-spacing: var(--track-wide);
+    text-transform: uppercase;
 }
 
 .connection-overlay__spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid var(--color-border);
-    border-top-color: var(--color-cyan);
-    border-radius: var(--radius-full);
-    animation: spin 1s linear infinite;
+    font-family: var(--font-mono);
+    font-size: var(--text-3xl);
+    color: var(--color-red);
+    animation: ascii-spin 0.8s steps(4) infinite;
 }
 
-@keyframes spin {
-    to { transform: rotate(360deg); }
+@keyframes ascii-spin {
+    0%   { content: '|'; }
+    25%  { content: '/'; }
+    50%  { content: '-'; }
+    75%  { content: '\\\\'; }
 }
 
-/* ---- View Panel ---- */
+/* ============================================================
+   VIEW PANEL — Canvas Container
+   ============================================================ */
 .view-panel {
     position: relative;
     flex: 1;
     min-width: 0;
     min-height: 0;
-    border: 1px solid var(--color-border);
+    border: var(--border-hair);
     overflow: hidden;
     background: var(--color-bg);
 }
 
 .view-panel__label {
     position: absolute;
-    top: var(--space-xs);
-    left: var(--space-xs);
-    font-size: var(--font-xs);
+    top: var(--space-1);
+    left: var(--space-1);
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    letter-spacing: var(--track-wider);
+    text-transform: uppercase;
     color: var(--color-text-disabled);
-    background: rgba(0, 0, 0, 0.6);
-    padding: 2px 6px;
-    border-radius: var(--radius-sm);
-    z-index: 10;
+    background: rgba(10,10,10,0.75);
+    padding: 1px var(--space-2);
+    z-index: var(--z-panel);
     pointer-events: none;
 }
 
@@ -376,36 +460,39 @@
     height: 100% !important;
 }
 
-/* ---- Floating Ball ---- */
+/* ============================================================
+   FLOATING BALL — Industrial Action Button
+   ============================================================ */
 .floating-ball {
     position: fixed;
-    width: 56px;
-    height: 56px;
-    border-radius: var(--radius-full);
-    background: rgba(0, 188, 212, 0.15);
-    border: 2px solid rgba(0, 188, 212, 0.4);
+    width: 52px;
+    height: 52px;
+    background: var(--color-surface-overlay);
+    border: var(--border-thin);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: var(--z-sticky);
-    box-shadow: var(--shadow-glow-cyan);
-    transition: background var(--transition-base), transform var(--transition-fast);
+    box-shadow: var(--shadow-raised);
+    transition: border-color var(--duration-fast) var(--ease-out-expo),
+                background var(--duration-fast) var(--ease-out-expo);
     user-select: none;
     touch-action: none;
 }
 
 .floating-ball:hover {
-    background: rgba(0, 188, 212, 0.25);
+    border-color: var(--color-red);
+    background: var(--color-surface-raised);
 }
 
 .floating-ball__icon {
-    font-size: 24px;
-    color: var(--color-cyan);
+    font-size: 22px;
+    color: var(--color-text-primary);
     pointer-events: none;
 }
 
-/* ---- Fan Menu ---- */
+/* Fan menu items */
 .fan-menu {
     position: fixed;
     z-index: calc(var(--z-sticky) + 1);
@@ -413,105 +500,61 @@
 }
 
 .fan-menu__item {
-    position: absolute;
-    width: 44px;
-    height: 44px;
-    border-radius: var(--radius-full);
+    width: 40px;
+    height: 40px;
     background: var(--color-surface-overlay);
-    border: 1px solid var(--color-border);
+    border: var(--border-hair);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     pointer-events: auto;
-    transition: transform var(--transition-fast), background var(--transition-fast);
-    box-shadow: var(--shadow-md);
+    transition: border-color var(--duration-fast) var(--ease-out-expo),
+                transform var(--duration-fast) var(--ease-out-back);
+    box-shadow: var(--shadow-raised);
 }
 
 .fan-menu__item:hover {
-    background: var(--color-surface-raised);
-    border-color: var(--color-cyan);
-    transform: scale(1.1);
+    border-color: var(--color-red);
+    transform: scale(1.15);
 }
 
 .fan-menu__item-icon {
-    font-size: 18px;
+    font-size: 16px;
     color: var(--color-text-primary);
 }
 
 .fan-menu__item-name {
     position: absolute;
-    right: 52px;
+    right: 48px;
     white-space: nowrap;
-    font-size: var(--font-xs);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--track-wide);
+    text-transform: uppercase;
     color: var(--color-text-secondary);
     background: var(--color-surface-overlay);
-    padding: 2px 8px;
-    border-radius: var(--radius-sm);
+    padding: 2px var(--space-2);
+    border: var(--border-hair);
     pointer-events: none;
 }
 
-/* ---- Tab Bar (Mobile) ---- */
-.tab-bar {
-    display: none;
-    height: var(--tab-bar-height);
-    background: var(--color-surface);
-    border-top: 1px solid var(--color-border);
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-around;
-    flex-shrink: 0;
-    z-index: var(--z-sticky);
-}
-
-.tab-bar__item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-    font-size: var(--font-xs);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    padding: var(--space-xs) var(--space-md);
-    border-radius: var(--radius-sm);
-    transition: color var(--transition-fast);
-}
-
-.tab-bar__item--active {
-    color: var(--color-cyan);
-}
-
-.tab-bar__item-icon {
-    font-size: 20px;
-}
-
 /* ============================================================
-   RESPONSIVE — Tablet (768px - 1023px)
+   RESPONSIVE — Tablet
    ============================================================ */
 @media (max-width: 1023px) {
-    :root {
-        --chat-dock-width: 320px;
-    }
-
-    .left-column {
-        width: 45%;
-    }
-
-    .status-bar__center {
-        display: none;
-    }
+    :root { --chat-dock-w: 340px; }
+    .left-column { width: 45%; }
+    .status-bar__center { display: none; }
 }
 
 /* ============================================================
-   RESPONSIVE — Mobile (max 767px)
+   RESPONSIVE — Mobile
    ============================================================ */
 @media (max-width: 767px) {
-    .main-content {
-        flex-direction: column;
-    }
+    .main-content { flex-direction: column; }
 
-    .left-column,
-    .right-column {
+    .left-column, .right-column {
         width: 100%;
         flex: 1;
         min-height: 0;
@@ -519,60 +562,37 @@
 
     .left-column {
         border-right: none;
-        border-bottom: 1px solid var(--color-border);
+        border-bottom: var(--border-thin);
         max-height: 45%;
     }
-
-    .right-column {
-        max-height: 55%;
-    }
+    .right-column { max-height: 55%; }
 
     .status-bar {
-        padding: 0 var(--space-sm);
-        font-size: var(--font-xs);
+        padding: 0 var(--space-2);
+        font-size: var(--text-2xs);
     }
-
-    .status-bar__center {
-        display: none;
-    }
-
-    .bottom-bar {
-        display: none;
-    }
-
-    .tab-bar {
-        display: flex;
-    }
+    .status-bar__center { display: none; }
+    .bottom-bar { display: none; }
+    .tab-bar { display: flex; }
 
     .chat-dock {
-        width: calc(100vw - var(--space-lg) * 2);
-        right: var(--space-sm);
-        bottom: calc(var(--tab-bar-height) + var(--space-sm));
-        max-height: 50vh;
+        width: calc(100vw - var(--space-4) * 2);
+        right: var(--space-2);
+        bottom: calc(var(--tab-bar-h) + var(--space-2));
+        max-height: 45vh;
     }
 
     .floating-ball {
-        width: 44px;
-        height: 44px;
-        bottom: calc(var(--tab-bar-height) + var(--space-lg));
+        width: 40px; height: 40px;
+        bottom: calc(var(--tab-bar-h) + var(--space-4));
     }
 }
 
-/* ============================================================
-   RESPONSIVE — Small Mobile (max 374px)
-   ============================================================ */
 @media (max-width: 374px) {
-    .status-bar {
-        height: 32px;
-        padding: 0 var(--space-xs);
-    }
-
-    .tab-bar {
-        height: 48px;
-    }
-
+    .status-bar { height: 28px; padding: 0 var(--space-1); }
+    .tab-bar { height: 44px; }
     .chat-dock {
-        width: calc(100vw - var(--space-md) * 2);
-        right: var(--space-xs);
+        width: calc(100vw - var(--space-2) * 2);
+        right: var(--space-1);
     }
 }

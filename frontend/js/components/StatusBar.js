@@ -31,38 +31,44 @@ class StatusBar {
             <div class="status-bar__left">
                 <div class="status-bar__indicator">
                     <span class="status-bar__dot ${dotClass}"></span>
-                    <span>${wsLabel}</span>
+                    <span>[ ${wsLabel.toUpperCase()} ]</span>
                 </div>
+                <span class="status-bar__sep"></span>
                 <div class="status-bar__indicator">
-                    <span style="color: var(--color-text-disabled);">Drone</span>
-                    <span>${drone.connected ? '在线' : '离线'}</span>
+                    <span style="color:var(--color-text-disabled)">DRONE</span>
+                    <span>${drone.connected ? 'ONLINE' : 'OFFLINE'}</span>
                 </div>
             </div>
             <div class="status-bar__center">
                 <div class="status-bar__indicator">
-                    <span>位置:</span>
+                    <span style="color:var(--color-text-disabled)">POS</span>
                     <span>(${drone.position.x.toFixed(1)}, ${drone.position.y.toFixed(1)}, ${drone.position.z.toFixed(1)})</span>
                 </div>
+                <span class="status-bar__sep"></span>
                 <div class="status-bar__indicator">
-                    <span>模式:</span>
+                    <span style="color:var(--color-text-disabled)">MODE</span>
                     <span>${flight.mode || '--'}</span>
                 </div>
+                <span class="status-bar__sep"></span>
                 <div class="status-bar__indicator">
-                    <span>动作: ${seg}/${total}</span>
-                    <div class="status-bar__seg-progress">
-                        <div class="status-bar__seg-fill" style="width: ${segPct}%"></div>
-                    </div>
+                    <span style="color:var(--color-text-disabled)">SEQ</span>
+                    <span>${seg}/${total}</span>
                 </div>
             </div>
             <div class="status-bar__right">
                 <div class="status-bar__indicator">
-                    <span>温度: ${env.temperature ?? '--'}°C</span>
+                    <span style="color:var(--color-text-disabled)">TEMP</span>
+                    <span>${env.temperature ?? '--'}°C</span>
                 </div>
+                <span class="status-bar__sep"></span>
                 <div class="status-bar__indicator">
-                    <span>风速: ${env.windSpeed ?? '--'} m/s</span>
+                    <span style="color:var(--color-text-disabled)">WIND</span>
+                    <span>${env.windSpeed ?? '--'} m/s</span>
                 </div>
+                <span class="status-bar__sep"></span>
                 <div class="status-bar__indicator">
-                    <span>电池: ${drone.battery != null ? drone.battery + '%' : '--'}</span>
+                    <span style="color:var(--color-text-disabled)">BATT</span>
+                    <span>${drone.battery != null ? drone.battery + '%' : '--'}</span>
                 </div>
             </div>
         `;
