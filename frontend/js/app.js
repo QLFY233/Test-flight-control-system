@@ -146,16 +146,11 @@ async function init() {
     a.chatPanel.mount();
     console.log('ChatPanel mounted (right sidebar)');
 
-    // Floating Ball — lazy load
+    // Floating Ball
     const fb = document.createElement('div'); fb.id = 'fb';
     document.querySelector('.app-container').appendChild(fb);
     import('./components/FloatingBall.js').then(m => {
-        const ball = new m.FloatingBall(fb);
-        ball.mount();
-        console.log('FloatingBall mounted');
-    }).catch(e => console.warn('FloatingBall load failed:', e.message));
-    import('./components/ShortcutEditor.js').then(m => {
-        new m.ShortcutEditor();
+        new m.FloatingBall(fb).mount();
     }).catch(() => {});
 
     // Router — register lazy page factories

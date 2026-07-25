@@ -529,10 +529,10 @@
 }
 
 /* ============================================================
-   FLOATING BALL — Industrial Action Button
+   FLOATING BALL — Quick Action Button
+   Positioned left of chat sidebar
    ============================================================ */
 .floating-ball {
-    position: fixed;
     width: 52px;
     height: 52px;
     background: var(--color-surface-overlay);
@@ -541,7 +541,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: var(--z-sticky);
     box-shadow: var(--shadow-raised);
     transition: border-color var(--duration-fast) var(--ease-out-expo),
                 background var(--duration-fast) var(--ease-out-expo);
@@ -560,13 +559,7 @@
     pointer-events: none;
 }
 
-/* Fan menu items */
-.fan-menu {
-    position: fixed;
-    z-index: calc(var(--z-sticky) + 1);
-    pointer-events: none;
-}
-
+/* Fan menu items — positioned absolutely by JS */
 .fan-menu__item {
     width: 40px;
     height: 40px;
@@ -576,10 +569,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    pointer-events: auto;
+    box-shadow: var(--shadow-raised);
+    z-index: calc(var(--z-sticky) + 1);
     transition: border-color var(--duration-fast) var(--ease-out-expo),
                 transform var(--duration-fast) var(--ease-out-back);
-    box-shadow: var(--shadow-raised);
 }
 
 .fan-menu__item:hover {
@@ -590,21 +583,6 @@
 .fan-menu__item-icon {
     font-size: 16px;
     color: var(--color-text-primary);
-}
-
-.fan-menu__item-name {
-    position: absolute;
-    right: 48px;
-    white-space: nowrap;
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    letter-spacing: var(--track-wide);
-    text-transform: uppercase;
-    color: var(--color-text-secondary);
-    background: var(--color-surface-overlay);
-    padding: 2px var(--space-2);
-    border: var(--border-hair);
-    pointer-events: none;
 }
 
 /* ============================================================
