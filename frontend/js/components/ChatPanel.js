@@ -40,31 +40,20 @@ class ChatPanel {
     }
 
     render() {
-        const isCollapsed = store.get('ui.chatCollapsed');
         const messages = store.get('chatHistory') || [];
 
-        // Always visible per spec — "常驻, 跨页面/Tab位置不变"
         this.container.innerHTML = `
-            <div class="chat-dock ${isCollapsed ? 'chat-dock--collapsed' : ''}" id="chat-dock-inner">
-                <div class="chat-dock__header" id="chat-dock-header">
-                    <span class="chat-dock__header-title">[ BETA AI ]</span>
-                    <div class="chat-dock__header-actions">
-                        <button class="btn btn--icon btn--sm" id="chat-btn-collapse" title="${isCollapsed ? '展开' : '折叠'}">
-                            ${isCollapsed ? '▲' : '▼'}
-                        </button>
-                    </div>
+            <div class="chat-sidebar__header">
+                <span class="chat-sidebar__header-title">[ BETA AI ]</span>
+            </div>
+            <div class="chat-sidebar__body">
+                <div class="chat-sidebar__messages" id="chat-messages">
+                    ${messages.length === 0 ? '<div class="chat-sidebar__empty">/// BETA AI 就绪<br>输入指令开始对话</div>' : ''}
                 </div>
-                <div class="chat-dock__body">
-                    <div class="chat-dock__messages" id="chat-messages">
-                        ${messages.length === 0 ? '<div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-text-disabled);text-align:center;padding:var(--space-8);letter-spacing:var(--track-wide);">/// BETA AI 就绪<br>输入指令开始对话</div>' : ''}
-                    </div>
-                    <div class="chat-dock__input">
-                        <button class="btn btn--icon btn--sm" id="chat-btn-voice" title="语音输入">
-                            🎤
-                        </button>
-                        <textarea class="chat-dock__input-field" id="chat-input" placeholder=">>> 输入指令..." rows="1"></textarea>
-                        <button class="btn btn--primary btn--sm" id="chat-btn-send">发送</button>
-                    </div>
+                <div class="chat-sidebar__input">
+                    <button class="btn btn--icon btn--sm" id="chat-btn-voice" title="语音输入">🎤</button>
+                    <textarea class="chat-sidebar__input-field" id="chat-input" placeholder=">>> 输入指令..." rows="1"></textarea>
+                    <button class="btn btn--primary btn--sm" id="chat-btn-send">发送</button>
                 </div>
             </div>
         `;
@@ -83,29 +72,9 @@ class ChatPanel {
     }
 
     _bindEvents() {
-        const header = this.container.querySelector('#chat-dock-header');
-        const collapseBtn = this.container.querySelector('#chat-btn-collapse');
         const sendBtn = this.container.querySelector('#chat-btn-send');
         const voiceBtn = this.container.querySelector('#chat-btn-voice');
         const inputField = this.container.querySelector('#chat-input');
-
-        if (header) {
-            header.addEventListener('click', (e) => {
-                if (e.target.closest('button')) return;
-                const collapsed = store.get('ui.chatCollapsed');
-                store.set('ui.chatCollapsed', !collapsed);
-                this.render();
-            });
-        }
-
-        if (collapseBtn) {
-            collapseBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const collapsed = store.get('ui.chatCollapsed');
-                store.set('ui.chatCollapsed', !collapsed);
-                this.render();
-            });
-        }
 
         if (sendBtn && inputField) {
             const send = () => {

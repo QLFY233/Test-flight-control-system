@@ -50,7 +50,8 @@ function renderRootLayout(appEl) {
             <span class="nav-strip__info">REV 2.6 · UNIT D-01</span>
         </nav>
         <div id="main-content" class="main-content">
-            <div id="page-container" style="width:100%;border-right:none;display:flex;flex-direction:row;flex:1;overflow:hidden"></div>
+            <div id="page-container" style="flex:1;display:flex;flex-direction:row;overflow:hidden"></div>
+            <div id="chat-sidebar" class="chat-sidebar"></div>
         </div>
         <div id="bottom-bar" class="bottom-bar"></div>
         <nav class="tab-bar">
@@ -140,12 +141,10 @@ async function init() {
     store.subscribe('connection', v => v === 'disconnected' ? co.show() : co.hide());
     console.log('ConnectionOverlay done');
 
-    // Chat Dock — global persistent per spec P1/C2
-    const cc = document.createElement('div'); cc.id = 'chat-dock';
-    document.querySelector('.app-container').appendChild(cc);
-    a.chatPanel = new ChatPanel(cc);
+    // Chat Sidebar — fixed right panel per spec P1/C2
+    a.chatPanel = new ChatPanel(document.getElementById('chat-sidebar'));
     a.chatPanel.mount();
-    console.log('ChatPanel mounted (global dock)');
+    console.log('ChatPanel mounted (right sidebar)');
 
     // Floating Ball — lazy load
     const fb = document.createElement('div'); fb.id = 'fb';
