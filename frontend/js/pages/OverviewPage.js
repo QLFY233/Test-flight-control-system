@@ -52,7 +52,7 @@ class OverviewPage {
             <div class="overview-page">
                 <div class="overview-page__hero">
                     <div class="overview-page__hero-tag">/// SYS.REV 2.6</div>
-                    <div class="overview-page__hero-title">试飞控制<br>系统</div>
+                    <div class="overview-page__hero-title">试飞控制系统</div>
                     <div class="overview-page__hero-sub">TACTICAL FLIGHT TELEMETRY &amp; CONTROL</div>
                 </div>
 
