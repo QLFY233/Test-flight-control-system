@@ -1,6 +1,6 @@
 /**
- * FieldRenderer — Renders field boundary, ground grid, obstacles, and home position.
- * Reads from store.field.
+ * FieldRenderer — Renders field boundary, ground grid, and home position.
+ * Per spec: 先导仅 boundary+home，obstacles 不预编(阶段2/4交ego-planner+雷达)。
  */
 
 import store from '../state.js';
@@ -11,23 +11,19 @@ class FieldRenderer {
         this.group = new THREE.Group();
         this.gridHelper = null;
         this.boundaryLines = null;
-        this.obstaclesGroup = new THREE.Group();
         this.homeMarker = null;
 
         scene3D.add(this.group);
-        this.group.add(this.obstaclesGroup);
         this._createGrid();
     }
 
     /**
      * Update all field elements from field data.
-     * @param {object} field - { boundary, obstacles, home }
+     * @param {object} field - { boundary, home }
      */
     updateFromField(field) {
         if (!field) return;
-
         this._updateBoundary(field.boundary);
-        this._updateObstacles(field.obstacles || []);
         this._updateHome(field.home);
     }
 
@@ -87,17 +83,20 @@ class FieldRenderer {
         this.group.add(this.boundaryLines);
     }
 
-    _updateObstacles(obstacles) {
-        // Phase 1: Pre-compiled obstacles not used (handled by ego-planner in Phase 2/4 with radar point cloud).
-        // Keep obstaclesGroup clean to avoid visual clutter.
-        while (this.obstaclesGroup.children.length > 0) {
-            const child = this.obstaclesGroup.children[0];
-            this._disposeObject(child);
-            this.obstaclesGroup.remove(child);
+    /**
+     * Remove all field elements.
+     */
+    clear() {
+        if (this.boundaryLines) {
+            this.group.remove(this.boundaryLines);
+            this._disposeObject(this.boundaryLines);
+            this.boundaryLines = null;
         }
-    }
-
-    _updateHome(home) {
+        if (this.homeMarker) {
+            this.group.remove(this.homeMarker);
+            this._disposeObject(this.homeMarker);
+            this.homeMarker = null;
+        }
         if (this.homeMarker) {
             this.group.remove(this.homeMarker);
             this._disposeObject(this.homeMarker);
@@ -145,11 +144,6 @@ class FieldRenderer {
             this.group.remove(this.boundaryLines);
             this._disposeObject(this.boundaryLines);
             this.boundaryLines = null;
-        }
-        while (this.obstaclesGroup.children.length > 0) {
-            const child = this.obstaclesGroup.children[0];
-            this._disposeObject(child);
-            this.obstaclesGroup.remove(child);
         }
         if (this.homeMarker) {
             this.group.remove(this.homeMarker);

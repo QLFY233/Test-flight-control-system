@@ -241,7 +241,7 @@ const initial = {
     ui: {
         viewMode: 1,            // 1, 2, or 3 panels
         viewSources: ['3d'],    // e.g. ['3d', 'chart', 'video']
-        chatOpen: false,
+        chatOpen: true,
         chatCollapsed: false,
         theme: 'dark',
         language: 'zh-CN',

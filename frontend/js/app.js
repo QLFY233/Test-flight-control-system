@@ -18,6 +18,7 @@ import { renderTwoColumn } from './shared.js';
 import { StatusBar } from './components/StatusBar.js';
 import { BottomBar } from './components/BottomBar.js';
 import { ConnectionOverlay } from './components/ConnectionOverlay.js';
+import { ChatPanel } from './components/ChatPanel.js';
 
 import { Scene3D } from './scenes/Scene3D.js';
 
@@ -46,7 +47,6 @@ function renderRootLayout(appEl) {
             <a class="nav-strip__item" href="#/history"><span class="nav-strip__code">HST</span> 历史</a>
             <a class="nav-strip__item" href="#/settings"><span class="nav-strip__code">CFG</span> 设置</a>
             <span class="nav-strip__sep">///</span>
-            <button class="nav-strip__item" id="btn-toggle-chat" style="cursor:pointer;"><span class="nav-strip__code">&#9654;</span> AI</button>
             <span class="nav-strip__info">REV 2.6 · UNIT D-01</span>
         </nav>
         <div id="main-content" class="main-content">
@@ -140,14 +140,12 @@ async function init() {
     store.subscribe('connection', v => v === 'disconnected' ? co.show() : co.hide());
     console.log('ConnectionOverlay done');
 
-    // Chat Dock — lazy load (only needed when user opens chat)
+    // Chat Dock — global persistent per spec P1/C2
     const cc = document.createElement('div'); cc.id = 'chat-dock';
     document.querySelector('.app-container').appendChild(cc);
-    a._chatPanelContainer = cc;
-    import('./components/ChatPanel.js').then(m => {
-        a.chatPanel = new m.ChatPanel(cc);
-        console.log('ChatPanel loaded');
-    }).catch(e => console.warn('ChatPanel load failed:', e.message));
+    a.chatPanel = new ChatPanel(cc);
+    a.chatPanel.mount();
+    console.log('ChatPanel mounted (global dock)');
 
     // Floating Ball — lazy load
     const fb = document.createElement('div'); fb.id = 'fb';
@@ -196,16 +194,6 @@ async function init() {
     const syncTabs = () => { const h = window.location.hash || '#/overview'; document.querySelectorAll('.tab-bar__item[href], .nav-strip__item[href]').forEach(x => { const match = x.getAttribute('href') === h; x.classList.toggle('tab-bar__item--active', match); x.classList.toggle('nav-strip__item--active', match); }); };
     window.addEventListener('hashchange', syncTabs);
     syncTabs();
-
-    // Chat toggle button
-    document.getElementById('btn-toggle-chat')?.addEventListener('click', () => {
-        const open = store.get('ui.chatOpen');
-        store.set('ui.chatOpen', !open);
-        store.set('ui.chatCollapsed', false);
-        if (!open && a.chatPanel && !document.querySelector('#chat-dock-inner')) {
-            a.chatPanel.mount();
-        }
-    });
 
     // Save config
     window.addEventListener('beforeunload', () => { const c = a.config; const s = { theme: c?.display?.theme, language: c?.display?.language }; const e = JSON.parse(localStorage.getItem('flight-control-config') || '{}'); Object.assign(e, { display: { ...(e.display || {}), ...s } }); localStorage.setItem('flight-control-config', JSON.stringify(e)); });

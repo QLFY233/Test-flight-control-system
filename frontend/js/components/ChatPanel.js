@@ -1,6 +1,7 @@
 /**
  * ChatPanel — Global Beta Chat Dock (persists across page navigation).
- * Handles SSE streaming, voice input, and system messages.
+ * Per spec P1/C2: 常驻,跨页面/Tab位置不变,仅初始化一次。
+ * System messages (alert/alpha_output/status) inserted into this stream.
  */
 
 import store from '../state.js';
@@ -17,12 +18,13 @@ class ChatPanel {
         this.streamingMessageEl = null;
         this.streamingContent = '';
         this._boundHandleChatSend = this._handleChatSend.bind(this);
+        this._mounted = false;
     }
 
     mount() {
+        if (this._mounted) return;
+        this._mounted = true;
         this.render();
-        store.subscribe('ui.chatOpen', (val) => this._syncVisibility());
-        store.subscribe('ui.chatCollapsed', () => this.render());
         bus.on('chat-send', this._boundHandleChatSend);
 
         // Listen for alerts to show in chat
@@ -32,9 +34,7 @@ class ChatPanel {
 
         bus.on('alpha-output', (payload) => {
             if (payload && payload.action_sequence) {
-                this._addSystemMessage('alpha_output', `动作序列更新: ${payload.action_sequence.length} 条动作`);
-            } else if (payload && payload.waypoints) {
-                this._addSystemMessage('alpha_output', `轨迹更新: ${payload.waypoints.length} 个航点`);
+                this._addSystemMessage('alpha_output', `[α] 动作序列: ${payload.action_sequence.length} 条`);
             }
         });
     }
@@ -43,24 +43,26 @@ class ChatPanel {
         const isCollapsed = store.get('ui.chatCollapsed');
         const messages = store.get('chatHistory') || [];
 
+        // Always visible per spec — "常驻, 跨页面/Tab位置不变"
         this.container.innerHTML = `
             <div class="chat-dock ${isCollapsed ? 'chat-dock--collapsed' : ''}" id="chat-dock-inner">
                 <div class="chat-dock__header" id="chat-dock-header">
-                    <span class="chat-dock__header-title">Beta 对话</span>
+                    <span class="chat-dock__header-title">[ BETA AI ]</span>
                     <div class="chat-dock__header-actions">
                         <button class="btn btn--icon btn--sm" id="chat-btn-collapse" title="${isCollapsed ? '展开' : '折叠'}">
-                            ${isCollapsed ? '&#9650;' : '&#9660;'}
+                            ${isCollapsed ? '▲' : '▼'}
                         </button>
-                        <button class="btn btn--icon btn--sm" id="chat-btn-close" title="关闭">&#10005;</button>
                     </div>
                 </div>
                 <div class="chat-dock__body">
-                    <div class="chat-dock__messages" id="chat-messages"></div>
+                    <div class="chat-dock__messages" id="chat-messages">
+                        ${messages.length === 0 ? '<div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-text-disabled);text-align:center;padding:var(--space-8);letter-spacing:var(--track-wide);">/// BETA AI 就绪<br>输入指令开始对话</div>' : ''}
+                    </div>
                     <div class="chat-dock__input">
-                        <button class="btn btn--icon btn--sm" id="chat-btn-voice" title="按住录音">
-                            &#127908;
+                        <button class="btn btn--icon btn--sm" id="chat-btn-voice" title="语音输入">
+                            🎤
                         </button>
-                        <textarea class="chat-dock__input-field" id="chat-input" placeholder="输入消息..." rows="1"></textarea>
+                        <textarea class="chat-dock__input-field" id="chat-input" placeholder=">>> 输入指令..." rows="1"></textarea>
                         <button class="btn btn--primary btn--sm" id="chat-btn-send">发送</button>
                     </div>
                 </div>
@@ -77,14 +79,12 @@ class ChatPanel {
             this._scrollToBottom(msgContainer);
         }
 
-        // Bind events
         this._bindEvents();
     }
 
     _bindEvents() {
         const header = this.container.querySelector('#chat-dock-header');
         const collapseBtn = this.container.querySelector('#chat-btn-collapse');
-        const closeBtn = this.container.querySelector('#chat-btn-close');
         const sendBtn = this.container.querySelector('#chat-btn-send');
         const voiceBtn = this.container.querySelector('#chat-btn-voice');
         const inputField = this.container.querySelector('#chat-input');
@@ -107,14 +107,6 @@ class ChatPanel {
             });
         }
 
-        if (closeBtn) {
-            closeBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                store.set('ui.chatOpen', false);
-                this.container.innerHTML = '';
-            });
-        }
-
         if (sendBtn && inputField) {
             const send = () => {
                 const text = inputField.value.trim();
@@ -134,31 +126,17 @@ class ChatPanel {
         if (voiceBtn) {
             voiceBtn.addEventListener('mousedown', () => this._startRecording());
             voiceBtn.addEventListener('mouseup', () => this._stopRecording());
-            voiceBtn.addEventListener('mouseleave', () => {
-                if (this.isRecording) this._stopRecording();
-            });
-            voiceBtn.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                this._startRecording();
-            });
-            voiceBtn.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                this._stopRecording();
-            });
+            voiceBtn.addEventListener('mouseleave', () => { if (this.isRecording) this._stopRecording(); });
+            voiceBtn.addEventListener('touchstart', (e) => { e.preventDefault(); this._startRecording(); });
+            voiceBtn.addEventListener('touchend', (e) => { e.preventDefault(); this._stopRecording(); });
         }
     }
 
-    /**
-     * Send a user message and stream the response.
-     */
     async _sendMessage(text) {
-        // Add user message
         this._addMessage('human', text);
 
-        // Start SSE stream
-        const sseEndpoint = (config?.backend?.base_url || 'http://localhost:8000') + (config?.backend?.sse_beta || '/api/chat/beta');
+        const sseEndpoint = (window.__app.config?.backend?.base_url || 'http://localhost:8000') + (window.__app.config?.backend?.sse_beta || '/api/chat/beta');
 
-        // Create streaming agent message placeholder
         const msgContainer = this.container.querySelector('#chat-messages');
         if (!msgContainer) return;
 
@@ -166,170 +144,98 @@ class ChatPanel {
         streamEl.className = 'chat-message chat-message--agent';
         const bubble = document.createElement('div');
         bubble.className = 'chat-message__bubble';
-        bubble.textContent = '思考中...';
+        bubble.textContent = '...';
         streamEl.appendChild(bubble);
         msgContainer.appendChild(streamEl);
         this.streamingMessageEl = streamEl;
         this.streamingContent = '';
-
         this._scrollToBottom(msgContainer);
-
-        let currentToolCallEl = null;
 
         await sseManager.sendMessage(sseEndpoint, text, {
             onMessage: (chunk) => {
                 this.streamingContent += chunk;
-                if (bubble) {
-                    // Simple rendering as we go
-                    bubble.innerHTML = ChatMessage._simpleMarkdown(this.streamingContent);
-                }
+                if (bubble) bubble.innerHTML = ChatMessage._simpleMarkdown(this.streamingContent);
                 this._scrollToBottom(msgContainer);
             },
             onToolCall: (toolName, args) => {
-                // Add a tool call card after the streaming message
                 const toolMsg = { role: 'tool_call', toolName, toolArgs: args, timestamp: Date.now() };
-                const toolEl = ChatMessage.render(toolMsg);
-                currentToolCallEl = toolEl;
-                msgContainer.appendChild(toolEl);
+                msgContainer.appendChild(ChatMessage.render(toolMsg));
                 this._scrollToBottom(msgContainer);
             },
             onToolResult: (toolName, result) => {
-                const toolMsg = {
-                    role: 'tool_result',
-                    toolName,
-                    content: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
-                    timestamp: Date.now()
-                };
-                const toolEl = ChatMessage.render(toolMsg);
-                msgContainer.appendChild(toolEl);
+                const toolMsg = { role: 'tool_result', toolName, content: typeof result === 'string' ? result : JSON.stringify(result, null, 2), timestamp: Date.now() };
+                msgContainer.appendChild(ChatMessage.render(toolMsg));
                 this._scrollToBottom(msgContainer);
             },
-            onPlan: (plan) => {
-                bus.emit('plan-received', plan);
-            },
-            onComplete: (fullText) => {
-                // Finalize the streaming message in store
-                this._addMessage('agent', fullText);
-            },
+            onPlan: (plan) => bus.emit('plan-received', plan),
+            onComplete: (fullText) => { this._addMessage('agent', fullText); },
             onError: (error) => {
-                if (bubble && !this.streamingContent) {
-                    bubble.textContent = '错误: ' + error;
-                    bubble.style.color = 'var(--color-error)';
-                }
-                this._addMessage('agent', this.streamingContent || ('错误: ' + error));
+                if (bubble && !this.streamingContent) { bubble.textContent = 'ERR: ' + error; bubble.style.color = 'var(--color-red)'; }
+                this._addMessage('agent', this.streamingContent || ('ERR: ' + error));
             },
         });
     }
 
-    /**
-     * Add a message to chat history.
-     */
     _addMessage(role, content, extra = {}) {
         const msg = { role, content, timestamp: Date.now(), ...extra };
         const history = store.get('chatHistory') || [];
         store.set('chatHistory', [...history, msg]);
     }
 
-    /**
-     * Add a system message (displayed with special styling).
-     */
     _addSystemMessage(subtype, content) {
         const msg = { role: 'system', content, subtype, timestamp: Date.now() };
         const history = store.get('chatHistory') || [];
         store.set('chatHistory', [...history, msg]);
-
-        // Render immediately if chat is visible
         const msgContainer = this.container.querySelector('#chat-messages');
         if (msgContainer) {
-            const el = ChatMessage.render(msg);
-            msgContainer.appendChild(el);
+            msgContainer.appendChild(ChatMessage.render(msg));
             this._scrollToBottom(msgContainer);
         }
     }
 
-    /**
-     * Handle chat-send event from floating ball or other components.
-     */
     _handleChatSend(text) {
-        // Make sure chat is open
-        store.set('ui.chatOpen', true);
         store.set('ui.chatCollapsed', false);
         this.render();
-        // Small delay to let DOM update
         setTimeout(() => this._sendMessage(text), 100);
     }
 
-    /**
-     * Start voice recording via Web Audio API.
-     */
     async _startRecording() {
         if (this.isRecording) return;
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
             this.audioChunks = [];
-
-            this.mediaRecorder.ondataavailable = (e) => {
-                if (e.data.size > 0) this.audioChunks.push(e.data);
-            };
-
+            this.mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) this.audioChunks.push(e.data); };
             this.mediaRecorder.onstop = async () => {
                 const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
-                // Convert to base64 and send via WebSocket
                 const reader = new FileReader();
                 reader.onloadend = () => {
                     const base64 = reader.result.split(',')[1];
                     wsManager.send('voice_frame', { audio: base64, format: 'webm' });
                 };
                 reader.readAsDataURL(blob);
-
-                // Stop all tracks
                 stream.getTracks().forEach(t => t.stop());
             };
-
             this.mediaRecorder.start();
             this.isRecording = true;
-
             const voiceBtn = this.container.querySelector('#chat-btn-voice');
-            if (voiceBtn) {
-                voiceBtn.style.color = 'var(--color-error)';
-                voiceBtn.textContent = '⬤';
-            }
+            if (voiceBtn) { voiceBtn.style.color = 'var(--color-red)'; voiceBtn.textContent = '⬤'; }
         } catch (e) {
-            console.error('[ChatPanel] microphone access denied:', e);
-            alert('无法访问麦克风: ' + e.message);
+            console.error('[ChatPanel] microphone denied:', e);
         }
     }
 
-    /**
-     * Stop voice recording.
-     */
     _stopRecording() {
         if (!this.isRecording || !this.mediaRecorder) return;
         this.mediaRecorder.stop();
         this.isRecording = false;
         this.mediaRecorder = null;
-
         const voiceBtn = this.container.querySelector('#chat-btn-voice');
-        if (voiceBtn) {
-            voiceBtn.style.color = '';
-            voiceBtn.textContent = '🎤';
-        }
-    }
-
-    _syncVisibility() {
-        const open = store.get('ui.chatOpen');
-        if (!open && this.container.innerHTML) {
-            this.container.innerHTML = '';
-        } else if (open && !this.container.querySelector('#chat-dock-inner')) {
-            this.render();
-        }
+        if (voiceBtn) { voiceBtn.style.color = ''; voiceBtn.textContent = '🎤'; }
     }
 
     _scrollToBottom(container) {
-        if (container) {
-            container.scrollTop = container.scrollHeight;
-        }
+        if (container) container.scrollTop = container.scrollHeight;
     }
 }
 
