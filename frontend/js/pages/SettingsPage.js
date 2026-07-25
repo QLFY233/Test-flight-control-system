@@ -70,15 +70,8 @@ class SettingsPage {
                     <div class="settings-page__field settings-page__field--inline">
                         <span class="input-group__label">主题</span>
                         <select class="input" id="cfg-display-theme" style="width: auto;">
-                            <option value="dark" ${dc.theme === 'dark' ? 'selected' : ''}>暗色</option>
+                            <option value="dark" ${dc.theme !== 'light' ? 'selected' : ''}>暗色</option>
                             <option value="light" ${dc.theme === 'light' ? 'selected' : ''}>亮色</option>
-                        </select>
-                    </div>
-                    <div class="settings-page__field settings-page__field--inline">
-                        <span class="input-group__label">语言</span>
-                        <select class="input" id="cfg-display-lang" style="width: auto;">
-                            <option value="zh-CN" ${dc.language === 'zh-CN' ? 'selected' : ''}>中文</option>
-                            <option value="en" ${dc.language === 'en' ? 'selected' : ''}>English</option>
                         </select>
                     </div>
                 `;
@@ -235,8 +228,7 @@ class SettingsPage {
 
         // Read display
         const theme = this._getSelectVal('cfg-display-theme');
-        const lang = this._getSelectVal('cfg-display-lang');
-        if (theme || lang) this.localConfig.display = { ...(this.localConfig.display || {}), theme, language: lang };
+        if (theme) this.localConfig.display = { ...(this.localConfig.display || {}), theme };
 
         // Read environment (if on env tab, save those values too)
         const envTemp = this._getInputVal('cfg-env-temp');
