@@ -75,6 +75,22 @@ async function init() {
     a.config = await loadConfig();
     console.log('config loaded');
 
+    // Restore persisted environment from localStorage
+    try {
+        const saved = JSON.parse(localStorage.getItem('flight-control-config') || '{}');
+        if (saved.environment) {
+            store.batch(() => {
+                for (const [key, val] of Object.entries(saved.environment)) {
+                    if (val != null) store.set(`environment.${key}`, val);
+                }
+            });
+        }
+        // Apply display theme if saved
+        if (saved.display?.theme === 'light') {
+            document.body.classList.add('theme-light');
+        }
+    } catch(e) { /* ignore parse errors */ }
+
     a.apiManager = new ApiManager(a.config.backend?.base_url || 'http://localhost:8000');
     a.sseManager = new SseManager();
     a.wsManager = new WsManager((a.config.backend?.base_url || 'http://localhost:8000').replace(/^http/, 'ws') + (a.config.backend?.ws_endpoint || '/ws'));

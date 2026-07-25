@@ -238,11 +238,24 @@ class SettingsPage {
         const lang = this._getSelectVal('cfg-display-lang');
         if (theme || lang) this.localConfig.display = { ...(this.localConfig.display || {}), theme, language: lang };
 
+        // Read environment (if on env tab, save those values too)
+        const envTemp = this._getInputVal('cfg-env-temp');
+        if (envTemp) {
+            this.localConfig.environment = {
+                temperature: parseFloat(envTemp) || 25,
+                humidity: parseFloat(this._getInputVal('cfg-env-humidity')) || 60,
+                windSpeed: parseFloat(this._getInputVal('cfg-env-wind-speed')) || 0,
+                windDirection: parseFloat(this._getInputVal('cfg-env-wind-dir')) || 0,
+                pressure: parseFloat(this._getInputVal('cfg-env-pressure')) || 1013,
+                location: this._getInputVal('cfg-env-location') || '',
+            };
+        }
+
         localStorage.setItem('flight-control-config', JSON.stringify(this.localConfig));
 
         // Update API base URL if changed
         if (backend.base_url) {
-            apiManager.setBaseUrl(backend.base_url);
+            window.__app.apiManager?.setBaseUrl?.(backend.base_url);
         }
 
         alert('设置已保存');
@@ -264,12 +277,16 @@ class SettingsPage {
             pressure: parseFloat(this._getInputVal('cfg-env-pressure')) || 1013,
             location: this._getInputVal('cfg-env-location') || '',
         };
+        // Persist to in-memory store
         store.batch(() => {
             for (const [key, val] of Object.entries(env)) {
                 store.set(`environment.${key}`, val);
             }
         });
-        alert('环境参数已应用');
+        // Also persist to localStorage so it survives refresh
+        this.localConfig.environment = { ...(this.localConfig.environment || {}), ...env };
+        localStorage.setItem('flight-control-config', JSON.stringify(this.localConfig));
+        alert('环境参数已应用并保存');
     }
 
     _presetEnvironment(preset) {
@@ -285,6 +302,9 @@ class SettingsPage {
                 store.set(`environment.${key}`, val);
             }
         });
+        // Persist to localStorage
+        this.localConfig.environment = { ...(this.localConfig.environment || {}), ...p };
+        localStorage.setItem('flight-control-config', JSON.stringify(this.localConfig));
         this.render();
     }
 
