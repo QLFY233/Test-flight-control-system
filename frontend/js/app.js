@@ -150,8 +150,9 @@ async function init() {
     const fb = document.createElement('div'); fb.id = 'fb';
     document.querySelector('.app-container').appendChild(fb);
     import('./components/FloatingBall.js').then(m => {
-        new m.FloatingBall(fb);
-        console.log('FloatingBall loaded');
+        const ball = new m.FloatingBall(fb);
+        ball.mount();
+        console.log('FloatingBall mounted');
     }).catch(e => console.warn('FloatingBall load failed:', e.message));
     import('./components/ShortcutEditor.js').then(m => {
         new m.ShortcutEditor();
