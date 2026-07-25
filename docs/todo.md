@@ -4,7 +4,7 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-07-23
+最近更新：2026-07-24
 
 ---
 
@@ -15,13 +15,13 @@
 | 阶段A | 基础设施与协议常量 | ⬜ | venv-A/B + config + bus/protocol + S0 |
 | 阶段B | 后端 B 脊柱 | ⬜ | bus + IPC client + BState |
 | 阶段C | 后端 A 脊柱 | ⬜ | bus + IPC server + AppState + DB |
-| 阶段D | 前端骨架 | ⬜ | P0~P1 |
+| 阶段D | 前端骨架 | ✅ | P0~P1 完成 + 懒加载优化 |
 | 阶段E | 假无人机 | ⬜ | sim-drone catkin 包 |
 | 阶段F | B 侧 small_model stub + ROS 桥 | ⬜ | S2 |
 | 阶段G | A↔B IPC 通 + α Agent | ⬜ | S3 + S5 前半 |
 | 阶段H | β Agent + SSE + 提议审核 | ⬜ | S5 完整 |
 | 阶段I | 监控回路 | ⬜ | S6 |
-| 阶段J | 前端集成 | ⬜ | P2~P11 接后端 |
+| 阶段J | 前端集成 | ✅ | P2~P11 组件完成，待后端联调 |
 | 阶段K | 安全兜底与 reject 回路 | ⬜ | S4 + S7 |
 | 阶段L | 语音/分析/看板（非阻塞增量） | ⬜ | 讯飞 STT/TTS + analytics + 看板 |
 | 阶段M | 远期 PX4 SITL + ego-planner + 真模型 | ⏳ | 不阻塞先导 |
@@ -70,8 +70,10 @@
 ### 阶段D — 前端骨架（并行）
 | 模块 | 状态 | 负责人 | 最近更新 |
 |---|---|---|---|
-| P0 项目骨架（index.html + state/router/config/ws/app） | ⬜ | — | — |
-| P1 布局 + 通用组件（StatusBar/ChatPanel/ConnectionOverlay） | ⬜ | — | — |
+| P0 项目骨架（index.html + state/router/config/ws/app） | ✅ | — | 2026-07-24 |
+| P1 布局 + 通用组件（StatusBar/ChatPanel/ConnectionOverlay） | ✅ | — | 2026-07-24 |
+| 懒加载重构（44→13 初始模块 + 高 backlog 服务器） | ✅ | pi agent | 2026-07-24 |
+| `frontend/serve.py`（TCP backlog 128，替代 python3 -m http.server） | ✅ | pi agent | 2026-07-24 |
 
 ### 阶段E — 假无人机（并行）
 | 模块 | 状态 | 负责人 | 最近更新 |
@@ -126,13 +128,14 @@
 ### 阶段J — 前端集成（P2~P11 接后端）
 | 模块 | 状态 | 负责人 | 最近更新 |
 |---|---|---|---|
-| P2 3D 场景（FieldRenderer 仅 boundary+home；OrbitControls） | ⬜ | — | — |
-| P3 α 左栏（无对话；currentAction/totalActions） | ⬜ | — | — |
-| P4 视图管理（1/2/3 切换 + 拖拽互换） | ⬜ | — | — |
-| P5 悬浮球（一键发预存 Chat 短语） | ⬜ | — | — |
-| P6 β 界面（FlightPlanCard + approveProposal C3） | ⬜ | — | — |
-| P7 其他页面（HistoryPage 双子 TAB + 发送到 β） | ⬜ | — | — |
-| P8/P9 响应式 + 异常处理 | ⬜ | — | — |
+| P2 3D 场景（FieldRenderer 仅 boundary+home；OrbitControls；LidarPointCloud 占位） | ✅ | — | 2026-07-24 |
+| P3 α 左栏（无对话；currentAction/totalActions） | ✅ | — | 2026-07-24 |
+| P4 视图管理（1/2/3 切换 + 拖拽互换） | ✅ | — | 2026-07-24 |
+| P5 悬浮球（一键发预存 Chat 短语 + Esc 取消） | ✅ | — | 2026-07-24 |
+| P6 β 界面（FlightPlanCard + approveProposal C3） | ✅ | — | 2026-07-24 |
+| P7 其他页面（HistoryPage 双子 TAB + 发送到 β） | ✅ | — | 2026-07-24 |
+| P8/P9 响应式 + 异常处理 | ✅ | — | 2026-07-24 |
+| **⚠ 待后端联调**: WS/SSE/REST 真实数据接入 | 🚧 | — | — |
 
 ### 阶段K — 安全兜底与 reject 回路
 | 模块 | 状态 | 负责人 | 最近更新 |
@@ -145,8 +148,8 @@
 |---|---|---|---|
 | 语音 STT/TTS（讯飞签名 + wpgs + AudioWorklet PCM） | ⬜ | — | — |
 | analytics 工具（fft/stats/filter） | ⬜ | — | — |
-| 数据看板 P11（DashboardPanel/Grid/FilterBar + β 工具） | ⬜ | — | — |
-| PWA 打包 P10（manifest + Service Worker） | ⬜ | — | — |
+| 数据看板 P11（DashboardPanel/Grid/FilterBar + β 工具） | ✅ | — | 2026-07-24 |
+| PWA 打包 P10（manifest + Service Worker） | ⬜ | sw.js 已删除，待重新实现 | — |
 
 ### 阶段M — 远期（⏳ 不阻塞先导）
 | 模块 | 状态 | 负责人 | 最近更新 |

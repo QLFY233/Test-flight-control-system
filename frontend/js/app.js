@@ -1,5 +1,9 @@
 /**
- * App — Main Entry Point. Uses window.__app for shared state — zero circular import issues.
+ * App — Main Entry Point.
+ * Uses window.__app for shared state — zero circular import issues.
+ * Pages are lazy-loaded via dynamic import() to minimize initial HTTP requests.
+ *
+ * Startup module count: ~15 (reduced from ~44)
  */
 import store from './state.js';
 import { Router } from './router.js';
@@ -14,25 +18,22 @@ import { renderTwoColumn } from './shared.js';
 import { StatusBar } from './components/StatusBar.js';
 import { BottomBar } from './components/BottomBar.js';
 import { ConnectionOverlay } from './components/ConnectionOverlay.js';
-import { ChatPanel } from './components/ChatPanel.js';
-import { AudioPlayer } from './components/AudioPlayer.js';
-import { FloatingBall } from './components/FloatingBall.js';
-import { ShortcutEditor } from './components/ShortcutEditor.js';
 
 import { Scene3D } from './scenes/Scene3D.js';
-import { FieldRenderer } from './scenes/FieldRenderer.js';
-import { DroneModel } from './scenes/DroneModel.js';
-import { TrajectoryLine } from './scenes/TrajectoryLine.js';
-import { WaypointMarker } from './scenes/WaypointMarker.js';
-
-import { OverviewPage } from './pages/OverviewPage.js';
-import { AlphaPage } from './pages/AlphaPage.js';
-import { BetaPage } from './pages/BetaPage.js';
-import { HistoryPage } from './pages/HistoryPage.js';
-import { SettingsPage } from './pages/SettingsPage.js';
-import { DashboardPage } from './pages/DashboardPage.js';
 
 initToast();
+
+// ==========================================================
+// Lazy Page Registry — maps hash → dynamic import factory
+// ==========================================================
+const PAGE_REGISTRY = {
+    '#/overview':  () => import('./pages/OverviewPage.js').then(m => new m.OverviewPage()),
+    '#/alpha':     () => import('./pages/AlphaPage.js').then(m => new m.AlphaPage()),
+    '#/beta':      () => import('./pages/BetaPage.js').then(m => new m.BetaPage()),
+    '#/history':   () => import('./pages/HistoryPage.js').then(m => new m.HistoryPage()),
+    '#/settings':  () => import('./pages/SettingsPage.js').then(m => new m.SettingsPage()),
+    '#/dashboard': () => import('./pages/DashboardPage.js').then(m => new m.DashboardPage()),
+};
 
 function renderRootLayout(appEl) {
     appEl.innerHTML = `<div class="app-container">
@@ -72,16 +73,28 @@ async function init() {
     renderRootLayout(appEl);
     console.log('layout rendered');
 
-    // 3D Scene
+    // 3D Scene — create eagerly (needed by most pages)
     console.log('creating 3D scene...');
     const s3d = new Scene3D();
     a.scene3D = s3d;
     if (s3d.isReady()) {
-        a.fieldRenderer = new FieldRenderer(s3d);
-        a.droneModel = new DroneModel(s3d);
-        a.trajectoryLine = new TrajectoryLine(s3d);
-        a.waypointMarker = new WaypointMarker(s3d);
-        console.log('3D scene ok');
+        // Defer 3D sub-modules: they're only needed when a page mounts a 3D view
+        // Preload them in the background without blocking
+        Promise.all([
+            import('./scenes/FieldRenderer.js'),
+            import('./scenes/DroneModel.js'),
+            import('./scenes/TrajectoryLine.js'),
+            import('./scenes/WaypointMarker.js'),
+        ]).then(([frMod, dmMod, tlMod, wmMod]) => {
+            if (a.scene3D?.isReady()) {
+                a.fieldRenderer = new frMod.FieldRenderer(a.scene3D);
+                a.droneModel = new dmMod.DroneModel(a.scene3D);
+                a.trajectoryLine = new tlMod.TrajectoryLine(a.scene3D);
+                a.waypointMarker = new wmMod.WaypointMarker(a.scene3D);
+                console.log('3D sub-modules loaded');
+            }
+        }).catch(e => console.warn('3D sub-modules load failed:', e.message));
+        console.log('3D scene ok (sub-modules loading in background)');
     } else {
         console.log('3D not available (no WebGL)');
     }
@@ -100,32 +113,32 @@ async function init() {
     store.subscribe('connection', v => v === 'disconnected' ? co.show() : co.hide());
     console.log('ConnectionOverlay done');
 
-    // Chat Dock
+    // Chat Dock — lazy load (only needed when user opens chat)
     const cc = document.createElement('div'); cc.id = 'chat-dock';
     document.querySelector('.app-container').appendChild(cc);
-    a.chatPanel = new ChatPanel(cc);
-    console.log('ChatPanel done');
+    a._chatPanelContainer = cc;
+    import('./components/ChatPanel.js').then(m => {
+        a.chatPanel = new m.ChatPanel(cc);
+        console.log('ChatPanel loaded');
+    }).catch(e => console.warn('ChatPanel load failed:', e.message));
 
-    // Floating Ball
+    // Floating Ball — lazy load
     const fb = document.createElement('div'); fb.id = 'fb';
     document.querySelector('.app-container').appendChild(fb);
-    new FloatingBall(fb);
-    new ShortcutEditor();
-    console.log('FloatingBall done');
+    import('./components/FloatingBall.js').then(m => {
+        new m.FloatingBall(fb);
+        console.log('FloatingBall loaded');
+    }).catch(e => console.warn('FloatingBall load failed:', e.message));
+    import('./components/ShortcutEditor.js').then(m => {
+        new m.ShortcutEditor();
+    }).catch(() => {});
 
-    // Router
+    // Router — register lazy page factories
     console.log('setting up router...');
     a.router = new Router(document.getElementById('page-container'));
-    a.router.register('#/overview', new OverviewPage());
-    console.log('registering alpha...');
-    a.router.register('#/alpha', new AlphaPage());
-    console.log('registering beta...');
-    a.router.register('#/beta', new BetaPage());
-    console.log('registering history...');
-    a.router.register('#/history', new HistoryPage());
-    a.router.register('#/settings', new SettingsPage());
-    console.log('registering dashboard...');
-    a.router.register('#/dashboard', new DashboardPage());
+    for (const [hash, factory] of Object.entries(PAGE_REGISTRY)) {
+        a.router.register(hash, factory);
+    }
     console.log('router init...');
     a.router.init();
     console.log('router done');
@@ -207,7 +220,10 @@ function registerWsHandlers() {
         bus.emit('alpha-output', p);
     });
     w.on('link_status', p => { if (p) store.batch(() => { if (p.backend_a != null) store.set('connection.backendA', p.backend_a); if (p.backend_b != null) store.set('connection.backendB', p.backend_b); if (p.drone != null) store.set('connection.drone', p.drone); if (p.llm != null) store.set('connection.llm', p.llm); }); });
-    w.on('voice_tts', p => { if (p?.audio) AudioPlayer.play(p.audio); });
+    w.on('voice_tts', p => {
+        if (!p?.audio) return;
+        import('./components/AudioPlayer.js').then(m => m.AudioPlayer.play(p.audio)).catch(() => {});
+    });
     w.on('__event:open', () => { store.set('connection.ws', 'connected'); });
     w.on('__event:close', () => { store.set('connection.ws', 'disconnected'); });
     w.on('connection', p => { if (p?.status) store.set('connection.ws', p.status); });
