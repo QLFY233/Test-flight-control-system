@@ -522,12 +522,6 @@
     pointer-events: none;
 }
 
-.view-panel canvas {
-    display: block;
-    width: 100% !important;
-    height: 100% !important;
-}
-
 /* ============================================================
    FLOATING BALL — Quick Action Button
    Positioned left of chat sidebar

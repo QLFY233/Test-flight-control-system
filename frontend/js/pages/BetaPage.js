@@ -7,7 +7,7 @@
 
 import store from '../state.js';
 import bus from '../event-bus.js';
-import { renderTwoColumn, wsManager, apiManager, sharedTrajectoryLine, sharedWaypointMarker } from '../shared.js';
+import { renderTwoColumn, wsManager, apiManager } from '../shared.js';
 import { ViewModeSelector } from '../components/ViewModeSelector.js';
 import { ViewPanel } from '../components/ViewPanel.js';
 import { FlightPlanCard } from '../components/FlightPlanCard.js';
@@ -132,7 +132,7 @@ class BetaPage {
         planArea.innerHTML = '';
 
         const flightPlanCard = new FlightPlanCard(plan, {
-            onApprove: async (p) => {
+        onApprove: async (p) => {
                 const proposalId = p.proposalId || p.id;
                 if (proposalId) {
                     try {
@@ -162,31 +162,6 @@ class BetaPage {
                 } else {
                     wsManager.send('reject_plan', { plan: p });
                     planArea.innerHTML = '<div style="padding: var(--space-lg); color: var(--color-error); text-align: center;">计划已驳回</div>';
-                }
-            },
-            onOverlay3D: (p) => {
-                // Set planned trajectory on 3D (preview only — not approved)
-                const segments = p.segments || [];
-                const actions = p.actions || [];
-                const points = [];
-
-                // Try actions first (new format), fallback to segments/waypoints
-                if (actions.length > 0) {
-                    actions.forEach(a => {
-                        if (a.params && a.params.target) {
-                            points.push(a.params.target);
-                        }
-                    });
-                } else {
-                    segments.forEach(seg => {
-                        if (seg.waypoints) points.push(...seg.waypoints);
-                    });
-                }
-
-                if (points.length > 0) {
-                    sharedTrajectoryLine.setPlanned(points);
-                    sharedWaypointMarker.setWaypoints(points);
-                    store.set('beta.fieldOverlay', true);
                 }
             },
         });

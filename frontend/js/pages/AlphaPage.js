@@ -8,7 +8,7 @@
 
 import store from '../state.js';
 import bus from '../event-bus.js';
-import { renderTwoColumn, wsManager, sharedDroneModel, sharedTrajectoryLine, sharedWaypointMarker, sharedFieldRenderer } from '../shared.js';
+import { renderTwoColumn, wsManager } from '../shared.js';
 import { ViewModeSelector } from '../components/ViewModeSelector.js';
 import { ViewPanel } from '../components/ViewPanel.js';
 import { FloatingBall } from '../components/FloatingBall.js';
@@ -143,7 +143,7 @@ class AlphaPage {
 
         const ui = store.get('ui');
         const mode = ui.viewMode || 1;
-        const sources = ui.viewSources || ['3d'];
+        const sources = ui.viewSources || ['chart'];
 
         viewArea.className = 'right-column__view-area';
         if (mode === 1) viewArea.classList.add('right-column__view-area--single');
@@ -154,7 +154,7 @@ class AlphaPage {
         this.viewPanels = [];
 
         for (let i = 0; i < mode; i++) {
-            const source = sources[i] || '3d';
+            const source = sources[i] || 'chart';
             const panelEl = document.createElement('div');
             panelEl.style.flex = '1';
             panelEl.style.minWidth = '0';
@@ -193,7 +193,7 @@ class AlphaPage {
         viewArea.innerHTML = '';
         const ui = store.get('ui');
         const mode = ui.viewMode || 1;
-        const sources = ui.viewSources || ['3d'];
+        const sources = ui.viewSources || ['chart'];
 
         viewArea.className = 'right-column__view-area';
         if (mode === 1) viewArea.classList.add('right-column__view-area--single');
@@ -204,7 +204,7 @@ class AlphaPage {
         this.viewPanels = [];
 
         for (let i = 0; i < mode; i++) {
-            const source = sources[i] || '3d';
+            const source = sources[i] || 'chart';
             const panelEl = document.createElement('div');
             panelEl.style.cssText = 'flex: 1; min-width: 0; min-height: 0; border: 1px solid var(--color-border); position: relative;';
             viewArea.appendChild(panelEl);

@@ -11,7 +11,7 @@ class ViewModeSelector {
      */
     constructor(container) {
         this.container = container;
-        this.availableSources = ['3d', 'video', 'chart'];
+        this.availableSources = ['video', 'chart'];
     }
 
     mount() {
@@ -21,7 +21,7 @@ class ViewModeSelector {
     render() {
         const ui = store.get('ui');
         const viewMode = ui.viewMode || 1;
-        const viewSources = ui.viewSources || ['3d'];
+        const viewSources = ui.viewSources || ['video'];
 
         let sourceSelects = '';
         for (let i = 0; i < viewMode; i++) {
@@ -64,7 +64,7 @@ class ViewModeSelector {
     }
 
     _setMode(mode) {
-        let sources = store.get('ui.viewSources') || ['3d'];
+        let sources = store.get('ui.viewSources') || ['video'];
 
         if (mode > sources.length) {
             // Add default sources for new slots
@@ -102,7 +102,7 @@ class ViewModeSelector {
     }
 
     _sourceLabel(source) {
-        const labels = { '3d': '3D场景', 'video': '视频', 'chart': '图表' };
+        const labels = { 'video': '视频', 'chart': '图表' };
         return labels[source] || source;
     }
 }

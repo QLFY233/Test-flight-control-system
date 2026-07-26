@@ -6,7 +6,7 @@
 
 import store from '../state.js';
 import bus from '../event-bus.js';
-import { apiManager, sharedTrajectoryLine, sharedWaypointMarker } from '../shared.js';
+import { apiManager } from '../shared.js';
 import { SessionCard } from '../components/SessionCard.js';
 import { TimelineControl } from '../components/TimelineControl.js';
 import { ViewPanel } from '../components/ViewPanel.js';
@@ -56,7 +56,6 @@ class HistoryPage {
                     </div>
                     <div class="history-page__toolbar">
                         <button class="btn btn--secondary btn--sm" id="btn-send-to-beta" disabled>发送到 Beta</button>
-                        <button class="btn btn--ghost btn--sm" id="btn-overlay-3d">叠加到 3D</button>
                     </div>
                     <div class="history-page__sessions" id="history-session-list">
                         <div style="color: var(--color-text-disabled); padding: var(--space-lg);">加载中...</div>
@@ -100,17 +99,6 @@ class HistoryPage {
         sendBtn?.addEventListener('click', () => {
             const selected = Array.from(this.selectedSessions);
             bus.emit('chat-send', `请分析以下历史任务: ${selected.join(', ')}`);
-        });
-
-        // Overlay to 3D
-        const overlayBtn = this.container?.querySelector('#btn-overlay-3d');
-        overlayBtn?.addEventListener('click', () => {
-            const session = store.get('history.selectedSession');
-            if (session && session.trajectory) {
-                sharedTrajectoryLine.setPlanned(session.trajectory);
-                if (session.waypoints) sharedWaypointMarker.setWaypoints(session.waypoints);
-                store.set('beta.fieldOverlay', true);
-            }
         });
     }
 

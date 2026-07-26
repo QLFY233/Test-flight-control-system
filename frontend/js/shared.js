@@ -6,11 +6,6 @@ window.__app = {
     apiManager: null,
     router: null,
     chatPanel: null,
-    scene3D: null,
-    fieldRenderer: null,
-    droneModel: null,
-    trajectoryLine: null,
-    waypointMarker: null,
 };
 
 export function renderTwoColumn(container, leftHtml, rightHtml, leftHeader) {
@@ -36,9 +31,3 @@ export const apiManager = { get getFieldConfig(){ return ()=>window.__app.apiMan
 export const sseManager = { get sendMessage(){ return (...a)=>window.__app.sseManager?.sendMessage(...a) } };
 export const config = {};
 export const router = { get navigate(){ return (h)=>window.__app.router?.navigate(h) }, get init(){ return ()=>window.__app.router?.init() } };
-export const chatPanel = {};
-export const sharedScene3D = { __p: null, get mount(){ return (c)=>this.__p?.mount(c) }, get unmount(){ return ()=>this.__p?.unmount() }, get isReady(){ return ()=>this.__p?.isReady()||false }, get pause(){ return ()=>this.__p?.pause() }, get resume(){ return ()=>this.__p?.resume() }, get add(){ return (o)=>this.__p?.add(o) }, get remove(){ return (o)=>this.__p?.remove(o) } };
-export const sharedFieldRenderer = { get updateFromField(){ return (f)=>window.__app.fieldRenderer?.updateFromField(f) } };
-export const sharedDroneModel = { get setTargetPosition(){ return (p)=>window.__app.droneModel?.setTargetPosition(p) } };
-export const sharedTrajectoryLine = { get setPlanned(){ return (p)=>window.__app.trajectoryLine?.setPlanned(p) }, get updateFlown(){ return (p)=>window.__app.trajectoryLine?.updateFlown(p) } };
-export const sharedWaypointMarker = { get setTarget(){ return (t)=>window.__app.waypointMarker?.setTarget(t) }, get setWaypoints(){ return (w)=>window.__app.waypointMarker?.setWaypoints(w) } };

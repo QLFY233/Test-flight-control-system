@@ -20,7 +20,6 @@ import { BottomBar } from './components/BottomBar.js';
 import { ConnectionOverlay } from './components/ConnectionOverlay.js';
 import { ChatPanel } from './components/ChatPanel.js';
 
-import { Scene3D } from './scenes/Scene3D.js';
 
 initToast();
 
@@ -101,33 +100,7 @@ async function init() {
     renderRootLayout(appEl);
     console.log('layout rendered');
 
-    // 3D Scene — create eagerly (needed by most pages)
-    console.log('creating 3D scene...');
-    const s3d = new Scene3D();
-    a.scene3D = s3d;
-    if (s3d.isReady()) {
-        // Defer 3D sub-modules: they're only needed when a page mounts a 3D view
-        // Preload them in the background without blocking
-        Promise.all([
-            import('./scenes/FieldRenderer.js'),
-            import('./scenes/DroneModel.js'),
-            import('./scenes/TrajectoryLine.js'),
-            import('./scenes/WaypointMarker.js'),
-        ]).then(([frMod, dmMod, tlMod, wmMod]) => {
-            if (a.scene3D?.isReady()) {
-                a.fieldRenderer = new frMod.FieldRenderer(a.scene3D);
-                a.droneModel = new dmMod.DroneModel(a.scene3D);
-                a.trajectoryLine = new tlMod.TrajectoryLine(a.scene3D);
-                a.waypointMarker = new wmMod.WaypointMarker(a.scene3D);
-                console.log('3D sub-modules loaded');
-            }
-        }).catch(e => console.warn('3D sub-modules load failed:', e.message));
-        console.log('3D scene ok (sub-modules loading in background)');
-    } else {
-        console.log('3D not available (no WebGL)');
-    }
-
-    // StatusBar
+    // WS
     console.log('mounting StatusBar...');
     new StatusBar(document.getElementById('status-bar')).mount();
     console.log('StatusBar done');
@@ -183,7 +156,7 @@ async function init() {
     }).catch(() => store.set('field.obstacles', []));
 
     // Visibility
-    document.addEventListener('visibilitychange', () => { const s = a.scene3D; if (s?.isReady()) { document.hidden ? s.pause() : s.resume(); } });
+    document.addEventListener('visibilitychange', () => { /* no-op after 3D removal */ });
 
     // Tab bar + Nav strip (skip button elements)
     const syncTabs = () => { const h = window.location.hash || '#/overview'; document.querySelectorAll('.tab-bar__item[href], .nav-strip__item[href]').forEach(x => { const match = x.getAttribute('href') === h; x.classList.toggle('tab-bar__item--active', match); x.classList.toggle('nav-strip__item--active', match); }); };
@@ -204,7 +177,7 @@ function registerWsHandlers() {
     w.on('pose', p => {
         if (!p) return;
         store.batch(() => {
-            if (p.position) { store.set('drone.position', p.position); window.__app.droneModel?.setTargetPosition(p.position); window.__app.trajectoryLine?.updateFlown([p.position]); }
+            if (p.position) { store.set('drone.position', p.position); }
             if (p.velocity) store.set('drone.velocity', p.velocity);
             if (p.attitude) store.set('drone.attitude', p.attitude);
             store.set('drone.timestamp', Date.now()); store.set('drone.connected', true);
@@ -231,12 +204,6 @@ function registerWsHandlers() {
             if (p.action_sequence) store.set('trajectory.actionSequence', p.action_sequence);
             if (p.current_target) store.set('trajectory.currentTarget', p.current_target);
         });
-        if (p.planned) window.__app.trajectoryLine?.setPlanned(p.planned);
-        if (p.current_target) window.__app.waypointMarker?.setTarget(p.current_target);
-        if (p.action_sequence?.length && window.__app.waypointMarker) {
-            const ts = p.action_sequence.filter(a => a.params?.target).map(a => a.params.target);
-            if (ts.length) window.__app.waypointMarker.setWaypoints(ts);
-        }
         bus.emit('alpha-output', p);
     });
     w.on('link_status', p => { if (p) store.batch(() => { if (p.backend_a != null) store.set('connection.backendA', p.backend_a); if (p.backend_b != null) store.set('connection.backendB', p.backend_b); if (p.drone != null) store.set('connection.drone', p.drone); if (p.llm != null) store.set('connection.llm', p.llm); }); });

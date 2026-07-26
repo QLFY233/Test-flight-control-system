@@ -1,6 +1,5 @@
 /**
  * OverviewPage — Dashboard page.
- * System status indicators, recent sessions, environment summary, new flight button.
  */
 
 import store from '../state.js';
@@ -8,28 +7,50 @@ import bus from '../event-bus.js';
 import { apiManager, router } from '../shared.js';
 import { SessionCard } from '../components/SessionCard.js';
 import { EmptyState } from '../components/EmptyState.js';
+import { genScrollWheel } from '../components/ScrollWheel.js';
+
+const WHEEL_OPTS = {
+    temperature: { vals: (() => { const a = []; for (let t = -10; t <= 50; t++) a.push(t); return a; })(), fmt: v => v },
+    humidity: { vals: (() => { const a = []; for (let h = 0; h <= 100; h++) a.push(h); return a; })(), fmt: v => v },
+    windSpeed: { vals: (() => { const a = []; for (let w = 0; w <= 20; w += 0.5) a.push(Math.round(w * 10) / 10); return a; })(), fmt: v => v.toFixed(1) },
+};
 
 class OverviewPage {
     constructor() {
         this.container = null;
         this.title = '总览';
+        this._unsubFlight = null;
+        this._activeWheel = null;
+        this._wheelsDisabled = false;
     }
 
     mount(container) {
         this.container = container;
         this.render();
+        this._bindCards();
         this._loadData();
+        this._unsubFlight = store.subscribe('flight', () => {
+            const status = store.get('flight.status');
+            const dis = status === 'running' || status === 'paused';
+            if (dis !== this._wheelsDisabled) {
+                this._wheelsDisabled = dis;
+                this._updateCardStates();
+            }
+        });
     }
 
     unmount() {
+        if (this._unsubFlight) { this._unsubFlight(); this._unsubFlight = null; }
+        this._destroyWheel();
         this.container = null;
     }
 
     render() {
         const conn = store.get('connection');
         const env = store.get('environment');
+        const flight = store.get('flight');
+        const locked = flight.status === 'running' || flight.status === 'paused';
 
-        // Status indicators
         const indicators = [
             { label: 'Backend A', status: conn.backendA || 'unknown' },
             { label: 'Backend B', status: conn.backendB || 'unknown' },
@@ -37,15 +58,14 @@ class OverviewPage {
             { label: 'LLM', status: conn.llm || 'unknown' },
         ];
 
-        const getDotClass = (status) => {
-            if (status === 'ok' || status === 'connected') return 'indicator-light__dot--green';
-            if (status === 'connecting' || status === 'warning') return 'indicator-light__dot--yellow';
+        const getDotClass = s => {
+            if (s === 'ok' || s === 'connected') return 'indicator-light__dot--green';
+            if (s === 'connecting' || s === 'warning') return 'indicator-light__dot--yellow';
             return 'indicator-light__dot--red';
         };
-
-        const getStatusText = (status) => {
-            const map = { ok: 'OK', connected: 'ONLINE', connecting: 'CONN', warning: 'WARN', error: 'ERR', unknown: 'UNK' };
-            return map[status] || status.toUpperCase();
+        const getStatusText = s => {
+            const m = { ok: 'OK', connected: 'ONLINE', connecting: 'CONN', warning: 'WARN', error: 'ERR', unknown: 'UNK' };
+            return m[s] || (s || '').toUpperCase();
         };
 
         this.container.innerHTML = `
@@ -55,91 +75,134 @@ class OverviewPage {
                     <div class="overview-page__hero-title">试飞控制系统</div>
                     <div class="overview-page__hero-sub">TACTICAL FLIGHT TELEMETRY &amp; CONTROL</div>
                 </div>
-
                 <div class="overview-page__section">
                     <div class="overview-page__section-title">[ 系统状态 ]</div>
-                    <div class="indicator-grid">
-                        ${indicators.map(ind => `
-                            <div class="indicator-light">
-                                <div class="indicator-light__dot ${getDotClass(ind.status)}"></div>
-                                <div>
-                                    <div class="indicator-light__label">${ind.label}</div>
-                                    <div class="indicator-light__status">${getStatusText(ind.status)}</div>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
+                    <div class="indicator-grid">${indicators.map(i => `<div class="indicator-light"><div class="indicator-light__dot ${getDotClass(i.status)}"></div><div><div class="indicator-light__label">${i.label}</div><div class="indicator-light__status">${getStatusText(i.status)}</div></div></div>`).join('')}</div>
                 </div>
-
                 <div class="overview-page__section">
-                    <div class="overview-page__section-title">[ 环境概要 ]</div>
+                    <div class="overview-page__section-title" id="env-section-title">[ 环境概要 ]${locked ? ' <span style="color:var(--color-red);">/// LOCKED — 任务执行中</span>' : ''}</div>
                     <div class="overview-page__env-cards">
-                        <div class="overview-page__env-card">
-                            <div class="overview-page__env-card-value">${env.temperature ?? '--'}°</div>
-                            <div class="overview-page__env-card-label">TEMP · 温度</div>
-                        </div>
-                        <div class="overview-page__env-card">
-                            <div class="overview-page__env-card-value">${env.humidity ?? '--'}%</div>
-                            <div class="overview-page__env-card-label">HUM · 湿度</div>
-                        </div>
-                        <div class="overview-page__env-card">
-                            <div class="overview-page__env-card-value">${env.windSpeed ?? '--'}</div>
-                            <div class="overview-page__env-card-label">WIND · 风速 m/s</div>
-                        </div>
+                        <div class="overview-page__env-card env-card" data-env="temperature"><div class="overview-page__env-card-value">${env.temperature ?? 25}</div><div class="overview-page__env-card-label">TEMP · 温度</div></div>
+                        <div class="overview-page__env-card env-card" data-env="humidity"><div class="overview-page__env-card-value">${env.humidity ?? 60}</div><div class="overview-page__env-card-label">HUM · 湿度</div></div>
+                        <div class="overview-page__env-card env-card" data-env="windSpeed"><div class="overview-page__env-card-value">${(env.windSpeed ?? 0).toFixed(1)}</div><div class="overview-page__env-card-label">WIND · 风速 m/s</div></div>
                     </div>
                 </div>
-
                 <div class="overview-page__section">
                     <div class="overview-page__section-title">[ 最近任务 ]</div>
-                    <div id="recent-sessions" class="overview-page__recent-grid">
-                        <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-text-disabled);letter-spacing:var(--track-wide);padding:var(--space-4);">/// LOADING...</div>
-                    </div>
+                    <div id="recent-sessions" class="overview-page__recent-grid"><div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-text-disabled);letter-spacing:var(--track-wide);padding:var(--space-4);">/// LOADING...</div></div>
                 </div>
             </div>
         `;
+        this.container.style.cssText = 'width:100%;overflow:hidden;display:flex;flex-direction:column';
+    }
 
-        // Center the page (previously used left-column, now full-width for overview)
-        this.container.style.width = '100%';
-        this.container.style.borderRight = 'none';
-        this.container.style.overflow = 'hidden';
-        this.container.style.display = 'flex';
-        this.container.style.flexDirection = 'column';
+    _bindCards() {
+        this.container.querySelectorAll('.env-card').forEach(card => {
+            card.addEventListener('click', () => {
+                if (this._wheelsDisabled) return;
+                this._showWheel(card);
+            });
+        });
+    }
+
+    _showWheel(cardEl) {
+        this._destroyWheel();
+        const envKey = cardEl.dataset.env;
+        const opts = WHEEL_OPTS[envKey];
+        if (!opts) return;
+
+        const valEl = cardEl.querySelector('.overview-page__env-card-value');
+        if (!valEl) return;
+
+        const initial = store.get(`environment.${envKey}`);
+        const w = genScrollWheel(opts.vals, initial, 32, v => {
+            store.set(`environment.${envKey}`, v);
+            valEl.textContent = opts.fmt(v);
+        });
+
+        // Position container
+        const container = w.container;
+        container.style.position = 'absolute';
+        container.style.left = '0';
+        container.style.right = '0';
+        container.style.zIndex = '10';
+
+        const cr = cardEl.getBoundingClientRect();
+        const vr = valEl.getBoundingClientRect();
+        const valueCenter = vr.top - cr.top + vr.height / 2;
+        // overlay top so that overlay center = value center: overlayTop = valueCenter - 48
+        const overlayTop = valueCenter - 48;
+        container.style.top = overlayTop + 'px';
+
+        cardEl.style.position = 'relative';
+        cardEl.appendChild(container);
+
+        this._activeWheel = { container, cardEl, valEl, envKey, timer: null };
+        // Don't start auto-hide timer — user must click to confirm
+        this._setupWheelClickToClose(container);
+
+        // Re-focus scroll after DOM is attached
+        requestAnimationFrame(() => {
+            const initIdx = w.values.findIndex(x => Math.abs(x - initial) < 0.01);
+            if (w.scroller) {
+                w.scroller.scrollTop = Math.max(0, initIdx) * w.itemHeight + w.centeringOffset;
+            }
+        });
+    }
+
+    _resetHideTimer() {
+        if (this._activeWheel?.timer) clearTimeout(this._activeWheel.timer);
+        if (!this._activeWheel) return;
+        this._activeWheel.timer = setTimeout(() => this._destroyWheel(), 5000);
+    }
+
+    _setupWheelClickToClose(container) {
+        // Clicking the wheel anywhere confirms and hides
+        container.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            this._destroyWheel();
+        }, { once: true });
+    }
+
+    _destroyWheel() {
+        if (!this._activeWheel) return;
+        const a = this._activeWheel;
+        if (a.timer) clearTimeout(a.timer);
+        a.container.remove();
+        a.cardEl.style.position = '';
+        this._activeWheel = null;
+    }
+
+    _updateCardStates() {
+        if (this._wheelsDisabled) this._destroyWheel();
+        const title = this.container?.querySelector('#env-section-title');
+        if (!title) return;
+        if (this._wheelsDisabled) {
+            if (!title.querySelector('span')) title.innerHTML = title.textContent + ' <span style="color:var(--color-red);">/// LOCKED — 任务执行中</span>';
+        } else {
+            const span = title.querySelector('span');
+            if (span) span.remove();
+        }
     }
 
     async _loadData() {
         try {
             const sessions = await apiManager.getSessions({ limit: 6 });
-            const sessionsData = Array.isArray(sessions) ? sessions : (sessions?.sessions || sessions?.data || []);
-
+            const data = Array.isArray(sessions) ? sessions : (sessions?.sessions || sessions?.data || []);
             const grid = this.container?.querySelector('#recent-sessions');
             if (!grid) return;
-
-            if (sessionsData.length === 0) {
-                const emptyState = new EmptyState({
-                    icon: '📋',
-                    title: '暂无任务记录',
-                    desc: '点击下方按钮开始一个新的试飞任务',
-                });
-                grid.innerHTML = '';
-                grid.appendChild(emptyState.render());
+            if (data.length === 0) {
+                const empty = new EmptyState({ title: '暂无任务记录', desc: '点击下方按钮开始一个新的试飞任务' });
+                grid.innerHTML = ''; grid.appendChild(empty.render());
             } else {
                 grid.innerHTML = '';
-                for (const session of sessionsData) {
-                    const card = new SessionCard(session, {
-                        onClick: (s) => {
-                            router.navigate('#/history');
-                            store.set('history.selectedSession', s);
-                        },
-                    });
-                    grid.appendChild(card.render());
-                }
+                data.forEach(s => grid.appendChild(new SessionCard(s, { onClick: s => { router.navigate('#/history'); store.set('history.selectedSession', s); } }).render()));
             }
         } catch (e) {
-            console.warn('[OverviewPage] could not load sessions:', e.message);
+            console.warn('[OverviewPage] load sessions:', e.message);
             const grid = this.container?.querySelector('#recent-sessions');
-            if (grid) {
-                grid.innerHTML = '<div style="color: var(--color-error); padding: var(--space-lg);">加载失败: ' + e.message + '</div>';
-            }
+            if (grid) grid.innerHTML = '<div style="color:var(--color-red);padding:var(--space-8);font-family:var(--font-mono);font-size:var(--text-xs);">加载失败: ' + e.message + '</div>';
         }
     }
 }

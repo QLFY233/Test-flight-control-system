@@ -109,6 +109,52 @@
     opacity: 0.7;
 }
 
+.env-value-display {
+    font-family: var(--font-display);
+    font-size: var(--text-3xl);
+    font-weight: 800;
+    letter-spacing: var(--track-tight);
+    color: var(--color-red);
+    line-height: var(--leading-tight);
+    text-align: center;
+    padding: var(--space-4) 0;
+    cursor: pointer;
+    transition: color var(--duration-fast) var(--ease-out-expo);
+    user-select: none;
+}
+
+.env-value-display:hover {
+    color: #FF4444;
+}
+
+.env-value-display--locked {
+    cursor: not-allowed;
+    opacity: 0.35;
+}
+.env-value-display--locked:hover {
+    color: var(--color-red);
+}
+
+/* Wheel overlay — fills the card, transparent center shows original card value */
+.env-wheel-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: var(--z-overlay);
+}
+
+/* ============================================================
+   SCROLL WHEELS — Center-highlight picker
+   ============================================================ */
+
+/* Scroll wheel */
+.scroll-wheel__scroller {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.scroll-wheel__scroller::-webkit-scrollbar {
+    display: none;
+}
+
 /* ============================================================
    ALPHA PAGE — Flight Control
    ============================================================ */

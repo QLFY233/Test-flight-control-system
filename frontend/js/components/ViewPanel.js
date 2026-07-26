@@ -3,7 +3,6 @@
  * Receives a slot index and source type. Creates and manages lifecycle of the inner component.
  */
 
-import { sharedScene3D, sharedFieldRenderer, sharedDroneModel, sharedTrajectoryLine, sharedWaypointMarker } from '../shared.js';
 import { VideoPanel } from './VideoPanel.js';
 import { AltitudeChart } from '../charts/AltitudeChart.js';
 import { VelocityChart } from '../charts/VelocityChart.js';
@@ -86,7 +85,7 @@ class ViewPanel {
     _swapViewSources(fromIdx, toIdx) {
         import('../state.js').then(mod => {
             const store = mod.default;
-            const sources = [...(store.get('ui.viewSources') || ['3d', 'video', 'chart'])];
+            const sources = [...(store.get('ui.viewSources') || ['chart'])];
             const temp = sources[fromIdx];
             sources[fromIdx] = sources[toIdx];
             sources[toIdx] = temp;
@@ -100,9 +99,6 @@ class ViewPanel {
 
     _createInner(innerContainer) {
         switch (this.source) {
-            case '3d':
-                this._mount3D(innerContainer);
-                break;
             case 'video':
                 this.innerComponent = new VideoPanel();
                 this.innerComponent.mount(innerContainer);
@@ -114,16 +110,6 @@ class ViewPanel {
                 innerContainer.innerHTML = `<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-disabled);">未知源</div>`;
                 break;
         }
-    }
-
-    _mount3D(container) {
-        if (!sharedScene3D || !sharedScene3D.isReady()) {
-            container.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-secondary); font-size: var(--font-sm);">3D 不可用</div>';
-            this.innerComponent = null;
-            return;
-        }
-        sharedScene3D.mount(container);
-        this.innerComponent = { unmount: () => sharedScene3D.unmount() };
     }
 
     _mountChart(container) {
@@ -164,7 +150,6 @@ class ViewPanel {
 
     _getLabel() {
         switch (this.source) {
-            case '3d': return '3D 场景';
             case 'video': return '视频';
             case 'chart': {
                 const labels = { altitude: '高度图', velocity: '速度图', fieldmap: '场地俯视图', history: '历史回放' };
