@@ -1,19 +1,32 @@
 """
 后端 B 入口 — 实时飞控桥 (Python 3.8 + ROS Noetic)。
-命令行: python -m backend_B.main
+用法: python -m backend_B.main [--config-dir config]
 """
+import sys
+import os
 import argparse
+import logging
+
+# 确保 backend-B/ 在 Python path 中, 支持 backend-B 目录名含连字符的导入
+_here = os.path.dirname(os.path.abspath(__file__))
+if _here not in sys.path:
+    sys.path.insert(0, _here)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 
 def main():
     parser = argparse.ArgumentParser(description="后端 B — 实时飞控桥")
-    parser.add_argument("--config-dir", default="config", help="配置文件目录")
+    parser.add_argument("--config-dir", default="config", help="配置文件目录 (默认: config)")
     args = parser.parse_args()
 
-    # TODO: 阶段B 实现完整生命周期
-    print("[backend-B] Starting...")
-    print(f"[backend-B] Config dir: {args.config_dir}")
-    print("[backend-B] Placeholder — 阶段B 待实现")
+    from lifecycle import Lifecycle
+    lc = Lifecycle(config_dir=args.config_dir)
+    lc.run()
 
 
 if __name__ == "__main__":

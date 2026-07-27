@@ -6,7 +6,7 @@
 
 最近更新：2026-07-27
 
-> **2026-07-27**: 阶段A 完成 — 双 venv 创建 (A: Py3.10 via pyenv, B: Py3.8 system-site-packages)；仓库骨架就位；`protocol.py` + `ipc/frames.py` 两侧逐字一致；S0 msgpack A↔B 互解验证通过。
+> **2026-07-27**: 阶段A 完成；阶段B/C 完成 — B 侧 BState/config/bus/IPC 脊柱就位；A 侧 AppState/config/bus/IPC server/DB 层/FastAPI 骨架就位。双端 import 测试 + DB 集成测试通过。
 
 ---
 
@@ -15,8 +15,8 @@
 | 阶段 | 名称 | 状态 | 说明 |
 |---|---|---|---|
 | 阶段A | 基础设施与协议常量 | ✅ | venv-A/B + config + protocol.py + ipc/frames.py + S0 验证 |
-| 阶段B | 后端 B 脊柱 | ⬜ | bus + IPC client + BState |
-| 阶段C | 后端 A 脊柱 | ⬜ | bus + IPC server + AppState + DB |
+| 阶段B | 后端 B 脊柱 | ✅ | BState + config_loader + bus(registry/router) + IPC(client/dispatch) + lifecycle |
+| 阶段C | 后端 A 脊柱 | ✅ | AppState + config_loader + bus(registry/router/bridge) + IPC server + DB(models/session/repos/TelemetryBuffer) + FastAPI 骨架 + StaticFiles |
 | 阶段D | 前端骨架 | ✅ | P0~P11 全部完成 + Brutalist 重设计 (redesign/brutalist-v1) |
 | 阶段E | 假无人机 | ⬜ | sim-drone catkin 包 |
 | 阶段F | B 侧 small_model stub + ROS 桥 | ⬜ | S2 |
