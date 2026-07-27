@@ -1,0 +1,42 @@
+{
+  "_format": "flight-control-config",
+  "_version": 1,
+  "_description": "Default configuration for Flight Control System frontend. Keys prefixed with '_' are protected and cannot be overridden by user settings.",
+
+  "backend": {
+    "base_url": "http://localhost:8000",
+    "ws_endpoint": "/ws",
+    "sse_beta": "/api/chat/beta",
+    "request_timeout": 30000
+  },
+
+  "display": {
+    "theme": "dark",
+    "language": "zh-CN",
+    "font_size": "medium",
+    "animation_enabled": true
+  },
+
+  "voice": {
+    "auto_tts": false,
+    "stt_enabled": true,
+    "tts_enabled": true,
+    "language": "zh-CN"
+  },
+
+  "environment": {
+    "temperature": 25,
+    "humidity": 60,
+    "wind_speed": 0,
+    "wind_direction": 0,
+    "pressure": 1013,
+    "location": "default"
+  },
+
+  "features": {
+    "floating_ball": true,
+    "chat_panel": true,
+    "auto_reconnect": true,
+    "telemetry_logging": false
+  }
+}

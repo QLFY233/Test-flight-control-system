@@ -1,0 +1,241 @@
+/**
+ * App — Main Entry Point (Show Demo Version).
+ * Uses mock data layer to simulate full backend when MOCK_MODE=true.
+ */
+import store from './state.js';
+import { Router } from './router.js';
+import { loadConfig } from './config.js';
+import { WsManager } from './ws.js';
+import { SseManager } from './sse.js';
+import { ApiManager } from './api.js';
+import { MockWsManager, MockSseManager, MockApiManager } from './mock.js';
+import bus from './event-bus.js';
+import { initToast } from './components/Toast.js';
+import { renderTwoColumn } from './shared.js';
+
+const MOCK_MODE = true;
+
+import { StatusBar } from './components/StatusBar.js';
+import { BottomBar } from './components/BottomBar.js';
+import { ConnectionOverlay } from './components/ConnectionOverlay.js';
+import { ChatPanel } from './components/ChatPanel.js';
+
+
+initToast();
+
+// ==========================================================
+// Lazy Page Registry — maps hash → dynamic import factory
+// ==========================================================
+const PAGE_REGISTRY = {
+    '#/overview':  () => import('./pages/OverviewPage.js').then(m => new m.OverviewPage()),
+    '#/alpha':     () => import('./pages/AlphaPage.js').then(m => new m.AlphaPage()),
+    '#/beta':      () => import('./pages/BetaPage.js').then(m => new m.BetaPage()),
+    '#/history':   () => import('./pages/HistoryPage.js').then(m => new m.HistoryPage()),
+    '#/settings':  () => import('./pages/SettingsPage.js').then(m => new m.SettingsPage()),
+    '#/dashboard': () => import('./pages/DashboardPage.js').then(m => new m.DashboardPage()),
+};
+
+function renderRootLayout(appEl) {
+    appEl.innerHTML = `<div class="app-container">
+        <div id="status-bar" class="status-bar"></div>
+        <nav class="nav-strip" id="nav-strip">
+            <a class="nav-strip__item nav-strip__item--active" href="#/overview"><span class="nav-strip__code">OVR</span> 总览</a>
+            <a class="nav-strip__item" href="#/beta"><span class="nav-strip__code">PLN</span> 规划</a>
+            <a class="nav-strip__item" href="#/dashboard"><span class="nav-strip__code">DSH</span> 看板</a>
+            <a class="nav-strip__item" href="#/alpha"><span class="nav-strip__code">FLT</span> 飞控</a>
+            <a class="nav-strip__item" href="#/history"><span class="nav-strip__code">HST</span> 历史</a>
+            <a class="nav-strip__item" href="#/settings"><span class="nav-strip__code">CFG</span> 设置</a>
+            <span class="nav-strip__sep">///</span>
+            <span class="nav-strip__info">REV DEMO · MOCK DATA</span>
+        </nav>
+        <div id="main-content" class="main-content">
+            <div id="page-container" style="flex:1;display:flex;flex-direction:row;overflow:hidden"></div>
+            <div id="chat-sidebar" class="chat-sidebar"></div>
+        </div>
+        <div id="bottom-bar" class="bottom-bar"></div>
+        <nav class="tab-bar">
+            <a class="tab-bar__item tab-bar__item--active" href="#/overview"><span class="tab-bar__item-icon">&#9638;</span><span>OVR</span></a>
+            <a class="tab-bar__item" href="#/beta"><span class="tab-bar__item-icon">&#9874;</span><span>PLN</span></a>
+            <a class="tab-bar__item" href="#/dashboard"><span class="tab-bar__item-icon">&#9643;</span><span>DSH</span></a>
+            <a class="tab-bar__item" href="#/alpha"><span class="tab-bar__item-icon">&#9992;</span><span>FLT</span></a>
+            <a class="tab-bar__item" href="#/history"><span class="tab-bar__item-icon">&#8986;</span><span>HST</span></a>
+            <a class="tab-bar__item" href="#/settings"><span class="tab-bar__item-icon">&#9881;</span><span>CFG</span></a>
+        </nav>
+        <div id="connection-overlay"></div>
+    </div>`;
+}
+
+async function init() {
+    try {
+    console.log('[App] init start');
+    const a = window.__app;
+    const appEl = document.getElementById('app');
+    if (!appEl) { console.log('ERROR: no #app element'); return; }
+
+    console.log('loading config...');
+    a.config = await loadConfig();
+    console.log('config loaded');
+
+    // Restore persisted environment from localStorage
+    try {
+        const saved = JSON.parse(localStorage.getItem('flight-control-config') || '{}');
+        if (saved.environment) {
+            store.batch(() => {
+                for (const [key, val] of Object.entries(saved.environment)) {
+                    if (val != null) store.set(`environment.${key}`, val);
+                }
+            });
+        }
+        // Apply display theme if saved
+        if (saved.display?.theme === 'light') {
+            document.body.classList.add('theme-light');
+        }
+    } catch(e) { /* ignore parse errors */ }
+
+    a.apiManager = MOCK_MODE ? new MockApiManager(a.config.backend?.base_url || 'http://localhost:8000') : new ApiManager(a.config.backend?.base_url || 'http://localhost:8000');
+    a.sseManager = MOCK_MODE ? new MockSseManager() : new SseManager();
+    a.wsManager = MOCK_MODE ? new MockWsManager((a.config.backend?.base_url || 'http://localhost:8000').replace(/^http/, 'ws') + (a.config.backend?.ws_endpoint || '/ws')) : new WsManager((a.config.backend?.base_url || 'http://localhost:8000').replace(/^http/, 'ws') + (a.config.backend?.ws_endpoint || '/ws'));
+    console.log('managers created');
+
+    renderRootLayout(appEl);
+    console.log('layout rendered');
+
+    // WS
+    console.log('mounting StatusBar...');
+    new StatusBar(document.getElementById('status-bar')).mount();
+    console.log('StatusBar done');
+
+    // BottomBar
+    new BottomBar(document.getElementById('bottom-bar')).mount();
+    console.log('BottomBar done');
+
+    // ConnectionOverlay
+    const co = new ConnectionOverlay(document.getElementById('connection-overlay'));
+    store.subscribe('connection', v => v === 'disconnected' ? co.show() : co.hide());
+    console.log('ConnectionOverlay done');
+
+    // Chat Sidebar — fixed right panel per spec P1/C2
+    a.chatPanel = new ChatPanel(document.getElementById('chat-sidebar'));
+    a.chatPanel.mount();
+    console.log('ChatPanel mounted (right sidebar)');
+
+    // Floating Ball
+    const fb = document.createElement('div'); fb.id = 'fb';
+    document.querySelector('.app-container').appendChild(fb);
+    import('./components/FloatingBall.js').then(m => {
+        new m.FloatingBall(fb).mount();
+    }).catch(() => {});
+
+    // Router — register lazy page factories
+    console.log('setting up router...');
+    a.router = new Router(document.getElementById('page-container'));
+    for (const [hash, factory] of Object.entries(PAGE_REGISTRY)) {
+        a.router.register(hash, factory);
+    }
+    console.log('router init...');
+    a.router.init();
+    console.log('router done');
+
+    // Subscriptions
+    store.subscribe('connection', () => { const sb = document.getElementById('status-bar'); if (sb) new StatusBar(sb).mount(); });
+    store.subscribe('drone', () => { const sb = document.getElementById('status-bar'); if (sb) new StatusBar(sb).mount(); });
+    store.subscribe('flight', () => {
+        const sb = document.getElementById('status-bar'); if (sb) new StatusBar(sb).mount();
+        const bb = document.getElementById('bottom-bar'); if (bb) new BottomBar(bb).mount();
+    });
+    store.subscribe('trajectory', () => { const bb = document.getElementById('bottom-bar'); if (bb) new BottomBar(bb).mount(); });
+
+    // WS
+    a.wsManager.connect();
+    registerWsHandlers();
+    console.log('WS handlers registered');
+
+    // Field config
+    a.apiManager.getFieldConfig().then(fd => {
+        if (fd) { store.set('field.boundary', fd.boundary || store.get('field.boundary')); store.set('field.obstacles', fd.obstacles || []); store.set('field.home', fd.home || store.get('field.home')); }
+    }).catch(() => store.set('field.obstacles', []));
+
+    // Visibility
+    document.addEventListener('visibilitychange', () => { /* no-op after 3D removal */ });
+
+    // Tab bar + Nav strip (skip button elements)
+    const syncTabs = () => { const h = window.location.hash || '#/overview'; document.querySelectorAll('.tab-bar__item[href], .nav-strip__item[href]').forEach(x => { const match = x.getAttribute('href') === h; x.classList.toggle('tab-bar__item--active', match); x.classList.toggle('nav-strip__item--active', match); }); };
+    window.addEventListener('hashchange', syncTabs);
+    syncTabs();
+
+    // Save config
+    window.addEventListener('beforeunload', () => { const c = a.config; const s = { theme: c?.display?.theme, language: c?.display?.language }; const e = JSON.parse(localStorage.getItem('flight-control-config') || '{}'); Object.assign(e, { display: { ...(e.display || {}), ...s } }); localStorage.setItem('flight-control-config', JSON.stringify(e)); });
+
+    console.log('INIT DONE ✅');
+    } catch(e) {
+        console.log('INIT CRASH: ' + e.message + ' at ' + (e.stack?.split('\n')[1]||'?'));
+    }
+}
+
+function registerWsHandlers() {
+    const w = window.__app.wsManager;
+    w.on('pose', p => {
+        if (!p) return;
+        store.batch(() => {
+            if (p.position) {
+                store.set('drone.position', p.position);
+                // Accumulate flown trajectory for FieldMap2D
+                const flown = store.get('trajectory.flown') || [];
+                const pt = { x: p.position.x, y: p.position.y, z: p.position.z, t: (p.timestamp || Date.now()) / 1000 };
+                // Keep last 600 points (~60s at 10Hz), dedupe by time proximity
+                if (flown.length === 0 || Math.abs(pt.t - flown[flown.length - 1].t) > 0.05) {
+                    flown.push(pt);
+                    if (flown.length > 600) flown.shift();
+                    store.set('trajectory.flown', flown);
+                }
+            }
+            if (p.velocity) store.set('drone.velocity', p.velocity);
+            if (p.attitude) store.set('drone.attitude', p.attitude);
+            store.set('drone.timestamp', Date.now()); store.set('drone.connected', true);
+        });
+    });
+    w.on('status', p => {
+        if (!p) return;
+        store.batch(() => {
+            if (p.mode != null) store.set('flight.mode', p.mode);
+            if (p.status != null) store.set('flight.status', p.status);
+            if (p.current_action != null) store.set('flight.currentAction', p.current_action);
+            if (p.total_actions != null) store.set('flight.totalActions', p.total_actions);
+            if (p.current_action_code != null) store.set('flight.currentActionCode', p.current_action_code);
+            if (p.progress != null) store.set('flight.progress', p.progress);
+        });
+        bus.emit('status-update', p);
+    });
+    w.on('alert', p => bus.emit('alert', p));
+    w.on('reject', p => bus.emit('proposal-rejected', p));
+    w.on('alpha_output', p => {
+        if (!p) return;
+        store.batch(() => {
+            if (p.planned) store.set('trajectory.planned', p.planned);
+            if (p.action_sequence) store.set('trajectory.actionSequence', p.action_sequence);
+            if (p.current_target) store.set('trajectory.currentTarget', p.current_target);
+        });
+        bus.emit('alpha-output', p);
+    });
+    w.on('link_status', p => { if (p) store.batch(() => { if (p.backend_a != null) store.set('connection.backendA', p.backend_a); if (p.backend_b != null) store.set('connection.backendB', p.backend_b); if (p.drone != null) store.set('connection.drone', p.drone); if (p.llm != null) store.set('connection.llm', p.llm); }); });
+    w.on('voice_tts', p => {
+        if (!p?.audio) return;
+        import('./components/AudioPlayer.js').then(m => m.AudioPlayer.play(p.audio)).catch(() => {});
+    });
+    w.on('__event:open', () => { store.set('connection.ws', 'connected'); });
+    w.on('__event:close', () => { store.set('connection.ws', 'disconnected'); });
+    w.on('connection', p => { if (p?.status) store.set('connection.ws', p.status); });
+    w.on('trajectory_reset', () => {
+        store.batch(() => {
+            store.set('trajectory.flown', []);
+            store.set('trajectory.planned', []);
+        });
+    });
+}
+
+// Boot: if DOM already ready, call init immediately; otherwise wait for DOMContentLoaded
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}
