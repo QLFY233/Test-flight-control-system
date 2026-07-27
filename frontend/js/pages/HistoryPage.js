@@ -68,6 +68,19 @@ class HistoryPage {
         `;
 
         this._bindEvents();
+        this._setDefaultDates();
+    }
+
+    _setDefaultDates() {
+        const pad = (n) => String(n).padStart(2, '0');
+        const today = new Date();
+        const todayStr = today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate());
+        const weekAgo = new Date(today.getTime() - 7 * 86400000);
+        const weekAgoStr = weekAgo.getFullYear() + '-' + pad(weekAgo.getMonth() + 1) + '-' + pad(weekAgo.getDate());
+        const fromEl = this.container?.querySelector('#filter-date-from');
+        const toEl = this.container?.querySelector('#filter-date-to');
+        if (fromEl && !fromEl.value) fromEl.value = weekAgoStr;
+        if (toEl && !toEl.value) toEl.value = todayStr;
     }
 
     _renderEmptyDetail() {

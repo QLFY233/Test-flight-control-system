@@ -560,9 +560,10 @@ select.input {
 .session-card__date {
     font-family: var(--font-mono);
     font-size: var(--text-xs);
-    color: var(--color-text-disabled);
+    color: var(--color-text-secondary);
     white-space: nowrap;
-    letter-spacing: var(--track-wide);
+    flex-shrink: 0;
+    min-width: 115px;
 }
 
 .session-card__badge {
