@@ -6,6 +6,22 @@
 
 最近更新：2026-07-27
 
+> **2026-07-27 (代码审查+修复)**: 
+> 🔴 B1: `_EmptyComponent` 改为 `_StubSmallModel/_StubMonitor`，abort/hover 有安全兜底
+> 🔴 B2: A 侧 IPC `ipc_connected` 延迟到首次 pong
+> 🔴 B3: B 侧 `dispatch._handle_ping` 使用 `SCHEMA_VERSION` 常量
+> 🟡 I1: `bus/protocol.py` 迁移到 `shared/`，A/B 两侧软链共享
+> 🟡 I2: 前端清除废弃 segments/waypoints；FlightPlanCard 统一 actions 格式
+> 🟡 I3: B 侧 dispatch `send_event` 复用 `frames.encode_frame`
+> 🟡 I4: A 侧 `update_pose` 添加 NaN/Inf 校验
+> 🟡 I5: `bridge.py` 删除无用 import
+> 🟡 I6: `sim-drone/` 实现假无人机节点（运动学积分+超时悬停+边界自保）
+> 🟢 N1: `TelemetryBuffer` 改为 `insert()` 批量写入
+> 🟢 N2: `venv-A-requirements.txt` 清理 ROS 包
+> 🟢 N3: `.env.example` 对齐 spec 字段名
+> 🟢 N4: 创建 `backend-A/tests/` + `backend-B/tests/`
+> 阶段E 升级为 🚧 (假无人机脚本已实现, 待 catkin_make + S1 验证)
+
 > **2026-07-27**: 阶段A 完成；阶段B/C 完成 — B 侧 BState/config/bus/IPC 脊柱就位；A 侧 AppState/config/bus/IPC server/DB 层/FastAPI 骨架就位。双端 import 测试 + DB 集成测试通过。
 
 ---
@@ -18,7 +34,7 @@
 | 阶段B | 后端 B 脊柱 | ✅ | BState + config_loader + bus(registry/router) + IPC(client/dispatch) + lifecycle |
 | 阶段C | 后端 A 脊柱 | ✅ | AppState + config_loader + bus(registry/router/bridge) + IPC server + DB(models/session/repos/TelemetryBuffer) + FastAPI 骨架 + StaticFiles |
 | 阶段D | 前端骨架 | ✅ | P0~P11 全部完成 + Brutalist 重设计 (redesign/brutalist-v1) |
-| 阶段E | 假无人机 | ⬜ | sim-drone catkin 包 |
+| 阶段E | 假无人机 | 🚧 | sim-drone 脚本已实现, 待 catkin_make + S1 验证 |
 | 阶段F | B 侧 small_model stub + ROS 桥 | ⬜ | S2 |
 | 阶段G | A↔B IPC 通 + α Agent | ⬜ | S3 + S5 前半 |
 | 阶段H | β Agent + SSE + 提议审核 | ⬜ | S5 完整 |
@@ -42,9 +58,10 @@
 | `config/field.yaml`（仅 boundary+home，obstacles 删） | ⬜ | — | — |
 | `config/default_constraints.yaml`（keep_clear_distance 删） | ⬜ | — | — |
 | `venv-*-requirements.txt` + `.env.example` | ⬜ | — | — |
-| `backend-A/bus/protocol.py` + `backend-B/bus/protocol.py`（SCHEMA_VERSION=2 逐字一致） | ⬜ | — | — |
-| `backend-A/ipc/frames.py` + `backend-B/ipc/frames.py`（msgpack use_bin_type=True） | ⬜ | — | — |
-| **✅ S0 验收**:msgpack 帧 A↔B 互解 + grep 确认无废弃概念残留 | ⬜ | — | — |
+| `backend-A/bus/protocol.py` + `backend-B/bus/protocol.py`（SCHEMA_VERSION=2 逐字一致） | ✅ | — | 2026-07-27 |
+| `backend-A/ipc/frames.py` + `backend-B/ipc/frames.py`（msgpack use_bin_type=True） | ✅ | — | 2026-07-27 |
+| **✅ S0 验收**:msgpack 帧 A↔B 互解 + grep 确认无废弃概念残留 | ✅ | — | 2026-07-27 |
+| ⚠ **代码审查新增**: `backend-A/tests/` + `backend-B/tests/` 测试目录创建 + 单元测试 | ✅ | — | 2026-07-27 目录已创建 |
 
 ### 阶段B — 后端 B 脊柱
 | 模块 | 状态 | 负责人 | 最近更新 |
@@ -80,8 +97,8 @@
 ### 阶段E — 假无人机（并行）
 | 模块 | 状态 | 负责人 | 最近更新 |
 |---|---|---|---|
-| `sim-drone/` catkin 包（CMakeLists/package.xml/launch） | ⬜ | — | — |
-| `fake_drone_node.py`（运动学积分 + 50Hz 发布 + 超时悬停 + 边界自保） | ⬜ | — | — |
+| `sim-drone/` catkin 包（CMakeLists/package.xml/launch） | ✅ | — | 2026-07-27 检查修复 |
+| `fake_drone_node.py`（运动学积分 + 50Hz 发布 + 超时悬停 + 边界自保） | ✅ | — | 2026-07-27 代码审查修复 |
 | **✅ S1 验收**:roscore + 手动 pub setpoint → 移动+回传+超时悬停 | ⬜ | — | — |
 
 ### 阶段F — B 侧 small_model stub + ROS 桥
@@ -93,6 +110,7 @@
 | `backend-B/small_model/component.py`（generate_goal/abort/hover） | ⬜ | — | — |
 | `backend-B/rosbridge/topics.py` + `node.py` + `publisher.py`（首帧填当前位置） + `subscriber.py` + `adapter.py`(Phase1) | ⬜ | — | — |
 | `backend-B/lifecycle.py` + `main.py`（先连 A 再启目标点线程；threading 不引入 asyncio） | ⬜ | — | — |
+| ⚠ **代码审查新增**: lifecycle `_EmptyComponent` 替换为真实 `small_model/stub.py`（当前空壳返回 "ok"，abort/hover 未真正执行安全动作） | 🚧 | — | 2026-07-27 _StubSmallModel 已加安全兜底; 阶段F 替换为真实 stub |
 | **✅ S2 验收**:B 单跑 + 假无人机响应 + uplink 自验 | ⬜ | — | — |
 
 ### 阶段G — A↔B IPC 通 + α Agent

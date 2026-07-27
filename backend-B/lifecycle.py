@@ -77,18 +77,40 @@ class Lifecycle:
         logger.info("[lifecycle] Backend-B stopped")
 
     def _init_bus(self):
-        """初始化 B 内总线。先导仅注册 empty stubs; 阶段F 接真正的 small_model/monitor。"""
+        """初始化 B 内总线。先导仅注册 stubs; 阶段F 接真正的 small_model/monitor。"""
         from bus.registry import init_registry
 
         # 先导空壳组件 (会被阶段F 替换)
-        class _EmptyComponent:
-            def handle(self, tool, args):
-                logger.warning(f"[lifecycle] stub component called with tool={tool}, not yet implemented")
-                return {"status": "ok", "note": "stub"}
+        # 注意: 空壳不会驱动物理无人机 (阶段E/F 前无 setpoint 链路),
+        # 但 abort/hover 等安全指令必须做有意义的兜底 (状态标记 + 日志)。
+        class _StubSmallModel:
+            def __init__(self, bstate_ref):
+                self._state = bstate_ref
 
-        stub = _EmptyComponent()
-        init_registry(stub, stub)  # small_model, monitor 都先指向同一空壳
-        logger.info("[lifecycle] bus registry initialized (stub)")
+            def handle(self, tool, args):
+                if tool == "hover":
+                    self._state.small_model_status = "hovering"
+                    logger.info("[lifecycle:stub] hover — maintaining current position")
+                    return {"status": "ok", "action": "hover"}
+                elif tool == "abort":
+                    self._state.small_model_status = "idle"
+                    self._state.current_action_plan = None
+                    self._state.current_action_index = 0
+                    logger.warning("[lifecycle:stub] abort — clearing action plan, hovering")
+                    return {"status": "ok", "action": "abort"}
+                elif tool == "generate_goal":
+                    logger.warning("[lifecycle:stub] generate_goal called before stage F — no setpoint will be produced")
+                    return {"status": "error", "reason": "small_model not yet implemented (stage F pending)"}
+                else:
+                    logger.warning(f"[lifecycle:stub] unknown tool={tool}")
+                    return {"status": "error", "reason": f"unknown tool: {tool}"}
+
+        class _StubMonitor:
+            def handle(self, tool, args):
+                return {"status": "ok", "note": "monitor not yet active (stage I pending)"}
+
+        init_registry(_StubSmallModel(self.state), _StubMonitor())
+        logger.info("[lifecycle] bus registry initialized (stub — stage F small_model / stage I monitor pending)")
 
     def _start_threads(self):
         """启动各工作线程。先导阶段只启动 IPC recv; 阶段F 加 uplink/goal/monitor。"""

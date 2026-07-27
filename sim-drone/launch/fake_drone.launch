@@ -1,0 +1,6 @@
+<launch>
+  <!-- 假无人机节点 — 阶段1 运动学模拟 -->
+  <node name="fake_drone" pkg="sim_drone" type="fake_drone_node.py" output="screen">
+    <param name="speed_max" value="2.0" type="double" />
+  </node>
+</launch>

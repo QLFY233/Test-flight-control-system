@@ -9,16 +9,25 @@ import msgpack
 from bus.protocol import MSGPACK_USE_BIN_TYPE, IPC_FRAME_MAX_BYTES
 
 
-def send_frame(sock, payload: dict) -> None:
+def encode_frame(payload: dict) -> bytes:
     """
-    发送一帧：4 字节大端 unsigned int 长度前缀 + msgpack 载荷。
-    payload 必须为 dict，内含 schema_version 等总线字段。
+    将 dict 编码为长度前缀帧字节串 (4 字节大端长度 + msgpack 载荷)。
+    供 send_frame 和 IPC dispatch 共用。
     """
     data = msgpack.packb(payload, use_bin_type=MSGPACK_USE_BIN_TYPE)
     if len(data) > IPC_FRAME_MAX_BYTES:
         raise ValueError(f"Frame too large: {len(data)} bytes (max {IPC_FRAME_MAX_BYTES})")
     header = struct.pack(">I", len(data))
-    sock.sendall(header + data)
+    return header + data
+
+
+def send_frame(sock, payload: dict) -> None:
+    """
+    发送一帧：4 字节大端 unsigned int 长度前缀 + msgpack 载荷。
+    payload 必须为 dict，内含 schema_version 等总线字段。
+    """
+    data = encode_frame(payload)
+    sock.sendall(data)
 
 
 def recv_frame(sock) -> dict:

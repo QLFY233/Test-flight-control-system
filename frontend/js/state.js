@@ -189,12 +189,11 @@ const initial = {
         environmentId: null,
     },
 
-    // Trajectory data
+    // Trajectory data (schema_version=2: ActionCommand 格式, 废弃 segments/waypoints)
     trajectory: {
         flown: [],              // [{x, y, z, t}, ...]
         planned: [],            // [{x, y, z}, ...]
         actionSequence: [],     // ActionCommand entries: [{code, params: {target, speed, ...}}]
-        waypoints: [],          // [DEPRECATED] use actionSequence instead
         currentTarget: null,    // {x, y, z}
     },
 
@@ -218,10 +217,10 @@ const initial = {
         playbackTime: 0,
     },
 
-    // Field & obstacles
+    // Field (schema_version=2: obstacles 预编废弃, 阶段2/4 由雷达在线感知替代)
     field: {
         boundary: { xMin: -50, xMax: 50, yMin: -50, yMax: 50, zMin: 0, zMax: 30 },
-        obstacles: [],           // [{type, position: {x,y,z}, size: {...}} ...]
+        obstacles: [],           // [DEPRECATED 2026-07-07] 雷达在线感知替代; 保留空数组向前兼容
         home: { x: 0, y: 0, z: 0 },
     },
 

@@ -5,6 +5,7 @@ import time
 import logging
 
 from bus.protocol import (
+    SCHEMA_VERSION,
     MSG_TYPE_CALL, MSG_TYPE_EVENT, MSG_TYPE_ERROR,
     CALL_TOOL_ACTION, CALL_TOOL_ABORT, CALL_TOOL_HOVER, CALL_TOOL_PING,
     EVENT_TOOL_PONG,
@@ -65,7 +66,7 @@ class Dispatch:
     def _handle_ping(self):
         """响应心跳 ping → pong。"""
         pong_msg = {
-            "schema_version": 2,
+            "schema_version": SCHEMA_VERSION,
             "from": "B",
             "to": TO_HEARTBEAT,
             "msg_type": MSG_TYPE_EVENT,
@@ -78,17 +79,10 @@ class Dispatch:
         self.send_event(pong_msg)
 
     def send_event(self, msg: dict):
-        """封帧发送 B→A event。"""
+        """封帧发送 B→A event (复用 frames.encode_frame)。"""
         try:
-            # send_frame expects a socket, use ipc_client.send
-            import struct
-            import msgpack
-            from bus.protocol import MSGPACK_USE_BIN_TYPE, IPC_FRAME_MAX_BYTES
-            data = msgpack.packb(msg, use_bin_type=MSGPACK_USE_BIN_TYPE)
-            if len(data) > IPC_FRAME_MAX_BYTES:
-                logger.error(f"[dispatch] frame too large: {len(data)}")
-                return
-            header = struct.pack(">I", len(data))
-            self._ipc.send(header + data)
+            from ipc.frames import encode_frame
+            data = encode_frame(msg)
+            self._ipc.send(data)
         except Exception as e:
             logger.warning(f"[dispatch] send_event failed: {e}")

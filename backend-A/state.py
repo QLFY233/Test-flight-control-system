@@ -3,9 +3,13 @@ AppState — 后端 A 共享状态。
 asyncio.Lock 保护; 高频位姿单独锁。
 """
 import asyncio
+import math
 import time
+import logging
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -91,12 +95,30 @@ class AppState:
         return self._pose
 
     async def update_pose(self, pos, quat, vel, accel, angular_vel, ts):
+        """更新位姿 (B→A上行)。NaN/Inf 截断为 0。"""
+        def _sanitize(v, default=0.0):
+            if isinstance(v, (int, float)):
+                if not math.isfinite(v):
+                    return default
+                return float(v)
+            return default
+
         async with self._pose_lock:
-            self._pose.pos = list(pos)
-            self._pose.quat = list(quat)
-            self._pose.vel = list(vel)
-            self._pose.accel = list(accel)
-            self._pose.angular_vel = list(angular_vel)
+            self._pose.pos = [_sanitize(p) for p in (pos if pos else [])]
+            if len(self._pose.pos) < 3:
+                self._pose.pos.extend([0.0] * (3 - len(self._pose.pos)))
+            self._pose.quat = [_sanitize(q, 1.0 if i == 0 else 0.0) for i, q in enumerate(quat if quat else [])]
+            if len(self._pose.quat) < 4:
+                self._pose.quat.extend([1.0, 0.0, 0.0, 0.0][len(self._pose.quat):])
+            self._pose.vel = [_sanitize(v) for v in (vel if vel else [])]
+            if len(self._pose.vel) < 3:
+                self._pose.vel.extend([0.0] * (3 - len(self._pose.vel)))
+            self._pose.accel = [_sanitize(a) for a in (accel if accel else [])]
+            if len(self._pose.accel) < 3:
+                self._pose.accel.extend([0.0] * (3 - len(self._pose.accel)))
+            self._pose.angular_vel = [_sanitize(av) for av in (angular_vel if angular_vel else [])]
+            if len(self._pose.angular_vel) < 3:
+                self._pose.angular_vel.extend([0.0] * (3 - len(self._pose.angular_vel)))
             self._pose.ts = ts
             self._pose.updated_at = time.time()
 

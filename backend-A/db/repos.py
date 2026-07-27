@@ -7,7 +7,7 @@ import logging
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, insert
 
 from db.models import Environment, FlightSession, Telemetry, Conversation
 from db.session import async_session
@@ -137,30 +137,33 @@ class TelemetryBuffer:
                 self._buffer.clear()
 
             try:
-                async with async_session() as session:
-                    for item in batch:
-                        t = Telemetry(
-                            session_id=item.get("session_id", ""),
-                            t=item.get("t", 0.0),
-                            position_x=item["pos"][0] if item.get("pos") else None,
-                            position_y=item["pos"][1] if item.get("pos") and len(item["pos"]) > 1 else None,
-                            position_z=item["pos"][2] if item.get("pos") and len(item["pos"]) > 2 else None,
-                            velocity_x=item["vel"][0] if item.get("vel") and len(item["vel"]) > 0 else None,
-                            velocity_y=item["vel"][1] if item.get("vel") and len(item["vel"]) > 1 else None,
-                            velocity_z=item["vel"][2] if item.get("vel") and len(item["vel"]) > 2 else None,
-                            accel_x=item["accel"][0] if item.get("accel") and len(item["accel"]) > 0 else None,
-                            accel_y=item["accel"][1] if item.get("accel") and len(item["accel"]) > 1 else None,
-                            accel_z=item["accel"][2] if item.get("accel") and len(item["accel"]) > 2 else None,
-                            angular_velocity_x=item["angular_vel"][0] if item.get("angular_vel") and len(item["angular_vel"]) > 0 else None,
-                            angular_velocity_y=item["angular_vel"][1] if item.get("angular_vel") and len(item["angular_vel"]) > 1 else None,
-                            angular_velocity_z=item["angular_vel"][2] if item.get("angular_vel") and len(item["angular_vel"]) > 2 else None,
-                            quat_w=item["quat"][0] if item.get("quat") and len(item["quat"]) > 0 else None,
-                            quat_x=item["quat"][1] if item.get("quat") and len(item["quat"]) > 1 else None,
-                            quat_y=item["quat"][2] if item.get("quat") and len(item["quat"]) > 2 else None,
-                            quat_z=item["quat"][3] if item.get("quat") and len(item["quat"]) > 3 else None,
-                        )
-                        session.add(t)
-                    await session.commit()
-                logger.debug(f"[TelemetryBuffer] flushed {len(batch)} rows")
+                # 构建批量 insert (比逐条 add 更高效)
+                rows = []
+                for item in batch:
+                    rows.append({
+                        "session_id": item.get("session_id", ""),
+                        "t": item.get("t", 0.0),
+                        "position_x": item["pos"][0] if item.get("pos") else None,
+                        "position_y": item["pos"][1] if item.get("pos") and len(item["pos"]) > 1 else None,
+                        "position_z": item["pos"][2] if item.get("pos") and len(item["pos"]) > 2 else None,
+                        "velocity_x": item["vel"][0] if item.get("vel") and len(item["vel"]) > 0 else None,
+                        "velocity_y": item["vel"][1] if item.get("vel") and len(item["vel"]) > 1 else None,
+                        "velocity_z": item["vel"][2] if item.get("vel") and len(item["vel"]) > 2 else None,
+                        "accel_x": item["accel"][0] if item.get("accel") and len(item["accel"]) > 0 else None,
+                        "accel_y": item["accel"][1] if item.get("accel") and len(item["accel"]) > 1 else None,
+                        "accel_z": item["accel"][2] if item.get("accel") and len(item["accel"]) > 2 else None,
+                        "angular_velocity_x": item["angular_vel"][0] if item.get("angular_vel") and len(item["angular_vel"]) > 0 else None,
+                        "angular_velocity_y": item["angular_vel"][1] if item.get("angular_vel") and len(item["angular_vel"]) > 1 else None,
+                        "angular_velocity_z": item["angular_vel"][2] if item.get("angular_vel") and len(item["angular_vel"]) > 2 else None,
+                        "quat_w": item["quat"][0] if item.get("quat") and len(item["quat"]) > 0 else None,
+                        "quat_x": item["quat"][1] if item.get("quat") and len(item["quat"]) > 1 else None,
+                        "quat_y": item["quat"][2] if item.get("quat") and len(item["quat"]) > 2 else None,
+                        "quat_z": item["quat"][3] if item.get("quat") and len(item["quat"]) > 3 else None,
+                    })
+                if rows:
+                    async with async_session() as session:
+                        async with session.begin():
+                            await session.execute(insert(Telemetry), rows)
+                logger.debug(f"[TelemetryBuffer] flushed {len(rows)} rows")
             except Exception as e:
                 logger.error(f"[TelemetryBuffer] flush error: {e}")

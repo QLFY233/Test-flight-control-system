@@ -52,9 +52,6 @@ async def dispatch_b_event(msg: dict):
     tool = msg.get("tool", "")
     payload = msg.get("payload", {})
 
-    # 导入放在函数内避免循环依赖
-    import asyncio
-
     if tool == "pose":
         await _handle_pose(payload)
     elif tool == "telemetry":

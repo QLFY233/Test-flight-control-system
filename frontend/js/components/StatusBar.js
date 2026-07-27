@@ -1,5 +1,5 @@
 /**
- * StatusBar — Top bar showing connection status, drone position, flight mode, segment progress.
+ * StatusBar — Top bar showing connection status, drone position, flight mode, action progress.
  */
 
 import store from '../state.js';

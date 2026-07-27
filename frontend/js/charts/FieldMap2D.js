@@ -60,6 +60,7 @@ class FieldMap2D {
 
         const field = store.get('field');
         const boundary = field?.boundary || { xMin: -50, xMax: 50, yMin: -50, yMax: 50 };
+        // obstacles 预编已废弃 (schema_version=2, 阶段2/4 改雷达在线感知); 保留兼容但不作为主要渲染
         const obstacles = field?.obstacles || [];
         const home = field?.home;
 
@@ -148,30 +149,36 @@ class FieldMap2D {
             });
         }
 
-        // Waypoints
-        if (trajectory?.waypoints && trajectory.waypoints.length > 0) {
-            plannedSeries.push({
-                name: 'Waypoints',
-                type: 'scatter',
-                data: trajectory.waypoints.map((wp, i) => ({
-                    value: [wp.x, wp.y],
-                    label: wp.label || String(i + 1),
-                })),
-                symbolSize: 8,
-                symbol: 'circle',
-                itemStyle: {
-                    color: '#00BCD4',
-                    borderColor: '#4DD0E1',
-                    borderWidth: 2,
-                },
-                label: {
-                    show: true,
-                    position: 'top',
-                    color: '#9E9E9E',
-                    fontSize: 10,
-                    formatter: (p) => p.data.label,
-                },
-            });
+        // ActionSequence waypoints (schema_version=2: 使用 actionSequence 替代旧 waypoints)
+        const actionSeq = trajectory?.actionSequence || [];
+        if (actionSeq.length > 0) {
+            const wpData = actionSeq
+                .filter(a => a.params?.target)
+                .map((a, i) => ({
+                    value: [a.params.target.x ?? 0, a.params.target.y ?? 0],
+                    label: a.code || String(i + 1),
+                }));
+            if (wpData.length > 0) {
+                plannedSeries.push({
+                    name: 'Waypoints',
+                    type: 'scatter',
+                    data: wpData,
+                    symbolSize: 8,
+                    symbol: 'circle',
+                    itemStyle: {
+                        color: '#00BCD4',
+                        borderColor: '#4DD0E1',
+                        borderWidth: 2,
+                    },
+                    label: {
+                        show: true,
+                        position: 'top',
+                        color: '#9E9E9E',
+                        fontSize: 10,
+                        formatter: (p) => p.data.label,
+                    },
+                });
+            }
         }
 
         this.chart.setOption({

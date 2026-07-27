@@ -56,13 +56,13 @@ class IpcServer:
         asyncio.create_task(self._pong_watchdog())
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        """新 B 连接建立。"""
+        """新 B 连接建立。ipc_connected 延迟到首次 pong 才设为 True。"""
         addr = writer.get_extra_info('peername', 'unknown')
-        logger.info(f"[ipc-server] B connected from {addr}")
+        logger.info(f"[ipc-server] B TCP connected from {addr}, awaiting first pong...")
         self._reader = reader
         self._writer = writer
-        self._state.ipc_connected = True
-        self._last_pong = time.time()
+        # 不在 TCP 握手阶段标记 connected — 等首次 pong 验证后由 _recv_loop 设置
+        self._last_pong = time.time()  # 给首次 pong 留 5s 窗口
 
         try:
             await self._recv_loop(reader)
@@ -93,6 +93,9 @@ class IpcServer:
             if msg_type == MSG_TYPE_EVENT and tool == EVENT_TOOL_PONG:
                 self._last_pong = time.time()
                 self._state.last_pong_at = self._last_pong
+                if not self._state.ipc_connected:
+                    self._state.ipc_connected = True
+                    logger.info("[ipc-server] B verified (first pong received)")
             elif msg_type == MSG_TYPE_EVENT:
                 # B→A event → 注入 A 总线
                 await dispatch_b_event(msg)
