@@ -35,3 +35,6 @@ ros_ws/logs/
 # OS
 Thumbs.db
 .DS_Store
+.pyenv/
+.venv-A/
+.venv-B/

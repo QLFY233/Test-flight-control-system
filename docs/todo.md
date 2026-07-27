@@ -4,9 +4,9 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-07-25
+最近更新：2026-07-27
 
-> **2026-07-25**: 前端完成 Brutalist 工业战术遥测风格重设计 (`redesign/brutalist-v1` 分支)，包含：全局 Chat 右侧竖栏、零圆角机械刚性、危险红主色调、JetBrains Mono 全站等宽、CRT扫描线+噪点纹理、双边框卡片、PWA 完整支持、可读性全面增强。
+> **2026-07-27**: 阶段A 完成 — 双 venv 创建 (A: Py3.10 via pyenv, B: Py3.8 system-site-packages)；仓库骨架就位；`protocol.py` + `ipc/frames.py` 两侧逐字一致；S0 msgpack A↔B 互解验证通过。
 
 ---
 
@@ -14,7 +14,7 @@
 
 | 阶段 | 名称 | 状态 | 说明 |
 |---|---|---|---|
-| 阶段A | 基础设施与协议常量 | ⬜ | venv-A/B + config + bus/protocol + S0 |
+| 阶段A | 基础设施与协议常量 | ✅ | venv-A/B + config + protocol.py + ipc/frames.py + S0 验证 |
 | 阶段B | 后端 B 脊柱 | ⬜ | bus + IPC client + BState |
 | 阶段C | 后端 A 脊柱 | ⬜ | bus + IPC server + AppState + DB |
 | 阶段D | 前端骨架 | ✅ | P0~P11 全部完成 + Brutalist 重设计 (redesign/brutalist-v1) |
