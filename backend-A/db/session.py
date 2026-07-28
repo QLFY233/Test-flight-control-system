@@ -32,6 +32,8 @@ async def create_all():
 
 
 async def get_session() -> AsyncSession:
-    """获取 AsyncSession context manager。"""
+    """获取 AsyncSession context manager。
+    阶段 G/H: 作为 FastAPI Depends(get_session) 使用。
+    """
     async with async_session() as session:
         yield session

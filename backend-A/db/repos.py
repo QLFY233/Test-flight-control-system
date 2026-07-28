@@ -104,6 +104,35 @@ async def save_conversation(
     await session.commit()
 
 
+# ── TelemetryBuffer helpers ──
+
+def _build_telemetry_rows(batch: list[dict]) -> list[dict]:
+    """将遥测记录列表转为 DB insert 行列表。"""
+    rows = []
+    for item in batch:
+        rows.append({
+            "session_id": item.get("session_id", ""),
+            "t": item.get("t", 0.0),
+            "position_x": item["pos"][0] if item.get("pos") else None,
+            "position_y": item["pos"][1] if item.get("pos") and len(item["pos"]) > 1 else None,
+            "position_z": item["pos"][2] if item.get("pos") and len(item["pos"]) > 2 else None,
+            "velocity_x": item["vel"][0] if item.get("vel") and len(item["vel"]) > 0 else None,
+            "velocity_y": item["vel"][1] if item.get("vel") and len(item["vel"]) > 1 else None,
+            "velocity_z": item["vel"][2] if item.get("vel") and len(item["vel"]) > 2 else None,
+            "accel_x": item["accel"][0] if item.get("accel") and len(item["accel"]) > 0 else None,
+            "accel_y": item["accel"][1] if item.get("accel") and len(item["accel"]) > 1 else None,
+            "accel_z": item["accel"][2] if item.get("accel") and len(item["accel"]) > 2 else None,
+            "angular_velocity_x": item["angular_vel"][0] if item.get("angular_vel") and len(item["angular_vel"]) > 0 else None,
+            "angular_velocity_y": item["angular_vel"][1] if item.get("angular_vel") and len(item["angular_vel"]) > 1 else None,
+            "angular_velocity_z": item["angular_vel"][2] if item.get("angular_vel") and len(item["angular_vel"]) > 2 else None,
+            "quat_w": item["quat"][0] if item.get("quat") and len(item["quat"]) > 0 else None,
+            "quat_x": item["quat"][1] if item.get("quat") and len(item["quat"]) > 1 else None,
+            "quat_y": item["quat"][2] if item.get("quat") and len(item["quat"]) > 2 else None,
+            "quat_z": item["quat"][3] if item.get("quat") and len(item["quat"]) > 3 else None,
+        })
+    return rows
+
+
 # ── TelemetryBuffer ──
 
 class TelemetryBuffer:
@@ -120,7 +149,17 @@ class TelemetryBuffer:
         asyncio.create_task(self._flush_loop())
 
     async def stop(self):
+        """停止缓冲。先 flush 残留数据再退出。"""
         self._running = False
+        # 等待 flush_loop 退出
+        await asyncio.sleep(0.05)
+        # 最后 flush 一次残留 (flush_loop 退出前已清空 buffer)
+        async with self._lock:
+            if self._buffer:
+                batch = self._buffer[:]
+                self._buffer.clear()
+                if batch:
+                    await self._flush_batch(batch)
 
     async def append(self, telemetry: dict):
         """追加一条遥测记录。telemetry 含 session_id, t, pos, quat, vel, accel, angular_vel。"""
@@ -135,35 +174,18 @@ class TelemetryBuffer:
                     continue
                 batch = self._buffer[:]
                 self._buffer.clear()
+            await self._flush_batch(batch)
 
-            try:
-                # 构建批量 insert (比逐条 add 更高效)
-                rows = []
-                for item in batch:
-                    rows.append({
-                        "session_id": item.get("session_id", ""),
-                        "t": item.get("t", 0.0),
-                        "position_x": item["pos"][0] if item.get("pos") else None,
-                        "position_y": item["pos"][1] if item.get("pos") and len(item["pos"]) > 1 else None,
-                        "position_z": item["pos"][2] if item.get("pos") and len(item["pos"]) > 2 else None,
-                        "velocity_x": item["vel"][0] if item.get("vel") and len(item["vel"]) > 0 else None,
-                        "velocity_y": item["vel"][1] if item.get("vel") and len(item["vel"]) > 1 else None,
-                        "velocity_z": item["vel"][2] if item.get("vel") and len(item["vel"]) > 2 else None,
-                        "accel_x": item["accel"][0] if item.get("accel") and len(item["accel"]) > 0 else None,
-                        "accel_y": item["accel"][1] if item.get("accel") and len(item["accel"]) > 1 else None,
-                        "accel_z": item["accel"][2] if item.get("accel") and len(item["accel"]) > 2 else None,
-                        "angular_velocity_x": item["angular_vel"][0] if item.get("angular_vel") and len(item["angular_vel"]) > 0 else None,
-                        "angular_velocity_y": item["angular_vel"][1] if item.get("angular_vel") and len(item["angular_vel"]) > 1 else None,
-                        "angular_velocity_z": item["angular_vel"][2] if item.get("angular_vel") and len(item["angular_vel"]) > 2 else None,
-                        "quat_w": item["quat"][0] if item.get("quat") and len(item["quat"]) > 0 else None,
-                        "quat_x": item["quat"][1] if item.get("quat") and len(item["quat"]) > 1 else None,
-                        "quat_y": item["quat"][2] if item.get("quat") and len(item["quat"]) > 2 else None,
-                        "quat_z": item["quat"][3] if item.get("quat") and len(item["quat"]) > 3 else None,
-                    })
-                if rows:
-                    async with async_session() as session:
-                        async with session.begin():
-                            await session.execute(insert(Telemetry), rows)
-                logger.debug(f"[TelemetryBuffer] flushed {len(rows)} rows")
-            except Exception as e:
-                logger.error(f"[TelemetryBuffer] flush error: {e}")
+    async def _flush_batch(self, batch: list[dict]):
+        """将一批遥测记录批量写入 DB。"""
+        if not batch:
+            return
+        try:
+            rows = _build_telemetry_rows(batch)
+            if rows:
+                async with async_session() as session:
+                    async with session.begin():
+                        await session.execute(insert(Telemetry), rows)
+            logger.debug(f"[TelemetryBuffer] flushed {len(rows)} rows")
+        except Exception as e:
+            logger.error(f"[TelemetryBuffer] flush error: {e}")

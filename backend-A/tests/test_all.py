@@ -17,6 +17,9 @@ os.environ["FLIGHT_DB_PATH"] = _DB_PATH
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
+# 项目根目录 (backend-A/tests → 上两级 = 项目根)
+_PROJ_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
 passed = 0
 failed = 0
 
@@ -71,7 +74,7 @@ check("args.action.target", decoded["args"]["action"]["target"] == [3.0, 2.0, 1.
 print("\n📋 Test 3: 配置加载")
 from config_loader import load_config
 
-cfg = load_config("../config")
+cfg = load_config(os.path.join(_PROJ_ROOT, "config"))
 check("alpha_loop_period == 2.0", cfg.alpha_loop_period == 2.0)
 check("alpha_history_rounds == 10", cfg.alpha_history_rounds == 10)
 check("field_cfg 有 boundary", "boundary" in cfg.field_cfg)
@@ -244,7 +247,7 @@ except:
 print("\n📋 Test 8: Lifecycle 初始化")
 from lifecycle import Lifecycle
 
-lc = Lifecycle("../config")
+lc = Lifecycle(os.path.join(_PROJ_ROOT, "config"))
 check("Lifecycle 创建", lc is not None)
 check("Lifecycle state 初始 None", lc.state is None)
 
@@ -252,7 +255,7 @@ check("Lifecycle state 初始 None", lc.state is None)
 print("\n📋 Test 9: FastAPI App 创建")
 from main import create_app
 
-app = create_app("../config")
+app = create_app(os.path.join(_PROJ_ROOT, "config"))
 check("FastAPI app 创建", app is not None)
 check("app title", app.title == "试飞控制系统 — Backend A")
 

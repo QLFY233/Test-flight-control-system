@@ -83,6 +83,7 @@ class Lifecycle:
         # 先导空壳组件 (会被阶段F 替换)
         # 注意: 空壳不会驱动物理无人机 (阶段E/F 前无 setpoint 链路),
         # 但 abort/hover 等安全指令必须做有意义的兜底 (状态标记 + 日志)。
+        # 阶段F 将替换为独立文件 backend-B/small_model/component.py
         class _StubSmallModel:
             def __init__(self, bstate_ref):
                 self._state = bstate_ref

@@ -28,6 +28,7 @@ DEFAULT_BOUNDARY = {"x": [0.0, 5.0], "y": [0.0, 4.0], "z": [0.0, 3.0]}
 DEFAULT_SPEED_MAX = 2.0  # m/s
 PUBLISH_RATE = 50.0       # Hz
 SETPOINT_TIMEOUT = 0.5    # s, 超时自动悬停
+MAX_DT = 0.2               # s, 最大积分步长安全兜底
 
 # quaternion 辅助
 def _yaw_to_quat(yaw: float) -> tuple:
@@ -103,7 +104,7 @@ class FakeDrone:
             now = time.time()
             dt = now - self.last_time
             self.last_time = now
-            if dt <= 0 or dt > 0.2:
+            if dt <= 0 or dt > MAX_DT:
                 dt = 1.0 / PUBLISH_RATE  # 安全兜底
 
             with self._lock:
@@ -146,7 +147,8 @@ class FakeDrone:
                 vx, vy, vz = self.vx, self.vy, self.vz
                 yaw = self.yaw
 
-            # ── 发布位姿 ──
+            # ── 发布位姿 (ROS geometry_msgs/Quaternion 使用 x,y,z,w 顺序) ──
+            # 注意: B 侧 rosbridge 上行 A 时须重排 quat 为 [w,x,y,z] (接口冻结 §3)
             pose_msg = PoseStamped()
             pose_msg.header.stamp = rospy.Time.now()
             pose_msg.header.frame_id = "map"

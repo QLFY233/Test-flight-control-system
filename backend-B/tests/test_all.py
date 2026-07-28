@@ -7,7 +7,10 @@ import sys, os, struct, time
 
 # 确保 backend-B 在 path 中
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# 项目根目录 (backend-B/tests → 上两级 = 项目根)
+_PROJ_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 passed = 0
 failed = 0
@@ -109,7 +112,7 @@ check("msgpack use_bin_type 一致 (str roundtrip)", decoded_s == "hello")
 print("\n📋 Test 3: 配置加载")
 from config_loader import load_field, load_constraints
 
-field = load_field("../config/field.yaml")
+field = load_field(os.path.join(_PROJ_ROOT, "config", "field.yaml"))
 check("field.yaml 有 boundary", "boundary" in field)
 check("boundary.x == [0,5]", field["boundary"]["x"] == [0.0, 5.0])
 check("boundary.y == [0,4]", field["boundary"]["y"] == [0.0, 4.0])
@@ -117,7 +120,7 @@ check("boundary.z == [0,3]", field["boundary"]["z"] == [0.0, 3.0])
 check("field.yaml 有 home", "home" in field)
 check("home.position == [0,0,0.5]", field["home"]["position"] == [0.0, 0.0, 0.5])
 
-constraints = load_constraints("../config/default_constraints.yaml")
+constraints = load_constraints(os.path.join(_PROJ_ROOT, "config", "default_constraints.yaml"))
 check("constraints 有 global", "global" in constraints)
 check("speed_max == 1.5", constraints["global"]["speed_max"] == 1.5)
 check("ceiling == 2.5", constraints["global"]["ceiling"] == 2.5)

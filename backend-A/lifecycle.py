@@ -7,6 +7,7 @@ from config_loader import load_config
 from state import AppState
 from bus import registry as bus_registry
 from bus.bridge import set_state as bridge_set_state
+from bus.bridge import set_telemetry_buffer
 from ipc.server import IpcServer
 from db.session import create_all as db_create_all
 from db.repos import TelemetryBuffer
@@ -46,6 +47,7 @@ class Lifecycle:
         # 5. Start TelemetryBuffer
         self.tel_buffer = TelemetryBuffer()
         await self.tel_buffer.start()
+        set_telemetry_buffer(self.tel_buffer)  # 注入 bridge 以便 pose 写入遥测缓冲
         logger.info("[lifecycle] TelemetryBuffer started")
 
         # 6. Start IPC server

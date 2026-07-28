@@ -27,16 +27,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 class HighBacklogTCPServer(socketserver.ThreadingTCPServer):
     """TCPServer with larger accept queue to handle concurrent ES module loads."""
     request_queue_size = 128
-
-    # Allow rapid reuse of addresses after restart
-    allow_reuse_address = True
-
-    # Disable address reuse for the socket itself (handled by allow_reuse_address)
-    def server_bind(self):
-        self.socket.setsockopt(
-            socket.SOL_SOCKET, socket.SO_REUSEADDR, 1
-        )
-        super().server_bind()
+    allow_reuse_address = True  # 自动设置 SO_REUSEADDR
 
 
 class CORSRequestHandler(http.server.SimpleHTTPRequestHandler):

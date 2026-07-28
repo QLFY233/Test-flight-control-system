@@ -33,6 +33,7 @@ class IpcServer:
         self._writer: asyncio.StreamWriter | None = None
         self._last_pong: float = 0.0
         self._running = False
+        self._tasks: list[asyncio.Task] = []  # 后台 task 引用，用于 stop 时取消
 
     async def start(self):
         """启动 server, 监听 Unix socket。"""
@@ -51,9 +52,9 @@ class IpcServer:
         # 设置 bridge 的 IPC sender
         set_ipc_sender(self._send_and_wait)
 
-        # 启动心跳
-        asyncio.create_task(self._ping_loop())
-        asyncio.create_task(self._pong_watchdog())
+        # 启动心跳 (保存 task 引用以便 stop 时取消)
+        self._tasks.append(asyncio.create_task(self._ping_loop()))
+        self._tasks.append(asyncio.create_task(self._pong_watchdog()))
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         """新 B 连接建立。ipc_connected 延迟到首次 pong 才设为 True。"""
@@ -75,14 +76,14 @@ class IpcServer:
             logger.info("[ipc-server] B disconnected")
 
     async def _recv_loop(self, reader: asyncio.StreamReader):
-        """接收循环 — 读帧 → 分发。"""
+        """接收循环 — 读帧 → 分发。帧过大时断开连接。"""
         while self._running:
             # 读 4 字节长度
             header = await reader.readexactly(4)
             length = struct.unpack(">I", header)[0]
             if length > IPC_FRAME_MAX_BYTES:
-                logger.error(f"[ipc-server] frame too large: {length}")
-                continue
+                logger.error(f"[ipc-server] frame too large: {length} > {IPC_FRAME_MAX_BYTES}, disconnecting")
+                return  # 断开连接，继续读取会导致帧边界错乱
             # 读载荷
             data = await reader.readexactly(length)
             msg = msgpack.unpackb(data, raw=False)
@@ -91,6 +92,17 @@ class IpcServer:
             tool = msg.get("tool", "")
 
             if msg_type == MSG_TYPE_EVENT and tool == EVENT_TOOL_PONG:
+                # 版本协商: 验证 B 侧 schema_version 与 A 侧一致
+                b_version = msg.get("schema_version")
+                if b_version != SCHEMA_VERSION:
+                    logger.error(
+                        f"[ipc-server] schema version mismatch! A={SCHEMA_VERSION} B={b_version}. "
+                        "Disconnecting — 两侧必须升级到相同版本。"
+                    )
+                    self._state.ipc_connected = False
+                    if self._writer and not self._writer.is_closing():
+                        self._writer.close()
+                    return
                 self._last_pong = time.time()
                 self._state.last_pong_at = self._last_pong
                 if not self._state.ipc_connected:
@@ -152,6 +164,17 @@ class IpcServer:
     async def stop(self):
         """关停 server。"""
         self._running = False
+        # 取消后台 task (ping_loop / pong_watchdog)
+        for t in self._tasks:
+            if not t.done():
+                t.cancel()
+        # 等待 task 退出 (忽略 CancelledError)
+        for t in self._tasks:
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass
+        self._tasks.clear()
         if self._writer and not self._writer.is_closing():
             self._writer.close()
         if self._server:

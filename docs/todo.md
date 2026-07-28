@@ -6,6 +6,26 @@
 
 最近更新：2026-07-28
 
+> **2026-07-28 (代码审查修复 #2)**:
+> 🔴 B1: `TelemetryBuffer.stop()` 先 flush 残留数据再退出 + 提取 `_build_telemetry_rows` / `_flush_batch`
+> 🔴 B2: A 侧 IPC `_recv_loop` 帧过大时 `return` 断开连接（修复帧边界错乱）
+> 🔴 B3: A 侧 `IpcServer` 保存后台 task 引用，`stop()` 中取消并 await
+> 🟡 I1: `sim-drone` 四元数注释标注 ROS (x,y,z,w) vs 接口冻结 (w,x,y,z)
+> 🟡 I2: B 侧 `dispatch._handle_call` 传入 `call_id` 以便后续启用 result 配对
+> 🟡 I3: `bridge.py` `_handle_pose` 添加 payload 字段映射注释 + 注入 TelemetryBuffer
+> 🟡 I4: A 侧 `_recv_loop` pong 处理中验证 `schema_version` 一致性
+> 🟡 I5: `TelemetryBuffer._flush_batch` 提取复用 + 复用 session (减少连接创建)
+> 🟡 I6: `B_SIDE_COMPONENTS` 新增 `TO_EGO_PLANNER` / `TO_LIDAR` (提前路由)
+> 🟢 N1: `models.py` `utcnow` → `datetime.now(timezone.utc)`
+> 🟢 N2: `serve.py` 移除重复 `SO_REUSEADDR` (已由 `allow_reuse_address=True` 设置)
+> 🟢 N3: `get_session()` 注释标注阶段 G/H FastAPI Depends 用途
+> 🟢 N4: `sim-drone` 提取 `MAX_DT = 0.2` 常量
+> 🟢 N5: `_StubSmallModel` 注释标注阶段 F 迁移目标 `backend-B/small_model/component.py`
+> 💡 S1: `bridge._handle_pose` 注入 `TelemetryBuffer` (pose 数据入遥测缓冲)
+> 💡 S2: `run_backend_b.sh` 添加 Python 版本检查警告
+> 💡 S3: 创建 `run_tests.sh` 全量测试脚本
+> 💡 S4: 修复测试 config 路径 (从 CWD 相对改为 `_PROJ_ROOT` 绝对)
+
 > **2026-07-28**: 阶段E S1 验收通过 — sim-drone 假无人机 catkin_make 编译成功；6项测试全部通过 (连续setpoint移动/到达悬停/边界夹紧/返航/超时悬停/IMU发布)。
 
 > **2026-07-27 (代码审查+修复)**: 

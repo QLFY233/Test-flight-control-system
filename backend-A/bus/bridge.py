@@ -67,8 +67,14 @@ async def dispatch_b_event(msg: dict):
 
 
 # ── B→A event handlers (stub in stage C, full in stage G/H) ──
+#
+# payload 字段映射 (接口冻结 §3 §5):
+#   B→A event 使用 camelCase 键名 (angularVel, flightStatus, actionIndex, etc.)
+#   此处转换为内部 snake_case 后调用 state / bus 接口
+#   pose payload 字段顺序必须为 [pos, quat(w,x,y,z), vel, accel, angularVel, ts]
 
 _state_ref = None  # 由 lifecycle 设置
+_tel_buffer_ref = None  # 由 lifecycle 设置，用于 pose 注入遥测缓冲
 
 
 def set_state(state):
@@ -76,16 +82,38 @@ def set_state(state):
     _state_ref = state
 
 
+def set_telemetry_buffer(buf):
+    """设置 TelemetryBuffer 引用 (由 lifecycle 调用)。"""
+    global _tel_buffer_ref
+    _tel_buffer_ref = buf
+
+
 async def _handle_pose(payload: dict):
+    """B→A pose event (10Hz)。
+    更新 AppState.current_pose 并注入 TelemetryBuffer。
+    payload 键名: pos, quat([w,x,y,z]), vel, accel, angularVel, ts (camelCase)。
+    """
     if _state_ref:
-        await _state_ref.update_pose(
-            payload.get("pos", [0, 0, 0]),
-            payload.get("quat", [1, 0, 0, 0]),
-            payload.get("vel", [0, 0, 0]),
-            payload.get("accel", [0, 0, 0]),
-            payload.get("angularVel", [0, 0, 0]),
-            payload.get("ts", time.time()),
-        )
+        pos = payload.get("pos", [0, 0, 0])
+        quat = payload.get("quat", [1, 0, 0, 0])
+        vel = payload.get("vel", [0, 0, 0])
+        accel = payload.get("accel", [0, 0, 0])
+        angular_vel = payload.get("angularVel", [0, 0, 0])
+        ts = payload.get("ts", time.time())
+
+        await _state_ref.update_pose(pos, quat, vel, accel, angular_vel, ts)
+
+        # 注入遥测缓冲 (接口冻结 §5.1: pose 数据应入遥测缓冲/历史库)
+        if _tel_buffer_ref and _state_ref.session_id:
+            await _tel_buffer_ref.append({
+                "session_id": _state_ref.session_id,
+                "t": ts,
+                "pos": pos,
+                "quat": quat,
+                "vel": vel,
+                "accel": accel,
+                "angular_vel": angular_vel,
+            })
 
 
 async def _handle_telemetry(payload: dict):

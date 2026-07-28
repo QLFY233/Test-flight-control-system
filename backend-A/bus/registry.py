@@ -6,11 +6,12 @@ from bus.protocol import (
     TO_ALPHA, TO_BETA,
     TO_FFT_ANALYZER, TO_STATS, TO_FILTER,
     TO_HISTORY_QUERY, TO_DASHBOARD_DRIVER,
-    TO_SMALL_MODEL, TO_MONITOR,
+    TO_SMALL_MODEL, TO_MONITOR, TO_EGO_PLANNER, TO_LIDAR,
 )
 
 # B 侧组件标识 — bridge 用
-B_SIDE_COMPONENTS = {TO_SMALL_MODEL, TO_MONITOR}
+# ego_planner / lidar 阶段2/4 注册，提前加入路由以支持跨进程转发
+B_SIDE_COMPONENTS = {TO_SMALL_MODEL, TO_MONITOR, TO_EGO_PLANNER, TO_LIDAR}
 
 _registry: dict[str, dict] = {}
 

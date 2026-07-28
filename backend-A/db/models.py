@@ -17,7 +17,7 @@ class Environment(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
     data = Column(Text, nullable=False)  # JSON blob
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
     sessions = relationship("FlightSession", back_populates="environment")
 
@@ -81,7 +81,7 @@ class Conversation(Base):
     role = Column(String(20), nullable=False)        # 'human' / 'agent' / 'tool_call' / 'tool_result'
     content = Column(Text, nullable=False)
     metadata_json = Column("metadata", Text, nullable=True)  # JSON: {tool_name, tool_args, ...}
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
     __table_args__ = (
         Index("idx_conv_session", "session_id"),

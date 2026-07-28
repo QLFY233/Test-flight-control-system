@@ -44,6 +44,7 @@ class Dispatch:
         tool = msg.get("tool")
         args = msg.get("args", {})
         to = msg.get("to", "")
+        call_id = msg.get("call_id", "")  # 保留以便后续启用 result 配对
 
         if tool == CALL_TOOL_PING:
             self._handle_ping()
@@ -56,7 +57,7 @@ class Dispatch:
                 CALL_TOOL_ABORT: "abort",
                 CALL_TOOL_HOVER: "hover",
             }[tool]
-            result = bus_router.call(to=TO_SMALL_MODEL, tool=sm_tool, args=args, _from="A")
+            result = bus_router.call(to=TO_SMALL_MODEL, tool=sm_tool, args=args, _from="A", call_id=call_id)
             # 暂不回 result 给 A (fire-and-forget 先导)
             if result.get("msg_type") == MSG_TYPE_ERROR:
                 logger.error(f"[dispatch] small_model error: {result}")
