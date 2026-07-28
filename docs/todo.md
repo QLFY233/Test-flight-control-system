@@ -4,7 +4,7 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-07-28
+最近更新：2026-07-28 15:30 (代码审查修复 #2)
 
 > **2026-07-28 (代码审查修复 #2)**:
 > 🔴 B1: `TelemetryBuffer.stop()` 先 flush 残留数据再退出 + 提取 `_build_telemetry_rows` / `_flush_batch`
@@ -76,14 +76,14 @@
 | venv-A 创建（Py3.10+ FastAPI/Pydantic AI/SQLAlchemy） | ✅ | — | 2026-07-27 |
 | venv-B 创建（Py3.8 `--system-site-packages` + pyyaml） | ✅ | — | 2026-07-27 |
 | 系统依赖 apt（python3-msgpack 0.6.2 / python3-scipy） | ✅ | — | 2026-07-27 |
-| `run_backend_b.sh`（先 source ROS 再 activate venv） | ✅ | — | 2026-07-27 |
+| `run_backend_b.sh`（先 source ROS 再 activate venv + Python 版本检查） | ✅ | — | 2026-07-28 |
 | `config/field.yaml`（仅 boundary+home，obstacles 删） | ✅ | — | 2026-07-27 |
 | `config/default_constraints.yaml`（keep_clear_distance 删） | ✅ | — | 2026-07-27 |
 | `venv-*-requirements.txt` + `.env.example` | ✅ | — | 2026-07-27 |
 | `backend-A/bus/protocol.py` + `backend-B/bus/protocol.py`（SCHEMA_VERSION=2 逐字一致） | ✅ | — | 2026-07-27 |
 | `backend-A/ipc/frames.py` + `backend-B/ipc/frames.py`（msgpack use_bin_type=True） | ✅ | — | 2026-07-27 |
-| **✅ S0 验收**:msgpack 帧 A↔B 互解 + grep 确认无废弃概念残留 | ✅ | — | 2026-07-27 |
-| ⚠ **代码审查新增**: `backend-A/tests/` + `backend-B/tests/` 测试目录创建 + 单元测试 | ✅ | — | 2026-07-27 目录已创建 |
+| **✅ S0 验收**:msgpack 帧 A↔B 互解 + grep 确认无废弃概念残留 + 版本协商 | ✅ | — | 2026-07-28 |
+| ⚠ **代码审查新增**: `backend-A/tests/` + `backend-B/tests/` 测试目录 + 单元测试 + `run_tests.sh` | ✅ | — | 2026-07-28 |
 
 ### 阶段B — 后端 B 脊柱
 | 模块 | 状态 | 负责人 | 最近更新 |
@@ -93,23 +93,23 @@
 | `backend-B/bus/registry.py`（small_model/monitor 注册） | ✅ | — | 2026-07-27 |
 | `backend-B/bus/router.py`（同步 bus.call） | ✅ | — | 2026-07-27 |
 | `backend-B/ipc/client.py`（恒定时间重连 1s） | ✅ | — | 2026-07-27 |
-| `backend-B/ipc/dispatch.py`（ping→pong） | ✅ | — | 2026-07-27 |
-| `backend-B/lifecycle.py` + `main.py`（启动6步 + 关停） | ✅ | — | 2026-07-27 |
-| ⚠ **代码审查修复**: `_StubSmallModel/_StubMonitor` | ✅ | — | 2026-07-27 |
+| `backend-B/ipc/dispatch.py`（ping→pong + call_id 传递） | ✅ | — | 2026-07-28 |
+| `backend-B/lifecycle.py` + `main.py`（启动6步 + 关停） | ✅ | — | 2026-07-28 |
+| ⚠ **代码审查修复**: `_StubSmallModel/_StubMonitor` 安全兜底 + 阶段F迁移注释 | ✅ | — | 2026-07-28 |
 
 ### 阶段C — 后端 A 脊柱
 | 模块 | 状态 | 负责人 | 最近更新 |
 |---|---|---|---|
 | `backend-A/state.py`（AppState + asyncio.Lock） | ✅ | — | 2026-07-27 |
 | `backend-A/config_loader.py`（alpha_loop_period 等） | ✅ | — | 2026-07-27 |
-| `backend-A/bus/registry.py` + `router.py`（async bus.call） | ✅ | — | 2026-07-27 |
-| `backend-A/bus/bridge.py`（A↔B 跨进程路由） | ✅ | — | 2026-07-27 |
-| `backend-A/ipc/server.py`（bind+unlink+2s ping/5s pong） | ✅ | — | 2026-07-27 |
-| `backend-A/db/models.py`（4 表，alpha_actions 非 alpha_trajectory） | ✅ | — | 2026-07-27 |
-| `backend-A/db/session.py`（aiosqlite + create_all） | ✅ | — | 2026-07-27 |
-| `backend-A/db/repos.py`（仓储 + TelemetryBuffer 每秒 flush） | ✅ | — | 2026-07-27 |
+| `backend-A/bus/registry.py` + `router.py`（async bus.call + B_SIDE_COMPONENTS 完整） | ✅ | — | 2026-07-28 |
+| `backend-A/bus/bridge.py`（A↔B 跨进程路由 + TelemetryBuffer 注入） | ✅ | — | 2026-07-28 |
+| `backend-A/ipc/server.py`（bind+unlink+2s ping/5s pong + 版本协商 + task管理） | ✅ | — | 2026-07-28 |
+| `backend-A/db/models.py`（4 表，utcnow→timezone.utc） | ✅ | — | 2026-07-28 |
+| `backend-A/db/session.py`（aiosqlite + create_all + get_session 注释） | ✅ | — | 2026-07-28 |
+| `backend-A/db/repos.py`（仓储 + TelemetryBuffer 每秒 flush + stop 残留flush + _flush_batch 复用） | ✅ | — | 2026-07-28 |
 | `backend-A/main.py` + `web/static.py`（StaticFiles 最后挂载） | ✅ | — | 2026-07-27 |
-| `backend-A/lifecycle.py`（启动9步 + 关停） | ✅ | — | 2026-07-27 |
+| `backend-A/lifecycle.py`（启动9步 + 关停 + set_telemetry_buffer） | ✅ | — | 2026-07-28 |
 
 ### 阶段D — 前端骨架（并行）
 | 模块 | 状态 | 负责人 | 最近更新 |
@@ -117,13 +117,13 @@
 | P0 项目骨架（index.html + state/router/config/ws/app） | ✅ | — | 2026-07-24 |
 | P1 布局 + 通用组件（StatusBar/ChatPanel/ConnectionOverlay） | ✅ | — | 2026-07-24 |
 | 懒加载重构（44→13 初始模块 + 高 backlog 服务器） | ✅ | pi agent | 2026-07-24 |
-| `frontend/serve.py`（TCP backlog 128，替代 python3 -m http.server） | ✅ | pi agent | 2026-07-24 |
+| `frontend/serve.py`（TCP backlog 128，移除重复 SO_REUSEADDR） | ✅ | pi agent | 2026-07-28 |
 
 ### 阶段E — 假无人机（并行）
 | 模块 | 状态 | 负责人 | 最近更新 |
 |---|---|---|---|
 | `sim-drone/` catkin 包（CMakeLists/package.xml/launch） | ✅ | — | 2026-07-27 检查修复 |
-| `fake_drone_node.py`（运动学积分 + 50Hz 发布 + 超时悬停 + 边界自保） | ✅ | — | 2026-07-27 代码审查修复 |
+| `fake_drone_node.py`（运动学积分 + 50Hz + 超时悬停 + 边界自保 + quat 注释 + MAX_DT 常量） | ✅ | — | 2026-07-28 |
 | **✅ S1 验收**: roscore + catkin_make + 连续setpoint移动/到达悬停/边界夹紧/返航/超时悬停/IMU 全通过 | ✅ | — | 2026-07-28 |
 
 ### 阶段F — B 侧 small_model stub + ROS 桥
@@ -209,9 +209,9 @@
 ---
 
 ## 联调阶段打卡（S0~S8）
-- [ ] S0 环境/msgpack 互通
-- [ ] S1 假无人机单跑
-- [ ] S2 B 单跑（stub）
+- [x] S0 环境/msgpack 互通 — ✅ A/B 测试均通过 (47+58)
+- [x] S1 假无人机单跑 — ✅ catkin_make 编译 + 6项测试通过
+- [ ] S2 B 单跑（stub）— ⬜ 阶段F 待开发
 - [ ] S3 A↔B IPC 通
 - [ ] S4 reject 回路
 - [ ] S5 完整链路（β→α→假无人机）
