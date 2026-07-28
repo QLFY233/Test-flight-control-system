@@ -51,13 +51,13 @@
 ### 阶段A — 基础设施与协议常量
 | 模块 | 状态 | 负责人 | 最近更新 |
 |---|---|---|---|
-| venv-A 创建（Py3.10+ FastAPI/Pydantic AI/SQLAlchemy） | ⬜ | — | — |
-| venv-B 创建（Py3.8 `--system-site-packages` + pyyaml） | ⬜ | — | — |
-| 系统依赖 apt（python3-msgpack 0.6.2 / python3-scipy） | ⬜ | — | — |
-| `run_backend_b.sh`（先 source ROS 再 activate venv） | ⬜ | — | — |
-| `config/field.yaml`（仅 boundary+home，obstacles 删） | ⬜ | — | — |
-| `config/default_constraints.yaml`（keep_clear_distance 删） | ⬜ | — | — |
-| `venv-*-requirements.txt` + `.env.example` | ⬜ | — | — |
+| venv-A 创建（Py3.10+ FastAPI/Pydantic AI/SQLAlchemy） | ✅ | — | 2026-07-27 |
+| venv-B 创建（Py3.8 `--system-site-packages` + pyyaml） | ✅ | — | 2026-07-27 |
+| 系统依赖 apt（python3-msgpack 0.6.2 / python3-scipy） | ✅ | — | 2026-07-27 |
+| `run_backend_b.sh`（先 source ROS 再 activate venv） | ✅ | — | 2026-07-27 |
+| `config/field.yaml`（仅 boundary+home，obstacles 删） | ✅ | — | 2026-07-27 |
+| `config/default_constraints.yaml`（keep_clear_distance 删） | ✅ | — | 2026-07-27 |
+| `venv-*-requirements.txt` + `.env.example` | ✅ | — | 2026-07-27 |
 | `backend-A/bus/protocol.py` + `backend-B/bus/protocol.py`（SCHEMA_VERSION=2 逐字一致） | ✅ | — | 2026-07-27 |
 | `backend-A/ipc/frames.py` + `backend-B/ipc/frames.py`（msgpack use_bin_type=True） | ✅ | — | 2026-07-27 |
 | **✅ S0 验收**:msgpack 帧 A↔B 互解 + grep 确认无废弃概念残留 | ✅ | — | 2026-07-27 |
@@ -66,25 +66,28 @@
 ### 阶段B — 后端 B 脊柱
 | 模块 | 状态 | 负责人 | 最近更新 |
 |---|---|---|---|
-| `backend-B/state.py`（BState + pose_lock） | ⬜ | — | — |
-| `backend-B/config_loader.py` | ⬜ | — | — |
-| `backend-B/bus/registry.py`（small_model/monitor 注册） | ⬜ | — | — |
-| `backend-B/bus/router.py`（同步 bus.call） | ⬜ | — | — |
-| `backend-B/ipc/client.py`（恒定时间重连 1s） | ⬜ | — | — |
-| `backend-B/ipc/dispatch.py`（ping→pong） | ⬜ | — | — |
+| `backend-B/state.py`（BState + pose_lock） | ✅ | — | 2026-07-27 |
+| `backend-B/config_loader.py` | ✅ | — | 2026-07-27 |
+| `backend-B/bus/registry.py`（small_model/monitor 注册） | ✅ | — | 2026-07-27 |
+| `backend-B/bus/router.py`（同步 bus.call） | ✅ | — | 2026-07-27 |
+| `backend-B/ipc/client.py`（恒定时间重连 1s） | ✅ | — | 2026-07-27 |
+| `backend-B/ipc/dispatch.py`（ping→pong） | ✅ | — | 2026-07-27 |
+| `backend-B/lifecycle.py` + `main.py`（启动6步 + 关停） | ✅ | — | 2026-07-27 |
+| ⚠ **代码审查修复**: `_StubSmallModel/_StubMonitor` | ✅ | — | 2026-07-27 |
 
 ### 阶段C — 后端 A 脊柱
 | 模块 | 状态 | 负责人 | 最近更新 |
 |---|---|---|---|
-| `backend-A/state.py`（AppState + asyncio.Lock） | ⬜ | — | — |
-| `backend-A/config_loader.py`（alpha_loop_period 等） | ⬜ | — | — |
-| `backend-A/bus/registry.py` + `router.py`（async bus.call） | ⬜ | — | — |
-| `backend-A/bus/bridge.py`（A↔B 跨进程路由） | ⬜ | — | — |
-| `backend-A/ipc/server.py`（bind+unlink+2s ping/5s pong） | ⬜ | — | — |
-| `backend-A/db/models.py`（4 表，alpha_actions 非 alpha_trajectory） | ⬜ | — | — |
-| `backend-A/db/session.py`（aiosqlite + create_all） | ⬜ | — | — |
-| `backend-A/db/repos.py`（仓储 + TelemetryBuffer 每秒 flush） | ⬜ | — | — |
-| `backend-A/main.py` + `web/static.py`（StaticFiles 最后挂载） | ⬜ | — | — |
+| `backend-A/state.py`（AppState + asyncio.Lock） | ✅ | — | 2026-07-27 |
+| `backend-A/config_loader.py`（alpha_loop_period 等） | ✅ | — | 2026-07-27 |
+| `backend-A/bus/registry.py` + `router.py`（async bus.call） | ✅ | — | 2026-07-27 |
+| `backend-A/bus/bridge.py`（A↔B 跨进程路由） | ✅ | — | 2026-07-27 |
+| `backend-A/ipc/server.py`（bind+unlink+2s ping/5s pong） | ✅ | — | 2026-07-27 |
+| `backend-A/db/models.py`（4 表，alpha_actions 非 alpha_trajectory） | ✅ | — | 2026-07-27 |
+| `backend-A/db/session.py`（aiosqlite + create_all） | ✅ | — | 2026-07-27 |
+| `backend-A/db/repos.py`（仓储 + TelemetryBuffer 每秒 flush） | ✅ | — | 2026-07-27 |
+| `backend-A/main.py` + `web/static.py`（StaticFiles 最后挂载） | ✅ | — | 2026-07-27 |
+| `backend-A/lifecycle.py`（启动9步 + 关停） | ✅ | — | 2026-07-27 |
 
 ### 阶段D — 前端骨架（并行）
 | 模块 | 状态 | 负责人 | 最近更新 |
