@@ -4,7 +4,9 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-07-27
+最近更新：2026-07-28
+
+> **2026-07-28**: 阶段E S1 验收通过 — sim-drone 假无人机 catkin_make 编译成功；6项测试全部通过 (连续setpoint移动/到达悬停/边界夹紧/返航/超时悬停/IMU发布)。
 
 > **2026-07-27 (代码审查+修复)**: 
 > 🔴 B1: `_EmptyComponent` 改为 `_StubSmallModel/_StubMonitor`，abort/hover 有安全兜底
@@ -34,7 +36,7 @@
 | 阶段B | 后端 B 脊柱 | ✅ | BState + config_loader + bus(registry/router) + IPC(client/dispatch) + lifecycle |
 | 阶段C | 后端 A 脊柱 | ✅ | AppState + config_loader + bus(registry/router/bridge) + IPC server + DB(models/session/repos/TelemetryBuffer) + FastAPI 骨架 + StaticFiles |
 | 阶段D | 前端骨架 | ✅ | P0~P11 全部完成 + Brutalist 重设计 (redesign/brutalist-v1) |
-| 阶段E | 假无人机 | 🚧 | sim-drone 脚本已实现, 待 catkin_make + S1 验证 |
+| 阶段E | 假无人机 | ✅ | S1 验收通过：catkin_make 编译 + 6项测试 |
 | 阶段F | B 侧 small_model stub + ROS 桥 | ⬜ | S2 |
 | 阶段G | A↔B IPC 通 + α Agent | ⬜ | S3 + S5 前半 |
 | 阶段H | β Agent + SSE + 提议审核 | ⬜ | S5 完整 |
@@ -102,7 +104,7 @@
 |---|---|---|---|
 | `sim-drone/` catkin 包（CMakeLists/package.xml/launch） | ✅ | — | 2026-07-27 检查修复 |
 | `fake_drone_node.py`（运动学积分 + 50Hz 发布 + 超时悬停 + 边界自保） | ✅ | — | 2026-07-27 代码审查修复 |
-| **✅ S1 验收**:roscore + 手动 pub setpoint → 移动+回传+超时悬停 | ⬜ | — | — |
+| **✅ S1 验收**: roscore + catkin_make + 连续setpoint移动/到达悬停/边界夹紧/返航/超时悬停/IMU 全通过 | ✅ | — | 2026-07-28 |
 
 ### 阶段F — B 侧 small_model stub + ROS 桥
 | 模块 | 状态 | 负责人 | 最近更新 |
