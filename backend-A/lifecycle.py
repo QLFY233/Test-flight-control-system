@@ -10,6 +10,7 @@ from bus.bridge import set_state as bridge_set_state
 from bus.bridge import set_telemetry_buffer
 from ipc.server import IpcServer
 from db.session import create_all as db_create_all
+from db.session import async_session as db_session_factory
 from db.repos import TelemetryBuffer
 
 logger = logging.getLogger(__name__)
@@ -23,10 +24,12 @@ class Lifecycle:
         self.state: AppState | None = None
         self.ipc_server: IpcServer | None = None
         self.tel_buffer: TelemetryBuffer | None = None
+        self._alpha_loop = None
+        self._beta_agent = None
 
     async def startup(self):
         """FastAPI lifespan startup。"""
-        logger.info("[lifecycle] === Backend-A starting ===")
+        logger.info("[lifecycle] === Backend-A starting (stage H) ===")
 
         # 1. Load config
         config = load_config(self.config_dir)
@@ -40,27 +43,93 @@ class Lifecycle:
         await db_create_all()
         logger.info("[lifecycle] DB initialized")
 
-        # 4. Init A bus registry (先导 stubs, 阶段 G/H 补真实组件)
+        # 4. Init A bus registry
         bus_registry.init_registry()
         logger.info("[lifecycle] bus registry initialized")
 
         # 5. Start TelemetryBuffer
         self.tel_buffer = TelemetryBuffer()
         await self.tel_buffer.start()
-        set_telemetry_buffer(self.tel_buffer)  # 注入 bridge 以便 pose 写入遥测缓冲
+        set_telemetry_buffer(self.tel_buffer)
         logger.info("[lifecycle] TelemetryBuffer started")
 
-        # 6. Start IPC server
+        # 6. Start IPC server (A↔B bridge)
         self.ipc_server = IpcServer(self.state)
         await self.ipc_server.start()
         logger.info("[lifecycle] IPC server started")
 
-        # 7-9: α/β/analytics (阶段 G/H)
-        logger.info("[lifecycle] Backend-A ready")
+        # 7. Start α Agent loop (阶段G)
+        await self._start_alpha()
+
+        # 8. Create β Agent (阶段H)
+        await self._start_beta()
+
+        # 9. Wire web context (阶段H)
+        self._init_web_context()
+
+        logger.info("[lifecycle] Backend-A ready (stage H)")
+
+    async def _start_alpha(self):
+        """创建并启动 α loop。"""
+        try:
+            from agents.alpha import make_translator, AlphaLoop
+            translator = make_translator()
+            self._alpha_loop = AlphaLoop(self.state, translator)
+            from bus.bridge import set_alpha_loop
+            set_alpha_loop(self._alpha_loop)
+            await self._alpha_loop.start()
+        except Exception as e:
+            logger.warning(f"[lifecycle] α agent not started (no API key?): {e}")
+
+    async def _start_beta(self):
+        """创建 β Agent 并注入 SSE handler。"""
+        try:
+            from agents.beta import create_beta_agent
+            self._beta_agent = create_beta_agent()
+            from web.sse import set_beta_agent
+            set_beta_agent(self._beta_agent)
+            logger.info("[lifecycle] β agent created")
+        except Exception as e:
+            logger.warning(f"[lifecycle] β agent not created: {e}")
+
+    def _init_web_context(self):
+        """注入 REST/WS 上下文依赖。"""
+        try:
+            # REST routes 需要 state + db
+            from web.routes import set_rest_context
+            set_rest_context(self.state, db_session_factory)
+
+            # WS 需要 state
+            from web.ws import set_ws_context
+            set_ws_context(self.state)
+
+            # β tools 需要 state + bus + db
+            from tools.beta_tools import set_tool_context
+            from bus.router import call as bus_call
+            set_tool_context(self.state, bus_call, db_session_factory)
+
+            # Bridge pose/alert/reject → WS broadcast
+            from bus.bridge import set_ws_broadcast
+            from web.ws import (
+                broadcast_pose, broadcast_alert, broadcast_status,
+                broadcast_reject, broadcast_link_status,
+            )
+            set_ws_broadcast(
+                broadcast_pose, broadcast_alert, broadcast_status,
+                broadcast_reject, broadcast_link_status,
+            )
+
+            logger.info("[lifecycle] web context wired (REST/WS/SSE/tools)")
+        except Exception as e:
+            logger.warning(f"[lifecycle] web context wiring failed: {e}")
 
     async def shutdown(self):
         """FastAPI lifespan shutdown。"""
         logger.info("[lifecycle] shutting down...")
+
+        # 停 α loop
+        if self._alpha_loop:
+            await self._alpha_loop.stop()
 
         # 关 IPC
         if self.ipc_server:

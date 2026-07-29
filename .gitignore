@@ -39,3 +39,4 @@ Thumbs.db
 .venv-A/
 .venv-B/
 shared/__pycache__
+test-results/

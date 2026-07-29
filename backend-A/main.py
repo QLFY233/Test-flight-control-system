@@ -52,10 +52,17 @@ def create_app(config_dir: str = "config") -> FastAPI:
 
     app = FastAPI(title="试飞控制系统 — Backend A", lifespan=lifespan)
 
-    # REST routes (先导 stub)
-    @app.get("/api/health")
-    async def health():
-        return {"status": "ok", "backend": "A"}
+    # SSE (β Chat) — 先于 StaticFiles
+    from web.sse import router as sse_router
+    app.include_router(sse_router)
+
+    # REST routes — 先于 StaticFiles
+    from web.routes import router as rest_router
+    app.include_router(rest_router)
+
+    # WebSocket — 先于 StaticFiles
+    from web.ws import router as ws_router
+    app.include_router(ws_router)
 
     # StaticFiles — 必须在所有 /api/* 和 /ws 之后挂载
     from web.static import mount_static

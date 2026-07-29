@@ -73,6 +73,7 @@ class IpcServer:
             self._state.ipc_connected = False
             self._reader = None
             self._writer = None
+            await self._broadcast_link("A-B", "down", "B disconnected")
             logger.info("[ipc-server] B disconnected")
 
     async def _recv_loop(self, reader: asyncio.StreamReader):
@@ -108,6 +109,8 @@ class IpcServer:
                 if not self._state.ipc_connected:
                     self._state.ipc_connected = True
                     logger.info("[ipc-server] B verified (first pong received)")
+                    # broadcast link_status up
+                    await self._broadcast_link("A-B", "up")
             elif msg_type == MSG_TYPE_EVENT:
                 # B→A event → 注入 A 总线
                 await dispatch_b_event(msg)
@@ -160,6 +163,14 @@ class IpcServer:
                         self._writer.close()
                     self._reader = None
                     self._writer = None
+
+    async def _broadcast_link(self, link: str, state: str, detail: str = ""):
+        """广播链路状态到前端 WS。"""
+        try:
+            from web.ws import broadcast_link_status
+            await broadcast_link_status(link, state, detail if detail else None)
+        except Exception:
+            pass
 
     async def stop(self):
         """关停 server。"""

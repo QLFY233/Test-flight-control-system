@@ -75,6 +75,14 @@ async def dispatch_b_event(msg: dict):
 
 _state_ref = None  # 由 lifecycle 设置
 _tel_buffer_ref = None  # 由 lifecycle 设置，用于 pose 注入遥测缓冲
+_alpha_loop_ref = None  # 由 lifecycle 设置，用于 reject 注入 α 上下文
+
+# WS broadcast 回调 (由 lifecycle 注入)
+_ws_pose = None
+_ws_alert = None
+_ws_status = None
+_ws_reject = None
+_ws_link = None
 
 
 def set_state(state):
@@ -88,32 +96,51 @@ def set_telemetry_buffer(buf):
     _tel_buffer_ref = buf
 
 
+def set_alpha_loop(loop):
+    """设置 α loop 引用 (由 lifecycle 调用，用于 reject 注入)。"""
+    global _alpha_loop_ref
+    _alpha_loop_ref = loop
+
+
+def set_ws_broadcast(pose_fn, alert_fn, status_fn, reject_fn=None, link_fn=None):
+    """注入 WebSocket broadcast 函数 (由 lifecycle 调用)。"""
+    global _ws_pose, _ws_alert, _ws_status, _ws_reject, _ws_link
+    _ws_pose = pose_fn
+    _ws_alert = alert_fn
+    _ws_status = status_fn
+    _ws_reject = reject_fn
+    _ws_link = link_fn
+
+
 async def _handle_pose(payload: dict):
     """B→A pose event (10Hz)。
-    更新 AppState.current_pose 并注入 TelemetryBuffer。
-    payload 键名: pos, quat([w,x,y,z]), vel, accel, angularVel, ts (camelCase)。
+    更新 AppState.current_pose, 注入 TelemetryBuffer, 广播 WS。
     """
-    if _state_ref:
-        pos = payload.get("pos", [0, 0, 0])
-        quat = payload.get("quat", [1, 0, 0, 0])
-        vel = payload.get("vel", [0, 0, 0])
-        accel = payload.get("accel", [0, 0, 0])
-        angular_vel = payload.get("angularVel", [0, 0, 0])
-        ts = payload.get("ts", time.time())
+    pos = payload.get("pos", [0, 0, 0])
+    quat = payload.get("quat", [1, 0, 0, 0])
+    vel = payload.get("vel", [0, 0, 0])
+    accel = payload.get("accel", [0, 0, 0])
+    angular_vel = payload.get("angularVel", [0, 0, 0])
+    ts = payload.get("ts", time.time())
 
+    if _state_ref:
         await _state_ref.update_pose(pos, quat, vel, accel, angular_vel, ts)
 
-        # 注入遥测缓冲 (接口冻结 §5.1: pose 数据应入遥测缓冲/历史库)
-        if _tel_buffer_ref and _state_ref.session_id:
-            await _tel_buffer_ref.append({
-                "session_id": _state_ref.session_id,
-                "t": ts,
-                "pos": pos,
-                "quat": quat,
-                "vel": vel,
-                "accel": accel,
-                "angular_vel": angular_vel,
-            })
+    # WS broadcast
+    if _ws_pose:
+        try:
+            await _ws_pose(pos, quat, vel, accel, angular_vel, ts)
+        except Exception:
+            pass
+
+    # 遥测缓冲
+    if _tel_buffer_ref and _state_ref and _state_ref.session_id:
+        await _tel_buffer_ref.append({
+            "session_id": _state_ref.session_id,
+            "t": ts,
+            "pos": pos, "quat": quat, "vel": vel,
+            "accel": accel, "angular_vel": angular_vel,
+        })
 
 
 async def _handle_telemetry(payload: dict):
@@ -129,7 +156,29 @@ async def _handle_status(payload: dict):
 
 async def _handle_reject(payload: dict):
     logger.warning(f"[bridge] REJECT: reason={payload.get('reason')} actionIndex={payload.get('actionIndex')}")
+    # WS broadcast reject
+    if _ws_reject:
+        try:
+            await _ws_reject(
+                payload.get("reason", "unknown"),
+                payload.get("actionIndex", 0),
+                payload.get("suggestedAction"),
+            )
+        except Exception:
+            pass
+    # α 下轮 tick 会发送 hover (安全默认)
 
 
 async def _handle_alert(payload: dict):
     logger.warning(f"[bridge] ALERT: level={payload.get('level')} code={payload.get('code')} detail={payload.get('detail')}")
+    # WS broadcast
+    if _ws_alert:
+        try:
+            await _ws_alert(
+                payload.get("level", "warning"),
+                payload.get("code", "unknown"),
+                payload.get("detail", ""),
+                payload.get("suggestion"),
+            )
+        except Exception:
+            pass

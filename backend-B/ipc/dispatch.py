@@ -57,7 +57,7 @@ class Dispatch:
                 CALL_TOOL_ABORT: "abort",
                 CALL_TOOL_HOVER: "hover",
             }[tool]
-            result = bus_router.call(to=TO_SMALL_MODEL, tool=sm_tool, args=args, _from="A", call_id=call_id)
+            result = bus_router.call(to=TO_SMALL_MODEL, tool=sm_tool, args=args, _from="A")
             # 暂不回 result 给 A (fire-and-forget 先导)
             if result.get("msg_type") == MSG_TYPE_ERROR:
                 logger.error(f"[dispatch] small_model error: {result}")

@@ -9,6 +9,7 @@ class Store {
         this._listeners = new Map(); // path -> Set<callback>
         this._batchMode = false;
         this._batchChanges = [];
+        this._batchDepth = 0;
     }
 
     /**
@@ -61,24 +62,43 @@ class Store {
      * @param {Function} fn
      */
     batch(fn) {
+        this._batchDepth++;
+        const wasBatching = this._batchMode;
         this._batchMode = true;
-        this._batchChanges = [];
-        try {
-            fn();
-        } finally {
-            this._batchMode = false;
-            if (this._batchChanges.length > 0) {
-                // Notify for each unique top-level path
-                const notified = new Set();
-                for (const change of this._batchChanges) {
-                    if (!notified.has(change.path)) {
-                        notified.add(change.path);
-                        this._notify(change.path, change.value, change.oldValue);
-                    }
+        if (wasBatching) {
+            // Nested batch: just execute directly, outer batch owns the flush
+            try {
+                fn();
+            } finally {
+                this._batchDepth--;
+                if (this._batchDepth === 0) {
+                    this._batchMode = false;
+                    this._flushBatch();
                 }
-                this._batchChanges = [];
+            }
+        } else {
+            this._batchChanges = [];
+            try {
+                fn();
+            } finally {
+                this._batchDepth--;
+                this._batchMode = false;
+                if (this._batchChanges.length > 0) {
+                    this._flushBatch();
+                }
             }
         }
+    }
+
+    _flushBatch() {
+        const notified = new Set();
+        for (const change of this._batchChanges) {
+            if (!notified.has(change.path)) {
+                notified.add(change.path);
+                this._notify(change.path, change.value, change.oldValue);
+            }
+        }
+        this._batchChanges = [];
     }
 
     /**

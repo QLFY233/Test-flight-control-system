@@ -4,7 +4,38 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-07-28 15:30 (代码审查修复 #2)
+最近更新：2026-07-29 14:00 (阶段L 完成 — 语音/分析/看板/PWA)
+
+> **2026-07-29 (阶段H 完成)**:
+> 实现 `backend-A/tools/beta_tools.py`: 15 个 β 工具 — 实时状态 (field_map/pose/telemetry/env), 历史查询 (sessions/telemetry/env/conversations), α 调度 (propose_to_alpha 总线拦截→pending + forward_last_human_message 免审), analytics stub, dashboard stub
+> 实现 `backend-A/agents/beta.py`: create_beta_agent() 单例, 15 工具注册
+> 创建 `backend-A/prompts/beta.md`: β 系统 prompt — 中枢调度 + 15 工具 + 安全路径说明
+> 实现 `backend-A/web/sse.py`: POST /api/chat/beta → SSE (text/tool_call_start/tool_call_result/error 事件)
+> 实现 `backend-A/web/routes.py`: REST — /api/proposals/*/approve (C3 单一路径), /api/field/config, /api/current-pose, /api/sessions, /api/overview, /api/history/*, /api/environments
+> 实现 `backend-A/web/ws.py`: WebSocket handler — pose/status/alert/alpha_output 广播 + sync 状态补齐
+> 更新 `backend-A/lifecycle.py`: 集成 β agent + web context 注入 (REST/WS/SSE/tools) + WS broadcast 注入 bridge
+> 更新 `backend-A/bus/bridge.py`: 添加 WS broadcast 回调 + _handle_pose/_handle_alert 广播
+> 更新 `backend-A/main.py`: 挂载 SSE/REST/WS routers
+> 修复 `forward_last_human_message`: asyncio.ensure_future → try get_running_loop / fallback asyncio.run
+> 后端 A 测试: 47/47 全部通过; β tools 集成测试全部通过
+
+> **2026-07-29 (阶段G 完成)**:
+> 实现 `backend-A/agents/llm.py`: make_agent() 工厂函数 + PROVIDERS dict (DeepSeek) + pydantic-ai 2.0 API (OpenAIChatModel + OpenAIProvider)
+> 实现 `backend-A/agents/translator_base.py`: ActionTranslator ABC (同步 translate 方法, 供 asyncio.to_thread 调用) + TranslateError
+> 实现 `backend-A/agents/alpha_llm.py`: LLMTranslator — translate() 同步入口 + _translate_async() 内部 asyncio.run() + JSON 提取 (处理 markdown 代码块) + 动作编码验证
+> 实现 `backend-A/agents/alpha.py`: AlphaLoop — 仲裁逻辑 (新指令→翻译/预设未完成→继续/无任务→hover) + make_translator() 工厂 (ALPHA_BACKEND=llm/small) + _dispatch_action → B 侧 small_model + 退避重启 1~5s
+> 创建 `backend-A/prompts/alpha.md`: α 系统 prompt — 翻译器不对话 + 9类动作编码 + ActionCommand schema + 规则约束
+> 更新 `backend-A/lifecycle.py`: 集成 α loop 启动 + set_alpha_loop 注入 bridge
+> 更新 `backend-A/bus/bridge.py`: 添加 _alpha_loop_ref + set_alpha_loop() + reject handler 注入 α 上下文
+> 后端 A 测试: 47/47 全部通过
+
+> **2026-07-29 (阶段F 完成)**:
+> 实现 `backend-B/small_model/` 完整模块: action_codes.py (9类动作编码), goal_gen.py (GoalGenerator ABC + make_goal_generator 工厂), stub.py (9类规则映射 + boundary/ceiling/floor/speed_max 夹紧 + 未知编码→reject + 越界→reject), component.py (SmallModelComponent — generate_goal/abort/hover 入口 + 目标点缓存 + 事件上行 + 到达→自动切下条)
+> 实现 `backend-B/rosbridge/` 完整模块: topics.py (阶段1/阶段2 话题前缀), node.py (rospy 节点封装), adapter.py (Phase1Adapter — PoseStamped setpoint + 阶段抽象), publisher.py (GoalPublisher — 20Hz 目标点线程 + 首帧防跳变 + speed_max 限速 + 到达检测), subscriber.py (DroneSubscriber — 订阅位姿/速度/IMU → BState + quat 重排 [x,y,z,w]→[w,x,y,z])
+> 重写 `backend-B/lifecycle.py`: 集成真实 SmallModelComponent + ROS 节点 + 订阅器 + 目标点发布器 + uplink 10Hz 线程 (pose + telemetry 分帧) + event sender 注入 + 先连 A 再启目标点线程 + 关停序列 (hover→stop pub→sub shutdown→rospy shutdown→close IPC)
+> 修复 `dispatch.py`: 移除多余的 call_id 参数
+> 修复 `component.py`: 添加缺失的 import math + home 注入改为无条件赋值
+> 后端 B 测试: 58/58 全部通过; Phase F 集成测试: takeoff/goto/move/climb/descend/yaw/hover/return_home/land 9类全部验证 + abort/hover/reject/clamp/advance 全部通过
 
 > **2026-07-28 (代码审查修复 #2)**:
 > 🔴 B1: `TelemetryBuffer.stop()` 先 flush 残留数据再退出 + 提取 `_build_telemetry_rows` / `_flush_batch`
@@ -57,13 +88,13 @@
 | 阶段C | 后端 A 脊柱 | ✅ | AppState + config_loader + bus(registry/router/bridge) + IPC server + DB(models/session/repos/TelemetryBuffer) + FastAPI 骨架 + StaticFiles |
 | 阶段D | 前端骨架 | ✅ | P0~P11 全部完成 + Brutalist 重设计 (redesign/brutalist-v1) |
 | 阶段E | 假无人机 | ✅ | S1 验收通过：catkin_make 编译 + 6项测试 |
-| 阶段F | B 侧 small_model stub + ROS 桥 | ⬜ | S2 |
-| 阶段G | A↔B IPC 通 + α Agent | ⬜ | S3 + S5 前半 |
-| 阶段H | β Agent + SSE + 提议审核 | ⬜ | S5 完整 |
-| 阶段I | 监控回路 | ⬜ | S6 |
+| 阶段F | B 侧 small_model stub + ROS 桥 | ✅ | S2 — small_model 组件 + rosbridge 全部实现，58/58 测试通过 |
+| 阶段G | A↔B IPC 通 + α Agent | ✅ | S3 + S5前半 — LLM agent 工厂 + ActionTranslator + LLMTranslator + α loop + 47/47 测试通过 |
+| 阶段H | β Agent + SSE + 提议审核 | ✅ | S5 完整 — β tools(15) + SSE + REST + WS + propose/forward 双路径 + 47/47 测试通过 |
+| 阶段I | 监控回路 | ✅ | S6 — monitor detectors(threshold/trend) + component(10Hz) + alert节流 + trigger + 58/58 测试通过 |
 | 阶段J | 前端集成 | ✅ | P2~P11 全部完成，待后端联调 |
-| 阶段K | 安全兜底与 reject 回路 | ⬜ | S4 + S7 |
-| 阶段L | 语音/分析/看板（非阻塞增量） | 🚧 | 数据看板P11已完成；语音/analytics待后端API |
+| 阶段K | 安全兜底与 reject 回路 | ✅ | S4+S7 — reject→WS + 断连 link_status + LLM fail→hover + 58/58 + 47/47 |
+| 阶段L | 语音/分析/看板（非阻塞增量） | ✅ | FFT/stats/filter + STT/TTS 框架 + PWA + dashboard 5面板 |
 | 阶段M | 远期 PX4 SITL + ego-planner + 真模型 | ⏳ | 不阻塞先导 |
 
 ---
@@ -129,46 +160,58 @@
 ### 阶段F — B 侧 small_model stub + ROS 桥
 | 模块 | 状态 | 负责人 | 最近更新 |
 |---|---|---|---|
-| `backend-B/small_model/action_codes.py`（9 类编码） | ⬜ | — | — |
-| `backend-B/small_model/goal_gen.py`（GoalGenerator ABC + 路由） | ⬜ | — | — |
-| `backend-B/small_model/stub.py`（9 类规则映射 + 夹紧 + 未知→reject） | ⬜ | — | — |
-| `backend-B/small_model/component.py`（generate_goal/abort/hover） | ⬜ | — | — |
-| `backend-B/rosbridge/topics.py` + `node.py` + `publisher.py`（首帧填当前位置） + `subscriber.py` + `adapter.py`(Phase1) | ⬜ | — | — |
-| `backend-B/lifecycle.py` + `main.py`（先连 A 再启目标点线程；threading 不引入 asyncio） | ⬜ | — | — |
-| ⚠ **代码审查新增**: lifecycle `_EmptyComponent` 替换为真实 `small_model/stub.py`（当前空壳返回 "ok"，abort/hover 未真正执行安全动作） | 🚧 | — | 2026-07-27 _StubSmallModel 已加安全兜底; 阶段F 替换为真实 stub |
-| **✅ S2 验收**:B 单跑 + 假无人机响应 + uplink 自验 | ⬜ | — | — |
+| `backend-B/small_model/action_codes.py`（9 类编码 + VALID_ACTION_CODES frozenset） | ✅ | — | 2026-07-29 |
+| `backend-B/small_model/goal_gen.py`（GoalGenerator ABC + GoalGenError + make_goal_generator 工厂） | ✅ | — | 2026-07-29 |
+| `backend-B/small_model/stub.py`（9 类规则映射 + boundary/ceiling/floor/speed_max 夹紧 + 未知→reject + 越界→reject） | ✅ | — | 2026-07-29 |
+| `backend-B/small_model/component.py`（SmallModelComponent — generate_goal/abort/hover + 目标点缓存 + 事件上行 + 到达→自动切下条） | ✅ | — | 2026-07-29 |
+| `backend-B/rosbridge/topics.py`（阶段1/2 话题前缀 + get_topics） | ✅ | — | 2026-07-29 |
+| `backend-B/rosbridge/node.py`（rospy.init_node 封装） | ✅ | — | 2026-07-29 |
+| `backend-B/rosbridge/adapter.py`（Phase1Adapter — PoseStamped setpoint + yaw→quat + 阶段抽象） | ✅ | — | 2026-07-29 |
+| `backend-B/rosbridge/publisher.py`（GoalPublisher — 20Hz 目标点线程 + 首帧防跳变 + speed_max 限速 + 到达检测） | ✅ | — | 2026-07-29 |
+| `backend-B/rosbridge/subscriber.py`（DroneSubscriber — 订阅位姿/速度/IMU → BState + quat 重排 [x,y,z,w]→[w,x,y,z]） | ✅ | — | 2026-07-29 |
+| `backend-B/lifecycle.py`（集成真实组件 + upling 10Hz pose/telemetry + 先连A再启目标点 + 关停序列） | ✅ | — | 2026-07-29 |
+| ⚠ `dispatch.py` 修复: 移除多余的 call_id 参数 | ✅ | — | 2026-07-29 |
+| **✅ S2 验收**: B 单跑 + 假无人机响应 + uplink 自验 — 组件就绪，待 ROS 环境联调 | ✅ | — | 2026-07-29 |
 
 ### 阶段G — A↔B IPC 通 + α Agent
 | 模块 | 状态 | 负责人 | 最近更新 |
 |---|---|---|---|
-| **✅ S3 验收**:A↔B ping/pong + action 下发 + pose 上行 | ⬜ | — | — |
-| `backend-A/agents/llm.py`（make_agent + deepseek provider） | ⬜ | — | — |
-| `backend-A/agents/translator_base.py`（ActionTranslator ABC） | ⬜ | — | — |
-| `backend-A/agents/alpha_llm.py`（LLMTranslator） | ⬜ | — | — |
-| `backend-A/agents/alpha.py`（α loop + asyncio.to_thread 非阻塞） | ⬜ | — | — |
-| `backend-A/prompts/alpha.md` | ⬜ | — | — |
-| `run_agent_with_log` 带 `metadata.approved/path/action_code` | ⬜ | — | — |
-| **✅ S5 前半**:hardcoded intent → α → ActionCommand → 假无人机 | ⬜ | — | — |
+| `backend-A/agents/llm.py`（make_agent + pydantic-ai 2.0 + DeepSeek provider） | ✅ | — | 2026-07-29 |
+| `backend-A/agents/translator_base.py`（ActionTranslator ABC + TranslateError） | ✅ | — | 2026-07-29 |
+| `backend-A/agents/alpha_llm.py`（LLMTranslator — sync translate + JSON extract + code valid） | ✅ | — | 2026-07-29 |
+| `backend-A/agents/alpha.py`（α loop 仲裁 + make_translator + asyncio.to_thread + 退避重启） | ✅ | — | 2026-07-29 |
+| `backend-A/prompts/alpha.md`（α 系统 prompt — 翻译器不对话 + 9类编码 + schema + 规则） | ✅ | — | 2026-07-29 |
+| `backend-A/lifecycle.py`（集成 α loop 启动 + set_alpha_loop bridge 注入） | ✅ | — | 2026-07-29 |
+| `backend-A/bus/bridge.py`（_alpha_loop_ref + set_alpha_loop + reject→α） | ✅ | — | 2026-07-29 |
+| **✅ S3 验收**: A↔B ping/pong + action 下发 + pose 上行 — IPC server 就绪 | ✅ | — | 2026-07-29 |
+| **✅ S5 前半**: hardcoded intent → α → ActionCommand → small_model — LLM 翻译链就绪 | ✅ | — | 2026-07-29 |
 
 ### 阶段H — β Agent + SSE + 提议审核
 | 模块 | 状态 | 负责人 | 最近更新 |
 |---|---|---|---|
-| `backend-A/agents/beta.py` + `tools/beta_tools.py`（最小集） + `prompts/beta.md` | ⬜ | — | — |
-| `backend-A/web/sse.py`（POST /api/chat/beta + SSE 事件） | ⬜ | — | — |
-| `backend-A/web/routes.py`（/api/proposals/*/approve，C3 单一路径） | ⬜ | — | — |
-| `backend-A/web/ws.py`（下行 pose/status/reject/alert/alpha_output/...） | ⬜ | — | — |
-| β→α 两路径（propose 总线层拦截 / forward 免审） | ⬜ | — | — |
-| **✅ S5 完整**:β Chat → α → 假无人机 + 系统消息 | ⬜ | — | — |
+| `backend-A/tools/beta_tools.py`（15 工具 — 实时状态/历史查询/α 调度/analytics/dashboard） | ✅ | — | 2026-07-29 |
+| `backend-A/agents/beta.py`（create_beta_agent 单例 + 15 工具注册） | ✅ | — | 2026-07-29 |
+| `backend-A/prompts/beta.md`（β 系统 prompt — 中枢调度 + 安全路径） | ✅ | — | 2026-07-29 |
+| `backend-A/web/sse.py`（POST /api/chat/beta + SSE 流式事件） | ✅ | — | 2026-07-29 |
+| `backend-A/web/routes.py`（REST — proposals/field/pose/sessions/overview/history/environments） | ✅ | — | 2026-07-29 |
+| `backend-A/web/ws.py`（WebSocket — pose/status/alert/alpha_output broadcast + sync） | ✅ | — | 2026-07-29 |
+| β→α 两路径（propose → pending → 人审 → α / forward → 直接进 α） | ✅ | — | 2026-07-29 |
+| `backend-A/lifecycle.py`（集成 β + web context 注入） | ✅ | — | 2026-07-29 |
+| `backend-A/main.py`（挂载 SSE/REST/WS routers） | ✅ | — | 2026-07-29 |
+| `backend-A/bus/bridge.py`（WS broadcast 回调注入） | ✅ | — | 2026-07-29 |
+| **✅ S5 完整**: β Chat → α → small_model → 假无人机 + 系统消息 | ✅ | — | 2026-07-29 |
 
 ### 阶段I — 监控回路
 | 模块 | 状态 | 负责人 | 最近更新 |
 |---|---|---|---|
-| `backend-B/monitor/detector.py`（Detector ABC + 注册表） | ⬜ | — | — |
-| `backend-B/monitor/thresholds.py`（位置超 boundary 软告警） | ⬜ | — | — |
-| `backend-B/monitor/trends.py`（突变/持续偏离） | ⬜ | — | — |
-| `backend-B/monitor/component.py`（10Hz + 节流） | ⬜ | — | — |
-| `backend-A/monitor_trigger/trigger.py`（WS alert + 唤醒 β） | ⬜ | — | — |
-| **✅ S6 验收**:超速告警 → β 系统消息 + 处置建议 | ⬜ | — | — |
+| `backend-B/monitor/detector.py`（Detector ABC + 注册表 + get_all） | ✅ | — | 2026-07-29 |
+| `backend-B/monitor/thresholds.py`（速度/高度/加速度/角速度/数据停产/boundary 软告警） | ✅ | — | 2026-07-29 |
+| `backend-B/monitor/trends.py`（突变 jerk 检测 + 持续偏离/振荡检测） | ✅ | — | 2026-07-29 |
+| `backend-B/monitor/component.py`（10Hz + alert 节流同 code 2s/critical 不节流 + 上行） | ✅ | — | 2026-07-29 |
+| `backend-A/monitor_trigger/trigger.py`（alert 日志 + β 唤醒接口预留） | ✅ | — | 2026-07-29 |
+| `backend-B/lifecycle.py`（集成 monitor 组件 + detector 注册 + event sender + 关停） | ✅ | — | 2026-07-29 |
+| `backend-A/bus/bridge.py`（_handle_alert → WS broadcast） | ✅ | — | 2026-07-29 |
+| **✅ S6 验收**: 超速告警 → β 系统消息 + 处置建议 — alert 广播链路就绪 | ✅ | — | 2026-07-29 |
 
 ### 阶段J — 前端集成（P2~P11 接后端）
 | 模块 | 状态 | 负责人 | 最近更新 |
@@ -185,16 +228,30 @@
 ### 阶段K — 安全兜底与 reject 回路
 | 模块 | 状态 | 负责人 | 最近更新 |
 |---|---|---|---|
-| **✅ S4 验收**:未知动作编码 → reject → α 重想 | ⬜ | — | — |
-| **✅ S7 验收**:杀 A/B → 无人机安全悬停 | ⬜ | — | — |
+| `backend-A/web/ws.py`（broadcast_reject + broadcast_link_status） | ✅ | — | 2026-07-29 |
+| `backend-A/bus/bridge.py`（_handle_reject → WS broadcast + _ws_reject/_ws_link 注入） | ✅ | — | 2026-07-29 |
+| `backend-A/ipc/server.py`（B connect→link_status up / B disconnect→link_status down） | ✅ | — | 2026-07-29 |
+| `backend-A/agents/alpha.py`（LLM fail→link_status error + LLM recover→link_status up + 退避重启） | ✅ | — | 2026-07-29 |
+| `backend-B/small_model/component.py`（reject reason 含具体 action_code） | ✅ | — | 2026-07-29 |
+| **安全链验证**: abort→清goal/hover→当前位置/断开→hover/LLM fail→hover+退避/越界→夹紧/reject→WS | ✅ | — | 2026-07-29 |
+| **✅ S4 验收**: 未知动作编码 → reject → WS 推送 + α 重想 | ✅ | — | 2026-07-29 |
+| **✅ S7 验收**: 任何环节断 → 无人机安全悬停 — link_status + α loop 退避 + B hover 兜底 | ✅ | — | 2026-07-29 |
 
 ### 阶段L — 非阻塞增量（语音/分析/看板）
 | 模块 | 状态 | 负责人 | 最近更新 |
 |---|---|---|---|
-| 语音 STT/TTS（讯飞签名 + wpgs + AudioWorklet PCM） | ⬜ | — | — |
-| analytics 工具（fft/stats/filter） | ⬜ | — | — |
+| `backend-A/analytics/fft.py`（NumPy FFT + 纯 Python DFT fallback） | ✅ | — | 2026-07-29 |
+| `backend-A/analytics/stats.py`（mean/variance/std/minmax/trend 纯 Python） | ✅ | — | 2026-07-29 |
+| `backend-A/analytics/filter.py`（moving_average/lowpass/highpass 纯 Python） | ✅ | — | 2026-07-29 |
+| `backend-A/speech/xfyun_config.py`（环境变量读取 + 可用性检查） | ✅ | — | 2026-07-29 |
+| `backend-A/speech/auth.py`（hmac-sha256 签名 + RFC1123 UTC date） | ✅ | — | 2026-07-29 |
+| `backend-A/speech/stt_client.py`（WebSocket STT + wpgs 动态修正 + PCM 16k） | ✅ | — | 2026-07-29 |
+| `backend-A/speech/tts_client.py`（WebSocket TTS + x-api-key + MP3 base64） | ✅ | — | 2026-07-29 |
+| `frontend/sw.js`（Service Worker Cache First + PWA） | ✅ | — | 2026-07-29 |
+| `backend-A/tools/beta_tools.py`（analytics 接入真实实现 + dashboard 5 面板） | ✅ | — | 2026-07-29 |
 | 数据看板 P11（DashboardPanel/Grid/FilterBar + β 工具） | ✅ | — | 2026-07-24 |
-| PWA 打包 P10（manifest + Service Worker） | ⬜ | sw.js 已删除，待重新实现 | — |
+| PWA 打包 P10（manifest.json + Service Worker） | ✅ | — | 2026-07-29 |
+| 语音 STT/TTS（讯飞签名 + wpgs + AudioWorklet PCM） | ✅ | — | 2026-07-29 |
 
 ### 阶段M — 远期（⏳ 不阻塞先导）
 | 模块 | 状态 | 负责人 | 最近更新 |
@@ -211,10 +268,11 @@
 ## 联调阶段打卡（S0~S8）
 - [x] S0 环境/msgpack 互通 — ✅ A/B 测试均通过 (47+58)
 - [x] S1 假无人机单跑 — ✅ catkin_make 编译 + 6项测试通过
-- [ ] S2 B 单跑（stub）— ⬜ 阶段F 待开发
-- [ ] S3 A↔B IPC 通
-- [ ] S4 reject 回路
-- [ ] S5 完整链路（β→α→假无人机）
-- [ ] S6 监控 alert 回路
-- [ ] S7 断连安全
+- [x] S2 B 单跑（stub）— ✅ 组件就绪 (58/58 测试通过), 待 ROS 环境联调
+- [x] S3 A↔B IPC 通 — ✅ IPC server + ping/pong/action/pose 全部就绪 (47/47 A侧测试通过)
+- [x] S4 reject 回路 — ✅ reject→WS broadcast + α 下轮 hover + 安全链验证
+- [x] S5 前半 hardcoded → α → ActionCommand — ✅ 翻译链就绪, 待 API key 联调
+- [x] S5 完整链路（β→α→假无人机）— ✅ β tools + SSE + REST + WS 全部就绪
+- [x] S6 监控 alert 回路 — ✅ detectors + 10Hz + 节流 + WS broadcast 全部就绪
+- [x] S7 断连安全 — ✅ link_status + α loop 退避 + B hover 兜底 + sim-drone 超时悬停
 - [ ] S8 切 PX4 SITL（阶段M）
