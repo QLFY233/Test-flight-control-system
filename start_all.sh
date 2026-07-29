@@ -11,6 +11,9 @@ rm -f /tmp/flight_control_AB.sock
 export ROS_MASTER_URI=http://localhost:11311
 export ROS_IP=127.0.0.1
 
+# 绕过本地代理 (防止 SSE 流被拦截)
+export no_proxy=localhost,127.0.0.1,$no_proxy
+
 # 从 .env 加载配置
 if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
@@ -18,7 +21,7 @@ fi
 
 # 清理旧进程
 echo "[0/4] 清理旧进程..."
-pkill -9 -f "roscore\|rosmaster\|fake_drone\|run_a2\|run_b_fixed" 2>/dev/null || true
+pkill -9 -f "roscore\|rosmaster\|fake_drone\|run_a.py\|run_b.py" 2>/dev/null || true
 sleep 2
 
 #===========================================================
@@ -90,14 +93,14 @@ echo "Backend A:  $(pgrep -cf run_a.py 2>/dev/null || echo 0) 进程"
 
 echo ""
 echo "--- REST API ---"
-echo -n "  health:      "; curl -sf http://127.0.0.1:8001/api/health 2>/dev/null || echo "FAIL"
-echo -n "  link-status: "; curl -sf http://127.0.0.1:8001/api/link-status 2>/dev/null || echo "FAIL"
-echo -n "  current-pose: "; curl -sf http://127.0.0.1:8001/api/current-pose 2>/dev/null || echo "FAIL"
+echo -n "  health:      "; curl -sf http://127.0.0.1:8000/api/health 2>/dev/null || echo "FAIL"
+echo -n "  link-status: "; curl -sf http://127.0.0.1:8000/api/link-status 2>/dev/null || echo "FAIL"
+echo -n "  current-pose: "; curl -sf http://127.0.0.1:8000/api/current-pose 2>/dev/null || echo "FAIL"
 
 echo ""
 echo "--- LLM β Chat 测试 ---"
 echo "  (等待 DeepSeek 响应, 约 5~15s...)"
-RESP=$(curl -sf --max-time 30 -X POST http://127.0.0.1:8001/api/chat/beta \
+RESP=$(curl -sf --max-time 30 -X POST http://127.0.0.1:8000/api/chat/beta \
   -H "Content-Type: application/json" \
   -d '{"message":"你好，请用一句话介绍你自己"}' 2>/dev/null) || true
 if [ -n "$RESP" ]; then
@@ -108,7 +111,7 @@ fi
 
 echo ""
 echo "==============================================="
-echo "  启动完成! 访问 http://localhost:8001"
+echo "  启动完成! 访问 http://localhost:8000"
 echo "  查看日志: tail -f /tmp/backend-{a,b}.log"
 echo "  停止: pkill -f 'run_a.py\|run_b.py\|fake_drone\|roscore'"
 echo "==============================================="
