@@ -2,6 +2,7 @@
 A↔B IPC client — B 侧主动连 A 的 Unix socket server。
 恒定时间重连 (1s), socket 断 → ipc_connected=False。
 """
+from __future__ import annotations
 import socket
 import time
 import logging
@@ -59,7 +60,8 @@ class IpcClient:
                 raise
 
     def recv_loop(self):
-        """接收循环 — 阻塞读取帧, 调用 on_frame 回调。在独立线程运行。"""
+        """接收循环 — 阻塞读取帧, 调用 on_frame 回调。在独立线程运行。
+        当连接断开或初始连接失败时自动重连 (每 1s)。"""
         self._running = True
         while self._running:
             sock = None
@@ -67,7 +69,9 @@ class IpcClient:
                 sock = self._sock
 
             if sock is None:
-                time.sleep(0.1)
+                # 未连接 — 尝试重连
+                if not self.connect():
+                    time.sleep(IPC_RECONNECT_INTERVAL)
                 continue
 
             try:

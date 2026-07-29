@@ -2,6 +2,7 @@
 small_model 组件入口 — 处理 generate_goal / abort / hover。
 经 B 内总线调用, 产出目标点缓存供 rosbridge publisher 线程消费。
 """
+from __future__ import annotations
 import math
 import time
 import logging

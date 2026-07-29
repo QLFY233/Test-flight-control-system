@@ -2,6 +2,7 @@
 阈值检测器 — 预设阈值检查 (速度/高度/加速度/角速度/数据停产/boundary)。
 位置超 boundary 为软告警, 不自动终止飞行。
 """
+from __future__ import annotations
 import time
 import logging
 from .detector import Detector

@@ -2,6 +2,7 @@
 趋势检测器 — 突变检测 + 持续偏离检测。
 滑窗统计, 先导用纯 Python 计算 (不引入 numpy/scipy 做趋势)。
 """
+from __future__ import annotations
 import time
 import logging
 from collections import deque

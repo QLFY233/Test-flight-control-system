@@ -2,6 +2,7 @@
 目标点发布器 — 20Hz 线程, 从 small_model 读当前目标点, 限速下发 setpoint。
 首帧前填当前位置防跳变; 到达阈值自动切下条动作。
 """
+from __future__ import annotations
 import math
 import time
 import threading

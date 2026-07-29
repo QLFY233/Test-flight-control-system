@@ -2,6 +2,7 @@
 后端 B 生命周期 — 启动 N 步 + 关停序列。
 线程模型: rospy 主 + 目标点(20Hz) + uplink(10Hz) + IPC recv。
 """
+from __future__ import annotations
 import sys
 import time
 import signal

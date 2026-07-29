@@ -1,7 +1,9 @@
 """
 订阅器 — 订阅假无人机位姿/速度/IMU, 加锁写入 BState。
 维护 last_data_ts 供监控程序判停产。
+回调使用闭包而非类方法, 确保 rospy Python 3.8 兼容。
 """
+from __future__ import annotations
 import time
 import logging
 import rospy
@@ -20,82 +22,54 @@ class DroneSubscriber:
         self._state = state
         topics = get_topics(prefix) if prefix else get_topics()
         self._subs = []
+        st = state  # 闭包引用
 
-        # 位姿订阅
-        self._subs.append(
-            rospy.Subscriber(
-                topics["local_position"], PoseStamped, self._on_pose
-            )
-        )
+        # 位姿订阅 — 闭包回调
+        def on_pose(msg):
+            try:
+                o = msg.pose.orientation
+                quat = [o.w, o.x, o.y, o.z]  # ROS x,y,z,w → [w,x,y,z]
+                pos = [msg.pose.position.x, msg.pose.position.y, msg.pose.position.z]
+                ts = msg.header.stamp.to_sec()
+            except Exception:
+                return
+            with st.pose_lock:
+                st._pose.pos = pos
+                st._pose.quat = quat
+                st._pose.ts = ts
+                st._last_data_ts = time.time()
+
+        self._subs.append(rospy.Subscriber(topics["local_position"], PoseStamped, on_pose))
+
         # 速度订阅
-        self._subs.append(
-            rospy.Subscriber(
-                topics["local_velocity"], TwistStamped, self._on_velocity
-            )
-        )
+        def on_velocity(msg):
+            try:
+                vel = [msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z]
+                ts = msg.header.stamp.to_sec()
+            except Exception:
+                return
+            with st.pose_lock:
+                st._pose.vel = vel
+                st._pose.ts = ts
+
+        self._subs.append(rospy.Subscriber(topics["local_velocity"], TwistStamped, on_velocity))
+
         # IMU 订阅
-        self._subs.append(
-            rospy.Subscriber(topics["imu_data"], Imu, self._on_imu)
-        )
+        def on_imu(msg):
+            try:
+                accel = [msg.linear_acceleration.x, msg.linear_acceleration.y, msg.linear_acceleration.z]
+                angular_vel = [msg.angular_velocity.x, msg.angular_velocity.y, msg.angular_velocity.z]
+                ts = msg.header.stamp.to_sec()
+            except Exception:
+                return
+            with st.pose_lock:
+                st._pose.accel = accel
+                st._pose.angular_vel = angular_vel
+                st.update_imu(accel, angular_vel, ts)
+
+        self._subs.append(rospy.Subscriber(topics["imu_data"], Imu, on_imu))
+
         logger.info("[rosbridge] subscribers ready")
-
-    def _on_pose(self, msg: PoseStamped):
-        """位姿回调 — 加锁写 BState pos/quat。"""
-        try:
-            # ROS Quaternion: x,y,z,w → 接口冻结 [w,x,y,z]
-            o = msg.pose.orientation
-            quat = [o.w, o.x, o.y, o.z]
-            pos = [msg.pose.position.x, msg.pose.position.y, msg.pose.position.z]
-            ts = msg.header.stamp.to_sec()
-        except Exception as e:
-            logger.error(f"[subscriber] pose parse error: {e}")
-            return
-
-        with self._state.pose_lock:
-            self._state._pose.pos = pos
-            self._state._pose.quat = quat
-            self._state._pose.ts = ts
-            self._state._last_data_ts = time.time()
-
-    def _on_velocity(self, msg: TwistStamped):
-        """速度回调 — 加锁写 BState vel。"""
-        try:
-            vel = [
-                msg.twist.linear.x,
-                msg.twist.linear.y,
-                msg.twist.linear.z,
-            ]
-            ts = msg.header.stamp.to_sec()
-        except Exception as e:
-            logger.error(f"[subscriber] velocity parse error: {e}")
-            return
-
-        with self._state.pose_lock:
-            self._state._pose.vel = vel
-            self._state._pose.ts = ts
-
-    def _on_imu(self, msg: Imu):
-        """IMU 回调 — 加锁写 BState accel/angular_vel + IMU。"""
-        try:
-            accel = [
-                msg.linear_acceleration.x,
-                msg.linear_acceleration.y,
-                msg.linear_acceleration.z,
-            ]
-            angular_vel = [
-                msg.angular_velocity.x,
-                msg.angular_velocity.y,
-                msg.angular_velocity.z,
-            ]
-            ts = msg.header.stamp.to_sec()
-        except Exception as e:
-            logger.error(f"[subscriber] imu parse error: {e}")
-            return
-
-        with self._state.pose_lock:
-            self._state._pose.accel = accel
-            self._state._pose.angular_vel = angular_vel
-            self._state.update_imu(accel, angular_vel, ts)
 
     def shutdown(self):
         """取消所有订阅。"""

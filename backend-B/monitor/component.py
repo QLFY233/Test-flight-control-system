@@ -2,6 +2,7 @@
 monitor 组件入口 — 10Hz 检测循环, 聚合 alert 上行。
 每个检测周期跑所有检测器, 节流同 code 2s 一次, critical 不节流。
 """
+from __future__ import annotations
 import time
 import threading
 import logging

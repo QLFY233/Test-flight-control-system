@@ -57,37 +57,9 @@ async def chat_beta(req: ChatRequest):
             _state_ref.last_human_message_to_beta = req.message
 
         try:
-            # 使用 Pydantic AI Agent.run() 流式
-            async with _beta_agent.run_stream(req.message) as stream:
-                async for chunk in stream:
-                    chunk_type = chunk.__class__.__name__ if hasattr(chunk, '__class__') else type(chunk).__name__
-
-                    # 文本片段
-                    if hasattr(chunk, 'text'):
-                        delta = chunk.text
-                        if delta:
-                            yield await _sse_event("text", {"content": delta})
-                    elif hasattr(chunk, 'content'):
-                        delta = chunk.content
-                        if isinstance(delta, str) and delta:
-                            yield await _sse_event("text", {"content": delta})
-
-                    # 工具调用开始
-                    if hasattr(chunk, 'tool_name') and chunk.tool_name:
-                        yield await _sse_event("tool_call_start", {
-                            "tool_name": chunk.tool_name,
-                            "args": getattr(chunk, 'tool_args', {}),
-                        })
-
-                    # 工具调用结果
-                    if hasattr(chunk, 'tool_result'):
-                        yield await _sse_event("tool_call_result", {
-                            "tool_name": getattr(chunk, 'tool_name', ''),
-                            "result": chunk.tool_result,
-                        })
-
-            # 发送最终消息 (非流式备选)
-            yield await _sse_event("text", {"content": "", "done": True})
+            # 使用 Pydantic AI Agent.run() 非流式 (先导已验证)
+            result = await _beta_agent.run(req.message)
+            yield await _sse_event("text", {"content": result.output, "done": True})
 
         except Exception as e:
             logger.exception(f"[sse] β stream error: {e}")

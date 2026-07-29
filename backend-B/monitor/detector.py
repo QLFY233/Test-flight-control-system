@@ -2,6 +2,7 @@
 监控检测器接口 + 注册表 (开放式架构)。
 先导: 阈值检测 + 趋势检测; 后期可加 ML 检测器。
 """
+from __future__ import annotations
 import time
 from abc import ABC, abstractmethod
 
