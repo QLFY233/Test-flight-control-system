@@ -19,7 +19,7 @@ if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
 fi
 
-# 清理旧进程
+# 清理旧进程 (包括 roscore 重启来清除 ROS 死节点)
 echo "[0/4] 清理旧进程..."
 pkill -9 -f "roscore\|rosmaster\|fake_drone\|run_a.py\|run_b.py" 2>/dev/null || true
 sleep 2
@@ -62,6 +62,7 @@ echo "  ✅ Backend B OK (PID=$B_PID)"
 # 4. Backend A (Agent 中枢, Python 3.10)
 #===========================================================
 echo "[4/4] 启动 Backend A..."
+fuser -k 8000/tcp 2>/dev/null || true  # 释放端口
 /home/nibuhao/.pyenv/versions/3.10.19/bin/python3 -u "$PROJ/backend-A/run_a.py" &>/tmp/backend-a.log &
 A_PID=$!
 for i in $(seq 1 20); do

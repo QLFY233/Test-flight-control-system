@@ -10,7 +10,7 @@ import threading, time, rospy
 from geometry_msgs.msg import PoseStamped, TwistStamped
 from sensor_msgs.msg import Imu
 
-rospy.init_node('backend_b', anonymous=False, disable_signals=True)
+rospy.init_node('backend_b', anonymous=True, disable_signals=True)
 
 from state import BState
 from config_loader import load_field, load_constraints
