@@ -102,13 +102,23 @@ class ChatPanel {
     }
 
     async _sendMessage(text) {
-        this._addMessage('human', text);
-
-        const sseEndpoint = (window.__app.config?.backend?.base_url || 'http://localhost:8000') + (window.__app.config?.backend?.sse_beta || '/api/chat/beta');
-
+        // 先渲染用户消息到 DOM
         const msgContainer = this.container.querySelector('#chat-messages');
         if (!msgContainer) return;
 
+        // 清除空状态
+        const empty = msgContainer.querySelector('.chat-sidebar__empty');
+        if (empty) empty.remove();
+
+        // 添加用户消息到 store + DOM
+        this._addMessage('human', text);
+        const userMsg = { role: 'human', content: text, timestamp: Date.now() };
+        msgContainer.appendChild(ChatMessage.render(userMsg));
+        this._scrollToBottom(msgContainer);
+
+        const sseEndpoint = (window.__app.config?.backend?.base_url || 'http://localhost:8000') + (window.__app.config?.backend?.sse_beta || '/api/chat/beta');
+
+        // 流式占位元素 — 流式期间只显示纯文本，完成后替换为 Markdown 渲染版
         const streamEl = document.createElement('div');
         streamEl.className = 'chat-message chat-message--agent';
         const bubble = document.createElement('div');
@@ -123,7 +133,8 @@ class ChatPanel {
         await sseManager.sendMessage(sseEndpoint, text, {
             onMessage: (chunk) => {
                 this.streamingContent += chunk;
-                if (bubble) bubble.innerHTML = ChatMessage._simpleMarkdown(this.streamingContent);
+                // 流式期间只显示纯文本，不做 Markdown 渲染（防止表格/列表碎片化）
+                if (bubble) bubble.textContent = this.streamingContent;
                 this._scrollToBottom(msgContainer);
             },
             onToolCall: (toolName, args) => {
@@ -137,10 +148,29 @@ class ChatPanel {
                 this._scrollToBottom(msgContainer);
             },
             onPlan: (plan) => bus.emit('plan-received', plan),
-            onComplete: (fullText) => { this._addMessage('agent', fullText); },
+            onComplete: (fullText) => {
+                // 用完整 Markdown 渲染版替换流式占位
+                const finalEl = ChatMessage.render({ role: 'agent', content: fullText || this.streamingContent, timestamp: Date.now() });
+                if (this.streamingMessageEl && this.streamingMessageEl.parentNode) {
+                    this.streamingMessageEl.replaceWith(finalEl);
+                } else if (msgContainer) {
+                    msgContainer.appendChild(finalEl);
+                }
+                this.streamingMessageEl = null;
+                this._scrollToBottom(msgContainer);
+                this._addMessage('agent', fullText || this.streamingContent);
+            },
             onError: (error) => {
-                if (bubble && !this.streamingContent) { bubble.textContent = 'ERR: ' + error; bubble.style.color = 'var(--color-red)'; }
-                this._addMessage('agent', this.streamingContent || ('ERR: ' + error));
+                const content = this.streamingContent || '';
+                const finalEl = ChatMessage.render({ role: 'agent', content: content + '\n\n*[ERR: ' + error + ']*', timestamp: Date.now() });
+                if (this.streamingMessageEl && this.streamingMessageEl.parentNode) {
+                    this.streamingMessageEl.replaceWith(finalEl);
+                } else if (msgContainer) {
+                    msgContainer.appendChild(finalEl);
+                }
+                this.streamingMessageEl = null;
+                this._scrollToBottom(msgContainer);
+                this._addMessage('agent', content || ('ERR: ' + error));
             },
         });
     }

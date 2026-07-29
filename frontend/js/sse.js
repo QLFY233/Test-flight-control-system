@@ -110,8 +110,15 @@ class SseManager {
 
         switch (eventType) {
             case 'text':
-                onMessage(data);
-                fullTextAcc(data);
+                try {
+                    const parsed = JSON.parse(data);
+                    const content = parsed.content || data;
+                    onMessage(content);
+                    fullTextAcc(content);
+                } catch {
+                    onMessage(data);
+                    fullTextAcc(data);
+                }
                 break;
 
             case 'tool_call_start': {
@@ -145,7 +152,12 @@ class SseManager {
             }
 
             case 'error':
-                onError(data);
+                try {
+                    const parsed = JSON.parse(data);
+                    onError(parsed.message || data);
+                } catch {
+                    onError(data);
+                }
                 break;
 
             default:

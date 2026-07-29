@@ -81,14 +81,15 @@ class ChatMessage {
     }
 
     /**
-     * Very simple markdown-like rendering.
-     * Supports: **bold**, *italic*, `code`, ```code blocks```, line breaks
+     * Markdown-like rendering.
+     * Supports: tables, headings, **bold**, *italic*, `code`, ```code blocks```,
+     *           - lists, --- hr, line breaks
      */
     static _simpleMarkdown(text) {
         if (!text) return '';
         let html = ChatMessage._escapeHtml(text);
 
-        // Code blocks (multi-line)
+        // Code blocks (multi-line) — do before line breaks
         html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
 
         // Inline code
@@ -97,11 +98,60 @@ class ChatMessage {
         // Bold
         html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
 
-        // Italic
-        html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        // Italic — only single * not double
+        html = html.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
 
-        // Line breaks
+        // Headings (### Title)
+        html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+        html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+
+        // Horizontal rule
+        html = html.replace(/^---$/gm, '<hr>');
+
+        // Tables — find blocks of |...| lines
+        const lines = html.split('\n');
+        const result = [];
+        let inTable = false;
+        let tableRows = [];
+        let hasHeader = false;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (/^\|.+\|$/.test(line)) {
+                // Separator row?
+                if (/^\|[-:\s|]+\|$/.test(line)) {
+                    hasHeader = true;
+                    continue;
+                }
+                tableRows.push(line);
+                inTable = true;
+            } else {
+                if (inTable && tableRows.length > 0) {
+                    result.push(_buildTable(tableRows, hasHeader));
+                    tableRows = [];
+                    hasHeader = false;
+                }
+                inTable = false;
+                result.push(line);
+            }
+        }
+        // Flush remaining table
+        if (inTable && tableRows.length > 0) {
+            result.push(_buildTable(tableRows, hasHeader));
+        }
+        html = result.join('\n');
+
+        // Unordered lists — protect newlines inside to keep <br> out
+        html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+        html = html.replace(/(<li>.*?<\/li>\s*)+/g, '<ul>$&</ul>');
+
+        // Line breaks (after block elements)
         html = html.replace(/\n/g, '<br>');
+
+        // Strip <br> from inside block elements where they don't belong
+        html = html.replace(/<(ul|table|h[1-6]|pre)>([\s\S]*?)<\/\1>/g, (m, tag, inner) => {
+            return '<' + tag + '>' + inner.replace(/<br>/g, '') + '</' + tag + '>';
+        });
 
         return html;
     }
@@ -111,6 +161,24 @@ class ChatMessage {
         div.textContent = text;
         return div.innerHTML;
     }
+}
+
+/**
+ * Build HTML table from markdown table rows.
+ * @param {string[]} rows — lines like "| col1 | col2 |"
+ * @param {boolean} hasHeader — first row is header
+ * @returns {string} <table> HTML
+ */
+function _buildTable(rows, hasHeader) {
+    if (rows.length === 0) return '';
+    let html = '<table>';
+    for (let i = 0; i < rows.length; i++) {
+        const cells = rows[i].split('|').filter(c => c.trim() !== '');
+        const tag = (hasHeader && i === 0) ? 'th' : 'td';
+        html += '<tr>' + cells.map(c => `<${tag}>${c.trim()}</${tag}>`).join('') + '</tr>';
+    }
+    html += '</table>';
+    return html;
 }
 
 export { ChatMessage };
