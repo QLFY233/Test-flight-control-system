@@ -48,18 +48,15 @@ class FlightPlanCard {
             <div class="flight-plan-card__actions">
                 <button class="btn btn--primary btn--sm approve-btn">✓ 批准</button>
                 <button class="btn btn--danger btn--sm reject-btn">✗ 驳回</button>
-                <button class="btn btn--ghost btn--sm overlay-btn" title="预览(未批准)">叠加到3D</button>
             </div>
         `;
 
         // Bind events
         const approveBtn = container.querySelector('.approve-btn');
         const rejectBtn = container.querySelector('.reject-btn');
-        const overlayBtn = container.querySelector('.overlay-btn');
 
         if (approveBtn) approveBtn.addEventListener('click', () => this.callbacks.onApprove && this.callbacks.onApprove(this.plan));
         if (rejectBtn) rejectBtn.addEventListener('click', () => this.callbacks.onReject && this.callbacks.onReject(this.plan));
-        if (overlayBtn) overlayBtn.addEventListener('click', () => this.callbacks.onOverlay3D && this.callbacks.onOverlay3D(this.plan));
 
         this.element = container;
         return container;
