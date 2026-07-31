@@ -24,11 +24,15 @@ class FlightPlanCard {
 
         const title = this.plan.title || this.plan.name || '飞行计划';
         const actions = this.plan.actions || [];
+        const intent = this.plan.intent || this.plan.summary || '';
         const hasActions = actions.length > 0;
 
         const bodyHtml = hasActions
             ? this._renderActions(actions)
-            : '<div style="padding: var(--space-md); color: var(--color-text-disabled);">无动作数据</div>';
+            : `<div style="padding: var(--space-md);">
+                <div style="color: var(--color-text-secondary); margin-bottom: var(--space-sm);">意图描述:</div>
+                <div style="white-space: pre-wrap;">${FlightPlanCard._esc(intent)}</div>
+               </div>`;
 
         container.innerHTML = `
             <div class="flight-plan-card__header">

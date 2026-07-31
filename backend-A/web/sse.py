@@ -59,6 +59,20 @@ async def chat_beta(req: ChatRequest):
         try:
             # 使用 Pydantic AI Agent.run() 非流式 (先导已验证)
             result = await _beta_agent.run(req.message)
+
+            # 检查是否有待审提议 (β 调用了 propose_to_alpha)
+            if _state_ref and _state_ref.pending_proposal:
+                proposal = _state_ref.pending_proposal
+                yield await _sse_event("plan", {
+                    "id": proposal.get("id", ""),
+                    "proposalId": proposal.get("id", ""),
+                    "title": "飞行计划",
+                    "intent": proposal.get("intent", ""),
+                    "summary": proposal.get("intent", ""),
+                    "status": "pending",
+                    "actions": [],  # α 尚未翻译, 批准后才有
+                })
+
             yield await _sse_event("text", {"content": result.output, "done": True})
 
         except Exception as e:
