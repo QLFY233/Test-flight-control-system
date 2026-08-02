@@ -40,3 +40,4 @@ Thumbs.db
 .venv-B/
 shared/__pycache__
 test-results/
+.pi-subagents/
