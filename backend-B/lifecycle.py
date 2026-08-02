@@ -203,7 +203,7 @@ class Lifecycle:
         try:
             from rosbridge.adapter import make_adapter
             from rosbridge.publisher import GoalPublisher
-            adapter = make_adapter()
+            adapter = make_adapter(state=self.state)
             # 阶段2: 等 offboard 就绪 (阻塞 ≤90s, 失败仅告警 — publisher 仍会持续发 setpoint)
             if not adapter.preflight(timeout=90.0):
                 logger.warning("[lifecycle] phase2 preflight failed — goal publisher runs without offboard")

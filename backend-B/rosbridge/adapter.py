@@ -132,7 +132,7 @@ class Phase2Adapter(SetpointAdapter):
     # type_mask 位置控制 (design §4.2): 忽略速度/加速度/力/yaw_rate, 使用 yaw
     TYPE_MASK_POSITION = 0
 
-    def __init__(self, prefix: str = PHASE2_PREFIX, home: list = None):
+    def __init__(self, prefix: str = PHASE2_PREFIX, home: list = None, state=None):
         from mavros_msgs.msg import PositionTarget, State
         from mavros_msgs.srv import CommandBool, SetMode
 
@@ -140,11 +140,22 @@ class Phase2Adapter(SetpointAdapter):
         self._state_cls = State
         self._arm_srv = CommandBool
         self._set_mode_srv = SetMode
+        # BState 引用 (可选): preflight STREAMING 阶段发当前位置用 (subscriber 更新)
+        self._state = state
 
         topics = get_phase2_topics(prefix)
         self._setpoint_pub = rospy.Publisher(
             topics["setpoint_raw"], PositionTarget, queue_size=10
         )
+        # 虚拟 RC (mavlink override) — SITL 无真遥控, commander 的 ARM 检查要求
+        # manual control 有效 ("Arming denied! manual control lost"); COM_RC_IN_MODE=1
+        # 匹配 SOURCE_MAVLINK, 由本线程持续发中性 RC 提供有效输入 (design §7.6)
+        from mavros_msgs.msg import OverrideRCIn
+        self._rc_pub = rospy.Publisher(
+            "/mavros/rc/override", OverrideRCIn, queue_size=10
+        )
+        self._rc_running = False
+        self._rc_thread = None
         self._home = list(home) if home else [0.0, 0.0, 0.5]
         self._lock = threading.Lock()
         self._phase = "DISARMED"          # 状态机当前阶段
@@ -171,10 +182,6 @@ class Phase2Adapter(SetpointAdapter):
             self._mav_connected = bool(msg.connected)
             self._mav_armed = bool(msg.armed)
             self._mav_mode = msg.mode or ""
-            if self._mav_connected:
-                self._px, self._py, self._pz = (
-                    msg.header.stamp.to_sec(), 0.0, 0.0  # 占位, 位姿由 subscriber 负责
-                )
 
     def _snapshot(self):
         with self._lock:
@@ -216,15 +223,105 @@ class Phase2Adapter(SetpointAdapter):
         logger.warning("[rosbridge] Phase2 publish_velocity not supported (position mode)")
 
     # ── offboard 状态机 ──
+    def _ensure_spin(self):
+        """确保 rospy 回调分发线程在跑 (preflight 可能先于调用方 spin 执行)。
+
+        rospy 无 spin_once; 回调必须由 spin 线程分发。
+        preflight 的等待循环依赖 /mavros/state 回调更新状态。
+        """
+        if getattr(rospy, "_spin_thread", None) is None:
+            t = threading.Thread(target=rospy.spin, name="rospy-spin", daemon=True)
+            t.start()
+            logger.info("[rosbridge] Phase2 rospy spin thread started")
+
+    def _start_streaming(self):
+        """启动 setpoint 流线程 (20Hz 发当前位置)。
+
+        PX4 offboard 需要持续 setpoint 流 (停发 ≥1s 自动退出 offboard),
+        且切换 OFFBOARD 前后都不能断流 — 故 STREAMING→OFFBOARD→ARM→ACTIVE
+        全程由本线程维持, ACTIVE 后由 GoalPublisher 接管。
+        """
+        self._streaming = True
+        self._stream_thread = threading.Thread(target=self._stream_loop, name="phase2-stream", daemon=True)
+        self._stream_thread.start()
+
+    def _stop_streaming(self):
+        self._streaming = False
+        if self._stream_thread is not None:
+            self._stream_thread.join(timeout=1.0)
+            self._stream_thread = None
+
+    def _stream_loop(self):
+        while self._streaming and not rospy.is_shutdown():
+            try:
+                pos, yaw = self._current_pos_yaw()
+                self.publish_position(pos, yaw)
+            except Exception as e:
+                logger.error(f"[rosbridge] stream loop error: {e}")
+            time.sleep(0.05)  # 20Hz
+
+    def _current_pos_yaw(self):
+        """取 BState 当前位姿 (ENU), 无 state 时用内部缓存。"""
+        if self._state is not None:
+            try:
+                from small_model.component import yaw_from_quat
+                p = self._state.current_pose
+                return p.pos[:], yaw_from_quat(p.quat[:])
+            except Exception:
+                pass
+        return [self._px, self._py, self._pz], self._yaw
+
+    def _start_virtual_rc(self):
+        """启动虚拟 RC 线程: 持续发中性 RC override (2Hz) 满足 ARM 检查。
+
+        SITL 无真遥控, PX4 commander 的 preArm 检查需要 valid manual control;
+        经 mavros /rc/override 发 SOURCE_MAVLINK 数据 (COM_RC_IN_MODE=1 匹配)。
+        """
+        if self._rc_thread is not None:
+            return
+        self._rc_running = True
+        self._rc_thread = threading.Thread(target=self._rc_loop, name="virtual-rc", daemon=True)
+        self._rc_thread.start()
+        logger.info("[rosbridge] Phase2 virtual RC started (neutral override)")
+
+    def _stop_virtual_rc(self):
+        self._rc_running = False
+        if self._rc_thread is not None:
+            self._rc_thread.join(timeout=1.0)
+            self._rc_thread = None
+
+    def _rc_loop(self):
+        from mavros_msgs.msg import OverrideRCIn
+        # 通道 (共 18):
+        #   ch1-3 roll/pitch/yaw 中性 1500; ch4 油门最低 1000 (安全低油门);
+        #   ch5/ch6 mode/arm switch 中性 1500 (0 会被解析为开关位置触发 RTL!); 其余 0
+        # rc_update 只在通道值变化时发布 manual_control_setpoint (rc_update.cpp:
+        # "limit processing if there's no update") — 固定值永远不会触发更新,
+        # commander 将一直报 rc_signal_lost。故每个 tick 微抖 (±1 PWM ≈ 0.1%)。
+        tick = 0
+        while self._rc_running and not rospy.is_shutdown():
+            tick += 1
+            d = 1 if (tick % 2) else -1
+            msg = OverrideRCIn()
+            msg.channels = [1500 + d, 1500, 1500, 1000 + (1 if d > 0 else 0),
+                            1500, 1500, 0, 0] + [0] * 10
+            try:
+                self._rc_pub.publish(msg)
+            except Exception as e:
+                logger.error(f"[rosbridge] virtual RC publish failed: {e}")
+            time.sleep(0.2)
+
     def preflight(self, timeout: float = 90.0) -> bool:
         """推进 DISARMED → ACTIVE (阻塞, 供 lifecycle 启动前调用)。"""
+        self._ensure_spin()
+        self._start_virtual_rc()
         deadline = time.time() + timeout
         # 等 MAVROS 连接
         while time.time() < deadline:
             s = self._snapshot()
             if s["connected"]:
                 break
-            time.sleep(0.2)
+            time.sleep(0.05)
         else:
             logger.error("[rosbridge] Phase2 preflight timeout: mavros not connected")
             return False
@@ -233,46 +330,57 @@ class Phase2Adapter(SetpointAdapter):
         with self._lock:
             self._phase = "STREAMING"
             self._stream_count = 0
+        # setpoint 流线程: 贯穿 STREAMING→OFFBOARD→ARM 全程 (offboard 断流即退出)
+        self._start_streaming()
         logger.info("[rosbridge] Phase2 preflight: STREAMING (20Hz 位置 setpoint ≥3s)")
 
-        # STREAMING 阶段: 由 GoalPublisher 持续 publish_position 推进计数;
-        # preflight 自身也以 20Hz 发当前位置, 确保前置满足
-        while time.time() < deadline:
-            s = self._snapshot()
-            with self._lock:
-                pos = [self._px, self._py, self._pz]
-                yaw = self._yaw
-                count = self._stream_count
-            self.publish_position(pos, yaw)
-            if count >= 3 * 20:  # ≥3s @20Hz
-                break
-            time.sleep(0.05)
-        else:
-            logger.error("[rosbridge] Phase2 preflight timeout: stream not established")
-            return False
+        # STREAMING ≥3s (流线程维持 setpoint, 此处仅计时)
+        time.sleep(3.0)
 
         # ARM 前置: 距 home < 2m (design §7)
-        dist_home = math.sqrt((self._px - self._home[0]) ** 2
-                              + (self._py - self._home[1]) ** 2
-                              + (self._pz - self._home[2]) ** 2)
+        pos, _y = self._current_pos_yaw()
+        dist_home = math.sqrt((pos[0] - self._home[0]) ** 2
+                              + (pos[1] - self._home[1]) ** 2
+                              + (pos[2] - self._home[2]) ** 2)
         if dist_home > 2.0:
             logger.error(f"[rosbridge] Phase2 preflight refused: dist to home {dist_home:.1f}m > 2m")
+            self._stop_streaming()
             return False
 
-        # ARM
-        if not self._call_arm(True):
-            logger.error("[rosbridge] Phase2 preflight failed: ARM rejected")
-            return False
+        # 切 OFFBOARD (先于 ARM — 官方 offboard 例程顺序: OFFBOARD 模式的
+        # flag_control_manual_enabled=false, preArm 的 manual control 检查被跳过,
+        # 避免无 RC 环境 "Arming denied! manual control lost")
+        # 若当前是自动模式 (AUTO.*) 且 OFFBOARD 切换失败, 先 POSCTL 再重试
+        if not self._call_mode("OFFBOARD") or not self._wait_mode("OFFBOARD", timeout=3.0):
+            logger.warning("[rosbridge] Phase2 preflight: direct OFFBOARD failed, via POSCTL")
+            if not self._call_mode("POSCTL"):
+                logger.error("[rosbridge] Phase2 preflight failed: cannot switch POSCTL")
+                self._stop_streaming()
+                return False
+            time.sleep(0.3)
+            if not self._call_mode("OFFBOARD") or not self._wait_mode("OFFBOARD", timeout=3.0):
+                logger.error("[rosbridge] Phase2 preflight failed: OFFBOARD rejected")
+                self._stop_streaming()
+                return False
         with self._lock:
             self._phase = "OFFBOARD"
-        # OFFBOARD
-        if not self._call_mode("OFFBOARD"):
-            logger.error("[rosbridge] Phase2 preflight failed: OFFBOARD rejected")
+
+        # ARM (OFFBOARD 模式下 manual control 检查不生效; 流线程持续发 setpoint)
+        if not self._call_arm(True):
+            logger.error("[rosbridge] Phase2 preflight failed: ARM rejected")
+            self._stop_streaming()
+            return False
+        # 验证 armed
+        if not self._wait_armed(timeout=3.0):
+            logger.error("[rosbridge] Phase2 preflight failed: not armed after ARM")
             self._call_arm(False)
+            self._stop_streaming()
             return False
         with self._lock:
             self._phase = "ACTIVE"
-        logger.info("[rosbridge] Phase2 preflight: ACTIVE (offboard engaged)")
+        # ACTIVE: 停流线程, 由 GoalPublisher 接管 (20Hz 持续)
+        self._stop_streaming()
+        logger.info("[rosbridge] Phase2 preflight: ACTIVE (offboard engaged, armed)")
         return True
 
     def emergency_land(self):
@@ -319,6 +427,26 @@ class Phase2Adapter(SetpointAdapter):
             logger.error(f"[rosbridge] arm({value}) failed: {e}")
             return False
 
+    def _wait_mode(self, custom_mode: str, timeout: float = 3.0) -> bool:
+        """轮询 /mavros/state 确认模式实际切换 (mode_sent 只是命令已发出)。"""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            s = self._snapshot()
+            if s["mode"] == custom_mode:
+                return True
+            time.sleep(0.1)
+        return False
+
+    def _wait_armed(self, timeout: float = 3.0) -> bool:
+        """轮询 /mavros/state 确认已武装。"""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            s = self._snapshot()
+            if s["armed"]:
+                return True
+            time.sleep(0.1)
+        return False
+
     def _call_mode(self, custom_mode: str) -> bool:
         try:
             if self._mode_proxy is None:
@@ -331,12 +459,12 @@ class Phase2Adapter(SetpointAdapter):
             return False
 
 
-def make_adapter(phase: int = None) -> SetpointAdapter:
+def make_adapter(phase: int = None, state=None) -> SetpointAdapter:
     """按 PHASE 环境变量 (默认 1) 创建适配器 (design §6)。"""
     if phase is None:
         phase = int(os.environ.get("PHASE", "1"))
     if phase == 1:
         return Phase1Adapter()
     if phase == 2:
-        return Phase2Adapter()
+        return Phase2Adapter(state=state)
     raise ValueError(f"Unknown PHASE={phase} (supported: 1, 2)")

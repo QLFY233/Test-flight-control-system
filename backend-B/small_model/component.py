@@ -134,6 +134,7 @@ class SmallModelComponent:
             return {"status": "rejected", "reason": base}
 
         self._current_goal = goal
+        logger.info(f"[small_model] goal generated: code={code} goal={goal.get('goal')} yaw={goal.get('yaw')}")
         self._send_status(FLIGHT_STATUS_EXECUTING, idx + 1, len(actions))
         return {"status": "ok", "goal": goal}
 

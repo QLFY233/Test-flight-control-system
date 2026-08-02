@@ -29,6 +29,8 @@ register(TrendDetector())
 mc = MonitorComponent(st)
 
 from ipc.client import IpcClient; from ipc.dispatch import Dispatch
+from bus.registry import init_registry
+init_registry(comp, mc)  # 注册 small_model/monitor 组件 (run_b 此前缺失 → call.action 无法路由)
 ipc = IpcClient(st); dispatch = Dispatch(st, ipc)
 ipc.set_frame_handler(dispatch.handle_incoming)
 comp.set_event_sender(dispatch.send_event); mc.set_event_sender(dispatch.send_event)
@@ -76,7 +78,7 @@ rospy.Subscriber(topics['imu_data'], Imu, lambda m: st.update_imu(
 
 # 目标点下发 (B-16 对齐 lifecycle: 阶段1/2 均启用 GoalPublisher; 阶段2 先 preflight offboard)
 from rosbridge.publisher import GoalPublisher
-gp_adapter = make_adapter(PHASE)
+gp_adapter = make_adapter(PHASE, state=st)
 if PHASE == 2 and not gp_adapter.preflight(timeout=90.0):
     print('[B] phase2 preflight failed — goal publisher runs without offboard', flush=True)
 gp = GoalPublisher(st, comp, gp_adapter, rate=20.0)
@@ -110,4 +112,11 @@ def uplink():
                 print('[B] uplink send failed: {}'.format(e), flush=True)
 threading.Thread(target=uplink, name='uplink', daemon=True).start()
 print('[B] READY conn={} cb={}'.format(st.ipc_connected, cb_count[0]), flush=True)
-rospy.spin()
+# 主循环: 若 Phase2Adapter 已启动 spin 线程, rospy.spin() 会立即返回,
+# 用 while 循环保活主线程 (回调由 spin 线程分发)
+try:
+    rospy.spin()
+except Exception:
+    pass
+while not rospy.is_shutdown():
+    time.sleep(1.0)
