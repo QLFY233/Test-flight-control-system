@@ -109,7 +109,7 @@
 | 阶段J | 前端集成 | ✅ | P2~P11 全部完成，待后端联调 |
 | 阶段K | 安全兜底与 reject 回路 | ✅ | S4+S7 — reject→WS + 断连 link_status + LLM fail→hover + 58/58 + 47/47 |
 | 阶段L | 语音/分析/看板（非阻塞增量） | ✅ | FFT/stats/filter + STT/TTS 框架 + PWA + dashboard 5面板 |
-| 阶段M | 远期 PX4 SITL + ego-planner + 真模型 | ⏳ | 不阻塞先导 |
+| 阶段M | 远期 PX4 SITL + ego-planner + 真模型 | ⏳ | 不阻塞先导 (版本锁定: PX4 v1.13.3 + Gazebo Classic 11 + MAVROS 1.20.1) |
 
 ---
 
@@ -270,7 +270,7 @@
 ### 阶段M — 远期（⏳ 不阻塞先导）
 | 模块 | 状态 | 负责人 | 最近更新 |
 |---|---|---|---|
-| PX4 SITL + mavros 1.20.1（待写 PX4-阶段2-design.md） | ⏳ | — | — |
+| PX4 SITL + mavros 1.20.1（新建 `docs/specs/后端B/PX4-阶段2-design.md`） | ⏳ | — | 2026-08-02 版本锁定 |
 | `rosbridge/adapter.py` Phase2Adapter | ⏳ | — | — |
 | ego-planner 桥 + 雷达感知 | ⏳ | — | — |
 | 蒸馏小模型 α 训练（alpha-small/） | ⏳ | — | — |
