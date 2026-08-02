@@ -36,8 +36,13 @@ def make_agent(instructions: str, tools: list = None, output_type=None) -> Agent
         instructions: 系统 prompt
         tools: 工具函数列表 (可选)
         output_type: 结构化输出类型 (Pydantic model, 可选)
+
+    环境变量覆盖: LLM_BASE_URL / LLM_MODEL 可覆盖 provider 默认端点与模型
+    (不硬编码密钥 — api_key 始终只从 DEEPSEEK_API_KEY 环境变量读取)。
     """
     cfg = _get_provider_cfg()
+    base_url = os.environ.get("LLM_BASE_URL", cfg["base_url"])
+    model_name = os.environ.get("LLM_MODEL", cfg["model"])
     api_key = os.environ.get(cfg["api_key_env"], "")
 
     if not api_key:
@@ -46,8 +51,8 @@ def make_agent(instructions: str, tools: list = None, output_type=None) -> Agent
             f"LLM calls will fail. Set it in .env or environment."
         )
 
-    provider = OpenAIProvider(base_url=cfg["base_url"], api_key=api_key)
-    model = OpenAIChatModel(cfg["model"], provider=provider)
+    provider = OpenAIProvider(base_url=base_url, api_key=api_key)
+    model = OpenAIChatModel(model_name, provider=provider)
 
     agent = Agent(
         model,
@@ -58,6 +63,6 @@ def make_agent(instructions: str, tools: list = None, output_type=None) -> Agent
 
     logger.info(
         f"[llm] agent created: provider={os.environ.get('LLM_PROVIDER', 'deepseek')}, "
-        f"model={cfg['model']}"
+        f"model={model_name}, base_url={base_url}"
     )
     return agent
