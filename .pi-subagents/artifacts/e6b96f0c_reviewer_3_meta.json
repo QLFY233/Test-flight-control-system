@@ -1,0 +1,170 @@
+{
+  "runId": "e6b96f0c",
+  "agent": "reviewer",
+  "task": "[Read from: /home/QLFY233/Test-flight-control-system/plan.md, /home/QLFY233/Test-flight-control-system/progress.md]\n\n做 A/B 跨进程协议与接口一致性审查（契约审查，不是常规 bug 审查）。工作目录：/home/QLFY233/Test-flight-control-system。\n\n背景：项目有双进程架构 —— backend-A（Agent 中枢）与 backend-B（飞控桥）经 Unix socket + msgpack 通信；`docs/specs/总体/2026-07-05-A-B-接口冻结.md` 是接口冻结权威文档，当前 `schema_version = 2`，字段级变更必须两侧同步。\n\n必须审查的文件：\n- backend-A/bus/protocol.py 与 backend-B/bus/protocol.py（对比 schema_version、消息类型、字段定义是否完全一致）\n- backend-A/ipc/server.py 与 backend-B/ipc/client.py、backend-B/ipc/frames.py、backend-B/ipc/dispatch.py（帧格式、握手、心跳、错误码是否对称）\n- backend-A/web/routes.py、backend-A/web/sse.py、backend-A/web/ws.py 与 frontend/js/api.js、frontend/js/sse.js、frontend/js/ws.js（HTTP 端点、SSE 事件名、WS 消息格式、字段名是否一致）\n- docs/specs/总体/2026-07-05-A-B-接口冻结.md（以它为权威基准，对照代码是否偏离）\n- 也读 docs/specs/README.md 了解阅读顺序，docs/specs/总体/开放式接口规范.md（如存在）\n\n审查重点：\n1. schema_version 两侧常量是否一致且与文档一致；\n2. 消息类型/事件名枚举两侧是否完全对齐（缺一个/多一个都算）；\n3. 字段名、类型、单位、状态机状态取值两侧是否一致；\n4. 前端调用的 API 路径、请求/响应 JSON 字段与后端路由实现是否一致；\n5. 发现文档与代码的偏离点（以 docs/specs 为准标记）。\n\n输出格式（写入报告）：按 🔴 blocking（两侧不一致/文档偏离）/ 🟡 important / 🟢 nit 分级，每条给出 `文件:行号 ↔ 文件:行号` 对照与修复建议；结尾列出『一致性检查表』：每个消息类型/事件名一行，标注 ✅ 一致 / ❌ 不一致 / ⚠️ 存疑。\n\n---\nUpdate progress at: /home/QLFY233/Test-flight-control-system/.pi-subagents/artifacts/progress/e6b96f0c/progress.md\n\n---\n**Output:**\nWrite your findings to exactly this path: /tmp/code-review/contract-report.md\nThis path is authoritative for this run.\nIgnore any other output filename or output path mentioned elsewhere, including output destinations in the base agent prompt, system prompt, or task instructions.",
+  "exitCode": 0,
+  "usage": {
+    "input": 96044,
+    "output": 32077,
+    "cacheRead": 3420416,
+    "cacheWrite": 0,
+    "cost": 0.032004884799999994,
+    "turns": 57
+  },
+  "model": "opencode-go/deepseek-v4-flash:high",
+  "attemptedModels": [
+    "opencode-go/deepseek-v4-flash:high"
+  ],
+  "modelAttempts": [
+    {
+      "model": "opencode-go/deepseek-v4-flash:high",
+      "success": true,
+      "exitCode": 0,
+      "usage": {
+        "input": 96044,
+        "output": 32077,
+        "cacheRead": 3420416,
+        "cacheWrite": 0,
+        "cost": 0.032004884799999994,
+        "turns": 57
+      }
+    }
+  ],
+  "durationMs": 421945,
+  "toolCount": 91,
+  "launchContractDigest": "f5c562694e0ab882e51ef7320c32ac1d0dd365457017698d259deab3aa292009",
+  "launchResolvedExtensions": {
+    "version": 1,
+    "source": "launch-resolved",
+    "disableAmbientExtensions": false,
+    "runtime": [
+      "sha256:4c9d833544445b87"
+    ],
+    "configured": [],
+    "effective": [
+      "sha256:4c9d833544445b87"
+    ],
+    "omitted": {
+      "runtime": 0,
+      "configured": 0,
+      "effective": 0
+    }
+  },
+  "acceptance": {
+    "status": "attested",
+    "evidenceStatus": "attested",
+    "explicit": false,
+    "effectiveAcceptance": {
+      "level": "attested",
+      "explicit": false,
+      "inferredReason": [
+        "read-only/reviewer-style agent"
+      ],
+      "criteria": [
+        {
+          "id": "criterion-1",
+          "must": "Return concrete findings with file paths and severity when applicable",
+          "evidence": [
+            "review-findings",
+            "residual-risks"
+          ],
+          "severity": "required"
+        }
+      ],
+      "evidence": [
+        "review-findings",
+        "residual-risks"
+      ],
+      "verify": [],
+      "stopRules": []
+    },
+    "inferredReason": [
+      "read-only/reviewer-style agent"
+    ],
+    "criteria": [
+      {
+        "id": "criterion-1",
+        "must": "Return concrete findings with file paths and severity when applicable",
+        "evidence": [
+          "review-findings",
+          "residual-risks"
+        ],
+        "severity": "required"
+      }
+    ],
+    "runtimeChecks": [],
+    "verifyRuns": [],
+    "childReport": {
+      "criteriaSatisfied": [
+        {
+          "id": "criterion-1",
+          "status": "satisfied",
+          "evidence": "报告含 4 条 🔴 blocking、9 条 🟡 important、10 条 🟢 nit，每条均给出 `文件:行号 ↔ 文件:行号` 对照与修复建议；结尾附逐消息类型/事件名的一致性检查表（✅/❌/⚠️）。已写入 /tmp/code-review/contract-report.md"
+        }
+      ],
+      "changedFiles": [
+        "/tmp/code-review/contract-report.md",
+        "/home/QLFY233/Test-flight-control-system/.pi-subagents/artifacts/progress/e6b96f0c/progress.md"
+      ],
+      "testsAddedOrUpdated": [],
+      "commandsRun": [
+        {
+          "command": "diff backend-A/bus/protocol.py backend-B/bus/protocol.py",
+          "result": "passed",
+          "summary": "IDENTICAL — 两侧均为 shared/protocol.py 软链接，SCHEMA_VERSION=2"
+        },
+        {
+          "command": "diff backend-A/ipc/frames.py backend-B/ipc/frames.py",
+          "result": "passed",
+          "summary": "IDENTICAL — 帧编解码逐字节相同"
+        },
+        {
+          "command": ".venv-A/bin/python backend-A/tests/test_all.py",
+          "result": "passed",
+          "summary": "A 侧 47/47 通过"
+        },
+        {
+          "command": ".venv-B/bin/python backend-B/tests/test_all.py",
+          "result": "passed",
+          "summary": "B 侧 58/58 通过"
+        }
+      ],
+      "validationOutput": [
+        "shared/protocol.py 单源（两侧软链）→ 枚举不可能漂移",
+        "B 侧上行 to/payload 与冻结文档 §3/§5 对齐（pose/status/alert 逐字段）",
+        "前端 ws.js:150-166 _dispatch 传 data.payload（undefined）→ 全部实时 WS 数据被丢弃",
+        "api.js:152 /api/field vs routes.py:43 /api/field/config → 404",
+        "api.js:132 abortSession → 后端无 POST /api/sessions/{id}/abort",
+        "bridge.py:87-90 _handle_status 不调 _ws_status；broadcast_status 零调用点"
+      ],
+      "residualRisks": [
+        "backend-A 仅静态审查了 bridge/alpha 调用链；agents/beta.py 与 tools/beta_tools.py 只抽查了 propose 流程，未逐行核对其余工具",
+        "前端 DashboardPage/StatusBar/ConnectionOverlay 未逐行核对，其消费的 link_status 字段已确认不匹配（🟡-2）",
+        "B 侧 rosbridge/node.py、subscriber.py、topics.py 与 sim-drone 契约未深入（超出 A-B 契约范围）",
+        "sse.py 的 tool_call_start/tool_call_result 是否应由 β agent 发出未验证（当前实现从不发，前端解析为超集）"
+      ],
+      "noStagedFiles": true,
+      "diffSummary": "只读契约审查：A↔B IPC 核心契约一致（shared/protocol.py 单源）；A↔前端存在 4 🔴 / 9 🟡 不一致与文档偏离，已逐条给出对照与修复建议",
+      "reviewFindings": [
+        "blocker: frontend/js/ws.js:150-166 与 backend-A/web/ws.py:44-113 - WS handler 收 data.payload=undefined，全部实时数据丢弃",
+        "blocker: frontend/js/api.js:152 与 backend-A/web/routes.py:43 - /api/field vs /api/field/config 404",
+        "blocker: frontend/js/api.js:132 与 backend-A/web/routes.py - POST /api/sessions/{id}/abort 路由缺失",
+        "blocker: backend-A/bus/bridge.py:87-90 - status 事件不转发 WS status（spec §5 冻结契约断链）",
+        "note: A↔B IPC 本身无互不兼容项，协议常量为单源软链接设计"
+      ],
+      "manualNotes": "plan.md/progress.md 在仓库根不存在；任务输入取自 .pi-subagents/artifacts/e6b96f0c_reviewer_*.input.md。审查为只读，未改任何代码。A↔B 跨进程链路无阻断，4 个 🔴 全部位于 backend-A↔前端契约（WS 载荷结构、field 路径、abort 路由、status 转发）。"
+    }
+  },
+  "effects": {
+    "fileMutation": {
+      "status": "not-applicable",
+      "expected": false,
+      "attempted": true
+    }
+  },
+  "transcriptPath": "/home/QLFY233/Test-flight-control-system/.pi-subagents/artifacts/e6b96f0c_reviewer_3_transcript.jsonl",
+  "skills": [
+    "code-review-skill"
+  ],
+  "timestamp": 1785650782650
+}

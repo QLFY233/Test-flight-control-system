@@ -93,9 +93,15 @@ async function init() {
         }
     } catch(e) { /* ignore parse errors */ }
 
-    a.apiManager = new ApiManager(a.config.backend?.base_url || 'http://localhost:8000');
+    // 同源自适应: 页面由 A 服务 StaticFiles 挂载时, base_url 跟随 location.origin
+    // (默认 8000 被其他服务占用/改用 BACKEND_A_PORT 时, 无需改配置即可同源访问);
+    // 用户显式配置的 base_url (SettingsPage 保存) 优先
+    const cfgBase = a.config.backend?.base_url || 'http://localhost:8000';
+    const effectiveBase = (cfgBase === 'http://localhost:8000' && location.origin && location.origin !== 'http://localhost:8000')
+        ? location.origin : cfgBase;
+    a.apiManager = new ApiManager(effectiveBase);
     a.sseManager = new SseManager();
-    a.wsManager = new WsManager((a.config.backend?.base_url || 'http://localhost:8000').replace(/^http/, 'ws') + (a.config.backend?.ws_endpoint || '/ws'));
+    a.wsManager = new WsManager(effectiveBase.replace(/^http/, 'ws') + (a.config.backend?.ws_endpoint || '/ws'));
     console.log('managers created');
 
     renderRootLayout(appEl);

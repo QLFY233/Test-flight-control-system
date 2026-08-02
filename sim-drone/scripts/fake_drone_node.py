@@ -63,8 +63,9 @@ class FakeDrone:
 
         # ── 状态 ──
         self._lock = threading.Lock()
-        self.x, self.y, self.z = 0.0, 0.0, 0.5   # 初始位姿
+        self.x, self.y, self.z = 0.0, 0.0, 0.0   # 初始位姿
         self.vx, self.vy, self.vz = 0.0, 0.0, 0.0  # 当前速度
+        self.vx_prev, self.vy_prev, self.vz_prev = 0.0, 0.0, 0.0  # 上一帧速度 (加速度导数用)
         self.yaw = 0.0
         self.target_x, self.target_y, self.target_z = 0.0, 0.0, 0.5
         self.has_target = False
@@ -145,6 +146,15 @@ class FakeDrone:
                 # ── 抄出本地副本 (减少锁持有时间) ──
                 px, py, pz = self.x, self.y, self.z
                 vx, vy, vz = self.vx, self.vy, self.vz
+                # 运动加速度 = 速度导数 (与 monitor 的 overaccel 阈值语义一致;
+                # 真实 IMU 含重力比力, 但仿真语义为体轴运动加速度, 悬停/匀速 = 0)
+                if dt > 0:
+                    ax = (self.vx - self.vx_prev) / dt
+                    ay = (self.vy - self.vy_prev) / dt
+                    az = (self.vz - self.vz_prev) / dt
+                else:
+                    ax = ay = az = 0.0
+                self.vx_prev, self.vy_prev, self.vz_prev = self.vx, self.vy, self.vz
                 yaw = self.yaw
 
             # ── 发布位姿 (ROS geometry_msgs/Quaternion 使用 x,y,z,w 顺序) ──
@@ -168,8 +178,8 @@ class FakeDrone:
             imu_msg = Imu()
             imu_msg.header.stamp = rospy.Time.now()
             imu_msg.header.frame_id = "imu_link"
-            # 线性加速度 (速度的导数, 简单近似)
-            imu_msg.linear_acceleration = Vector3(0.0, 0.0, 9.81)
+            # 运动加速度 (速度的导数, 悬停/匀速为 0)
+            imu_msg.linear_acceleration = Vector3(ax, ay, az)
             # 角速度 (这里简化为零)
             imu_msg.angular_velocity = Vector3(0.0, 0.0, 0.0)
             q_i = _yaw_to_quat(yaw)

@@ -4,7 +4,13 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-02 16:00 (代码审查修复 #3 — 全仓并行审查+修复+验证)
+最近更新：2026-08-02 18:00 (代码审查修复 #3 完成 + ROS 全链路端到端验证通过)
+
+> **2026-08-02 (端到端验证 — ROS1 Noetic 全链路)**:
+> 环境确认有 ROS1 Noetic + sim-drone 仿真器后完成全链路实测：roscore → sim-drone(50Hz pose/vel/IMU) → backend-B(run_b.py, 系统 Py3.8) → IPC(msgpack) → backend-A(8001, 因 8000 被无关服务占用) → WS → 前端页面
+> 验证结果：① B-1 死锁修复生效（10Hz 上行持续 20+ 分钟稳定，无锁死）；② B-2 数据通路修复生效（运动时 A 侧 current-pose 与 WS pose 广播 vel=[1.51,1.14,0.64] 非零，悬停归零；此前“恒零”系测试方法错误——无人机已停在目标点）；③ B-5 假阳性修复生效（启动无 stale/floor 误报；sim-drone 重启期间的 stale 告警为真实停产检测）；④ WS 广播链路全通（pose 10Hz 精确、alert 2s 节流）；⑤ IPC 断线重连正常（B 先于 A 启动自动重连）；⑥ 前端页面：状态栏“[已连接] DRONE ONLINE POS (4.5,3.5,2.5)”，同源自适应 base_url 生效，WS/REST 全通
+> 新发现并修复：⑦ sim-drone 把重力 9.81 当线性加速度发布 → overaccel 持续误报（已改为运动加速度=速度导数，悬停/匀速=0，误报消除）；⑧ run_a.py 支持 BACKEND_A_PORT 环境变量（与 BACKEND_A_HOST 对称，规避 8000 端口冲突）；⑨ 前端 base_url 同源自适应（location.origin 优先于硬编码 8000，显式配置仍优先）
+> 验证环境约束：8000 端口被无关服务(XDAgent API)占用 → 全链路跑 8001；B-1 的 subscriber.py 路径由单元测试回归覆盖（70/70），端到端实测为 run_b.py 路径（start_all.sh 实际入口）
 
 > **2026-08-02 (代码审查修复 #3 — 全仓并行审查 9🔴/36🟡 + 3 worker 并行修复 + 2 reviewer 独立验证)**:
 > 审查：4 路并行 reviewer（backend-A / backend-B / frontend / A-B 契约，依据 code-review-skill）→ 9 🔴 / 36 🟡 / 38 🟢 / 12 💡
