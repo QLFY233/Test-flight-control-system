@@ -4,7 +4,15 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-02 18:00 (代码审查修复 #3 完成 + ROS 全链路端到端验证通过)
+最近更新：2026-08-02 19:15 (I1 实证 — LLM 双连发验证通过 + LLM_BASE_URL/LLM_MODEL 支持)
+
+> **2026-08-02 19:15 (I1 实证)**:
+> 用真实 API key + opencode.ai/zen/go/v1 端点 + deepseek-v4-flash 完成 I1 实证:
+> ① LLMTranslator 双连发均成功 (5.8s/3.5s, 无 Event loop is closed) — 常驻事件循环线程修复实证有效
+> ② 真实 α 系统 prompt (alpha.md) 翻译输出合法: takeoff+hover 动作编码、schema_version=2、task_id 正确
+> ③ β SSE 全链路: agent 创建(16 工具) + 流式 markdown 响应正常
+> ④ llm.py 新增 LLM_BASE_URL/LLM_MODEL 环境变量覆盖 (api_key 仍只走 DEEPSEEK_API_KEY, 不硬编码)
+> 注: API key 仅经环境变量使用, 未入库; 首次双连发失败系测试用弱 system prompt 所致, 非代码缺陷
 
 > **2026-08-02 (端到端验证 — ROS1 Noetic 全链路)**:
 > 环境确认有 ROS1 Noetic + sim-drone 仿真器后完成全链路实测：roscore → sim-drone(50Hz pose/vel/IMU) → backend-B(run_b.py, 系统 Py3.8) → IPC(msgpack) → backend-A(8001, 因 8000 被无关服务占用) → WS → 前端页面
