@@ -4,7 +4,18 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-02 20:30 (阶段M 设计文档交付 — PX4-阶段2-design.md)
+最近更新：2026-08-03 01:30 (阶段M PX4 SITL 实测 — offboard 全链路打通)
+
+> **2026-08-03 01:30 (阶段M PX4 SITL 实测 — offboard 全链路打通)**:
+> PX4 v1.13.3 SITL + Gazebo Classic 全链路实测（大量排障后打通）:
+> ① 环境: PX4 v1.13.3 编译成功（依赖排查: menuconfig/kconfiglib/pip、GStreamer dev、mavlink 头生成、sitl_gazebo MAVLINK 缓存）
+> ② offboard 状态机修正: 先 OFFBOARD 后 ARM（避开 manual control 检查）; setpoint 流线程贯穿（停发即退出）
+> ③ 虚拟 RC 三坑: 18 通道、ch5/6 中性（0 触发 RTL）、微抖（rc_update 无更新不发布）
+> ④ COM_RC_IN_MODE=3（first_valid）— rc_update 输出恒 SOURCE_RC，1(MAVLINK) 不匹配 → RC 从未有效 → offboard RC-lost failsafe 反复覆盖（最隐蔽的根因）
+> ⑤ run_b 补 init_registry（组件注册缺失）; px4 posix rcS 注入参数（COM_RC_IN_MODE=3/BAT1_*/NAV_RCL_ACT/COM_OBL_ACT）
+> ✅ 验证: B preflight ACTIVE + 全链路 LLM→α→IPC→small_model→GoalPublisher→PX4 起飞（ENU z 0→0.4m）; NED/ENU 变换正确; B 测试 78/78
+> ⚠️ 遗留: 无人机爬升受限 ~0.4m（setpoint=EKF+0.075 恒定、thrust 悬停化）— PX4 高度控制调参（MPC_Z_*/悬停油门估计），属 S8 验收调参项
+> 提交: 0227aef（adapter 状态机/虚拟RC/流线程 + run_b 注册 + 文档）
 
 > **2026-08-02 20:30 (阶段M 设计定稿 — PX4-阶段2-design.md 交付)**:
 > 新建 `docs/specs/后端B/PX4-阶段2-design.md`（10 节）:
