@@ -4,7 +4,18 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-02 19:15 (I1 实证 — LLM 双连发验证通过 + LLM_BASE_URL/LLM_MODEL 支持)
+最近更新：2026-08-02 20:30 (阶段M 设计文档交付 — PX4-阶段2-design.md)
+
+> **2026-08-02 20:30 (阶段M 设计定稿 — PX4-阶段2-design.md 交付)**:
+> 新建 `docs/specs/后端B/PX4-阶段2-design.md`（10 节）:
+> ① 版本锁定 PX4 v1.13.3 + Gazebo Classic 11 + MAVROS 1.20.1（mavros/mavros-msgs 已实际安装核实 1.20.1，px4.launch fcu_url 已核实）
+> ② 消息契约：/mavros/setpoint_raw/local(PositionTarget, type_mask 位置控制=2552 整组设置, 权威定义核实) + state/arming/set_mode + 上行 pose/vel/imu 类型不变复用
+> ③ 核心难点：NED↔ENU 坐标变换单点收敛（BState/A/前端保持 ENU），悬停语义修正（offboard 停发会退出 → 持续发当前位置），abort/land → AUTO.LAND 兜底
+> ④ offboard 状态机 DISARMED→STREAMING(≥3s/20Hz)→ARM→OFFBOARD→ACTIVE + ARM 三重前置（stream+距home<2m+connected）
+> ⑤ B 侧改动面最小化：topics/adapter(subscriber 注入变换)/publisher 接口不变/PHASE 环境变量(默认1 零回归)
+> ⑥ S8 验收 8 项清单（含 NED/ENU 双端对照、offboard 丢失降级、阶段1 回归）
+> 同步交叉引用：开发规划阶段M 登记已建、测试路线图 §3.2 G4 标记 ✅ 已交付（含 gz_x500 修正说明）
+> 阶段M 待办：PX4 v1.13.3 源码 clone（$HOME/PX4-Autopilot 仓库外）、EGM96、pymavlink pip、start_px4_sitl.sh、Phase2Adapter 编码
 
 > **2026-08-02 19:15 (I1 实证)**:
 > 用真实 API key + opencode.ai/zen/go/v1 端点 + deepseek-v4-flash 完成 I1 实证:
@@ -117,7 +128,7 @@
 | 阶段J | 前端集成 | ✅ | P2~P11 全部完成 + 2026-08-02 端到端联调验证通过 |
 | 阶段K | 安全兜底与 reject 回路 | ✅ | S4+S7 — reject→WS + 断连 link_status + LLM fail→hover + 58/58 + 47/47 |
 | 阶段L | 语音/分析/看板（非阻塞增量） | ✅ | FFT/stats/filter + STT/TTS 框架 + PWA + dashboard 5面板 |
-| 阶段M | 远期 PX4 SITL + ego-planner + 真模型 | ⏳ | 不阻塞先导 (版本锁定: PX4 v1.13.3 + Gazebo Classic 11 + MAVROS 1.20.1) |
+| 阶段M | 远期 PX4 SITL + ego-planner + 真模型 | ⏳ | 设计文档已交付(2026-08-02)，待环境搭建与编码 (版本锁定: PX4 v1.13.3 + Gazebo Classic 11 + MAVROS 1.20.1) |
 
 ---
 
