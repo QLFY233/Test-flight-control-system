@@ -114,7 +114,7 @@
 | 阶段G | A↔B IPC 通 + α Agent | ✅ | S3 + S5前半 — LLM agent 工厂 + ActionTranslator + LLMTranslator + α loop + 47/47 测试通过 |
 | 阶段H | β Agent + SSE + 提议审核 | ✅ | S5 完整 — β tools(15) + SSE + REST + WS + propose/forward 双路径 + 47/47 测试通过 |
 | 阶段I | 监控回路 | ✅ | S6 — monitor detectors(threshold/trend) + component(10Hz) + alert节流 + trigger + 58/58 测试通过 |
-| 阶段J | 前端集成 | ✅ | P2~P11 全部完成，待后端联调 |
+| 阶段J | 前端集成 | ✅ | P2~P11 全部完成 + 2026-08-02 端到端联调验证通过 |
 | 阶段K | 安全兜底与 reject 回路 | ✅ | S4+S7 — reject→WS + 断连 link_status + LLM fail→hover + 58/58 + 47/47 |
 | 阶段L | 语音/分析/看板（非阻塞增量） | ✅ | FFT/stats/filter + STT/TTS 框架 + PWA + dashboard 5面板 |
 | 阶段M | 远期 PX4 SITL + ego-planner + 真模型 | ⏳ | 不阻塞先导 (版本锁定: PX4 v1.13.3 + Gazebo Classic 11 + MAVROS 1.20.1) |
@@ -245,7 +245,7 @@
 | P6 β 界面（FlightPlanCard + approveProposal C3） | ✅ | — | 2026-07-24 |
 | P7 其他页面（HistoryPage 双子 TAB + 发送到 β） | ✅ | — | 2026-07-24 |
 | P8/P9 响应式 + 异常处理 | ✅ | — | 2026-07-24 |
-| **⚠ 待后端联调**: WS/SSE/REST 真实数据接入 | 🚧 | — | — |
+| **✅ 后端联调完成**: WS/SSE/REST 真实数据接入（2026-08-02 端到端验证：sim-drone→B→IPC→A→WS→前端全链路实测通过，状态栏实时显示无人机位置/连接态，同源自适应 base_url 生效） | ✅ | — | 2026-08-02 |
 
 ### 阶段K — 安全兜底与 reject 回路
 | 模块 | 状态 | 负责人 | 最近更新 |
