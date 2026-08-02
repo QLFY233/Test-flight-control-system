@@ -12,8 +12,7 @@ class HistoryChart {
         this.chart = null;
         this.container = null;
         this._resizeHandler = null;
-        this._timeUnsub = null;
-        this._playbackUnsub = null;
+        this._onSeek = null;
         this._trajectoryUnsub = null;
     }
 
@@ -25,6 +24,11 @@ class HistoryChart {
         chartEl.style.height = '100%';
         container.appendChild(chartEl);
 
+        if (typeof echarts === 'undefined') {
+            chartEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--color-text-disabled);font-size:var(--text-sm);">ECharts 加载失败（CDN 不可达）</div>';
+            return;
+        }
+
         this.chart = echarts.init(chartEl, null, {
             backgroundColor: 'transparent',
         });
@@ -34,16 +38,15 @@ class HistoryChart {
         this._resizeHandler = () => this.chart && this.chart.resize();
         window.addEventListener('resize', this._resizeHandler);
 
-        // Listen for time cursor updates
-        this._timeUnsub = bus.on('playback-seek', (t) => this._updateTimeCursor(t));
-        this._playbackUnsub = bus.on('playback-state-changed', () => {});
+        // 具名回调引用：unmount 时能真正 off 掉，避免泄漏（bus.on 不返回 unsubscribe）
+        this._onSeek = (t) => this._updateTimeCursor(t);
+        bus.on('playback-seek', this._onSeek);
         this._trajectoryUnsub = store.subscribe('trajectory', () => this._buildChart());
     }
 
     unmount() {
         if (this._resizeHandler) { window.removeEventListener('resize', this._resizeHandler); this._resizeHandler = null; }
-        if (this._timeUnsub) { bus.off('playback-seek', this._timeUnsub); this._timeUnsub = null; }
-        if (this._playbackUnsub) { bus.off('playback-state-changed', this._playbackUnsub); this._playbackUnsub = null; }
+        if (this._onSeek) { bus.off('playback-seek', this._onSeek); this._onSeek = null; }
         if (this._trajectoryUnsub) { this._trajectoryUnsub(); this._trajectoryUnsub = null; }
         if (this.chart) { this.chart.dispose(); this.chart = null; }
         if (this.container) { this.container.innerHTML = ''; this.container = null; }

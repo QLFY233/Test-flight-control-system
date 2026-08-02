@@ -35,7 +35,9 @@ class BState:
 
         # ── 高频位姿 (pose_lock 保护) ──
         self._pose = PoseData()
-        self._last_data_ts: float = 0.0
+        # 初值取启动时刻 (wall time): 避免 monitor 启动即把 0.0 判为停产 (B-5)
+        self._last_data_ts: float = time.time()
+        self._data_received: bool = False  # 是否已收到首帧无人机数据 (monitor 首帧前不评估)
         self._imu = IMUData()
         self.pose_lock = threading.Lock()
 
@@ -52,6 +54,9 @@ class BState:
 
     @property
     def current_pose(self) -> PoseData:
+        # 注意: 返回内部对象引用 (非一致快照语义)。读侧在锁外取 pos/vel 等多字段时,
+        # 可能读到 "新 pos + 旧 ts" 的混合快照; 单字段赋值原子、无撕裂写, 可接受。
+        # 如需强一致快照请自行在锁内复制 (B-18)。
         with self.pose_lock:
             return self._pose
 
@@ -69,15 +74,29 @@ class BState:
             self._pose.accel = list(accel)
             self._pose.angular_vel = list(angular_vel)
             self._pose.ts = ts
-            self._last_data_ts = ts
+            # 停产判定用 wall time 统一时钟源 (B-10), 避免 ROS header stamp 与 wall clock 错配
+            self._last_data_ts = time.time()
+            self._data_received = True
 
     @property
     def current_imu(self) -> IMUData:
         with self.pose_lock:
             return self._imu
 
+    @property
+    def data_received(self) -> bool:
+        """是否已收到首帧无人机数据 (monitor 据此跳过启动假阳性评估, B-5)。"""
+        with self.pose_lock:
+            return self._data_received
+
     def update_imu(self, accel, angular_vel, ts):
+        """IMU 回调 — 单次加锁同时写富 IMU (telemetry) 与 _pose 的 accel/angular_vel (pose 上行)。
+        注意: 调用方不得再持有 pose_lock 调本方法 (非重入锁, 见 B-1 死锁修复)。"""
         with self.pose_lock:
             self._imu.accel = list(accel)
             self._imu.angular_vel = list(angular_vel)
             self._imu.ts = ts
+            # 与 pose 上行字段对齐 (run_b.py 之前只写 _imu, 导致上行 accel/angularVel 恒零, B-2)
+            self._pose.accel = list(accel)
+            self._pose.angular_vel = list(angular_vel)
+            self._data_received = True

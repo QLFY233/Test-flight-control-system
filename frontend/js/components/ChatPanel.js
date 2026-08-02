@@ -15,8 +15,6 @@ class ChatPanel {
         this.isRecording = false;
         this.mediaRecorder = null;
         this.audioChunks = [];
-        this.streamingMessageEl = null;
-        this.streamingContent = '';
         this._boundHandleChatSend = this._handleChatSend.bind(this);
         this._mounted = false;
     }
@@ -29,11 +27,14 @@ class ChatPanel {
 
         // Listen for alerts to show in chat
         bus.on('alert', (payload) => {
-            this._addSystemMessage('alert-' + (payload.level || 'info'), payload.message || JSON.stringify(payload));
+            this._addSystemMessage('alert-' + (payload.level || 'info'), payload.detail || JSON.stringify(payload));
         });
 
         bus.on('alpha-output', (payload) => {
-            if (payload && payload.action_sequence) {
+            if (payload && payload.remaining_actions) {
+                this._addSystemMessage('alpha_output', `[α] 动作序列: ${payload.remaining_actions.length} 条`);
+            } else if (payload && payload.action_sequence) {
+                // 兼容旧字段名
                 this._addSystemMessage('alpha_output', `[α] 动作序列: ${payload.action_sequence.length} 条`);
             }
         });
@@ -118,7 +119,8 @@ class ChatPanel {
 
         const sseEndpoint = (window.__app.config?.backend?.base_url || 'http://localhost:8000') + (window.__app.config?.backend?.sse_beta || '/api/chat/beta');
 
-        // 流式占位元素 — 流式期间只显示纯文本，完成后替换为 Markdown 渲染版
+        // 流式占位元素 — 流式期间只显示纯文本，完成后替换为 Markdown 渲染版。
+        // 流状态全部收敛到本闭包局部变量，杜绝并发请求相互覆盖（共享实例字段的竞态）。
         const streamEl = document.createElement('div');
         streamEl.className = 'chat-message chat-message--agent';
         const bubble = document.createElement('div');
@@ -126,15 +128,15 @@ class ChatPanel {
         bubble.textContent = '...';
         streamEl.appendChild(bubble);
         msgContainer.appendChild(streamEl);
-        this.streamingMessageEl = streamEl;
-        this.streamingContent = '';
+        let streamContent = '';
+        let errored = false; // error 事件后跳过 onComplete，避免重复渲染
         this._scrollToBottom(msgContainer);
 
         await sseManager.sendMessage(sseEndpoint, text, {
             onMessage: (chunk) => {
-                this.streamingContent += chunk;
+                streamContent += chunk;
                 // 流式期间只显示纯文本，不做 Markdown 渲染（防止表格/列表碎片化）
-                if (bubble) bubble.textContent = this.streamingContent;
+                if (bubble) bubble.textContent = streamContent;
                 this._scrollToBottom(msgContainer);
             },
             onToolCall: (toolName, args) => {
@@ -149,28 +151,34 @@ class ChatPanel {
             },
             onPlan: (plan) => bus.emit('plan-received', plan),
             onComplete: (fullText) => {
+                if (errored) return; // sse.js 错误后也会跳过 onComplete，这里双保险
                 // 用完整 Markdown 渲染版替换流式占位
-                const finalEl = ChatMessage.render({ role: 'agent', content: fullText || this.streamingContent, timestamp: Date.now() });
-                if (this.streamingMessageEl && this.streamingMessageEl.parentNode) {
-                    this.streamingMessageEl.replaceWith(finalEl);
+                const finalEl = ChatMessage.render({ role: 'agent', content: fullText || streamContent, timestamp: Date.now() });
+                if (streamEl.parentNode) {
+                    streamEl.replaceWith(finalEl);
                 } else if (msgContainer) {
                     msgContainer.appendChild(finalEl);
                 }
-                this.streamingMessageEl = null;
                 this._scrollToBottom(msgContainer);
-                this._addMessage('agent', fullText || this.streamingContent);
+                this._addMessage('agent', fullText || streamContent);
             },
             onError: (error) => {
-                const content = this.streamingContent || '';
+                errored = true;
+                const content = streamContent || '';
                 const finalEl = ChatMessage.render({ role: 'agent', content: content + '\n\n*[ERR: ' + error + ']*', timestamp: Date.now() });
-                if (this.streamingMessageEl && this.streamingMessageEl.parentNode) {
-                    this.streamingMessageEl.replaceWith(finalEl);
+                if (streamEl.parentNode) {
+                    streamEl.replaceWith(finalEl);
                 } else if (msgContainer) {
                     msgContainer.appendChild(finalEl);
                 }
-                this.streamingMessageEl = null;
                 this._scrollToBottom(msgContainer);
                 this._addMessage('agent', content || ('ERR: ' + error));
+            },
+            onAbort: () => {
+                // 中断时不渲染空消息：仅移除流式占位
+                if (streamEl.parentNode) {
+                    streamEl.remove();
+                }
             },
         });
     }

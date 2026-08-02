@@ -11,11 +11,16 @@ import threading
 from .action_codes import VALID_ACTION_CODES
 from .goal_gen import make_goal_generator, GoalGenError
 from bus.protocol import (
+    SCHEMA_VERSION,
     EVENT_TOOL_REJECT,
     EVENT_TOOL_STATUS,
     FLIGHT_STATUS_EXECUTING,
     FLIGHT_STATUS_COMPLETED,
     FLIGHT_STATUS_HOVERING,
+    TO_ALPHA,
+    REJECT_UNKNOWN_ACTION_CODE,
+    REJECT_OUT_OF_BOUNDARY,
+    REJECT_EGO_PLANNER_UNREACHABLE,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,6 +48,10 @@ class SmallModelComponent:
         self._merged_safety: dict | None = None
         # 事件发送回调 (由 lifecycle 注入, 用于上行 reject/status)
         self._send_event = None
+        # B-6: 状态锁 — 保护 current_action_plan/current_action_index/small_model_status/
+        # _merged_safety/_current_goal 的跨线程一致性 (IPC 线程 vs goal-publisher 线程)。
+        # 所有修改路径 (generate/abort/hover/advance) 必须在同一临界区完成,
+        # 否则新计划写入与 publisher 推进之间会竞态 (新计划首条动作被跳过)。
 
     def set_event_sender(self, sender):
         """注入事件发送回调: send_event(msg: dict)。"""
@@ -71,27 +80,24 @@ class SmallModelComponent:
             logger.warning("[small_model] generate_goal with empty actions list")
             return {"status": "error", "reason": "empty actions list"}
 
-        # 合并 safety_constraints 并保存 (跨动作推进复用)
-        self._merged_safety = self._merge_safety(overrides)
-
-        # 存入 BState
-        self._state.current_action_plan = actions
-        self._state.current_action_index = 0
-        self._state.small_model_status = "executing"
-
-        # 翻译第一条动作
-        return self._generate_next_goal()
+        # B-6: 计划写入 + 首条动作翻译在同一临界区, 防止 publisher 线程用旧目标推进新计划
+        with self._lock:
+            self._merged_safety = self._merge_safety(overrides)
+            self._state.current_action_plan = actions
+            self._state.current_action_index = 0
+            self._state.small_model_status = "executing"
+            return self._generate_next_goal()
 
     def _generate_next_goal(self) -> dict:
-        """从 current_action_plan 取当前未执行的动作并翻译为目标点。"""
+        """从 current_action_plan 取当前未执行的动作并翻译为目标点。
+        注意: 假定调用方已持有 self._lock (B-6 锁纪律), 不得在外部无锁调用。"""
         idx = self._state.current_action_index
         actions = self._state.current_action_plan or []
 
         if idx >= len(actions):
             self._state.small_model_status = "idle"
             self._send_status(FLIGHT_STATUS_COMPLETED, idx, len(actions))
-            with self._lock:
-                self._current_goal = None
+            self._current_goal = None
             return {"status": "ok", "note": "all actions completed"}
 
         action = actions[idx]
@@ -99,10 +105,10 @@ class SmallModelComponent:
 
         if code not in VALID_ACTION_CODES:
             self._state.small_model_status = "idle"
-            self._send_reject(f"unknown_action_code:{code}", idx)
-            with self._lock:
-                self._current_goal = None
-            return {"status": "rejected", "reason": f"unknown_action_code:{code}"}
+            # 🟡-5: reason 用冻结常量, 编码信息附 detail
+            self._send_reject(REJECT_UNKNOWN_ACTION_CODE, idx, detail=f"unknown action code: {code}")
+            self._current_goal = None
+            return {"status": "rejected", "reason": REJECT_UNKNOWN_ACTION_CODE}
 
         safety = self._merged_safety or self._merge_safety({})
 
@@ -121,26 +127,25 @@ class SmallModelComponent:
             goal = self._generator.generate(action, pose, env, safety)
         except GoalGenError as e:
             reason = str(e)
+            base, detail = self._normalize_reject(reason)
             self._state.small_model_status = "idle"
-            self._send_reject(reason, idx)
-            with self._lock:
-                self._current_goal = None
-            return {"status": "rejected", "reason": reason}
+            self._send_reject(base, idx, detail=detail)
+            self._current_goal = None
+            return {"status": "rejected", "reason": base}
 
-        with self._lock:
-            self._current_goal = goal
+        self._current_goal = goal
         self._send_status(FLIGHT_STATUS_EXECUTING, idx + 1, len(actions))
         return {"status": "ok", "goal": goal}
 
     def _advance_action(self) -> bool:
-        """切下一条动作。返回 True 表示还有剩余动作。"""
+        """切下一条动作。返回 True 表示还有剩余动作。
+        注意: 假定调用方已持有 self._lock (B-6), index+=1 与读 plan 必须同一临界区。"""
         self._state.current_action_index += 1
         idx = self._state.current_action_index
         actions = self._state.current_action_plan or []
         if idx >= len(actions):
             self._state.small_model_status = "idle"
-            with self._lock:
-                self._current_goal = None
+            self._current_goal = None
             self._send_status(FLIGHT_STATUS_COMPLETED, len(actions), len(actions))
             return False
         # 生成下一条动作的目标点 (复用 _merged_safety)
@@ -149,29 +154,29 @@ class SmallModelComponent:
 
     def _handle_abort(self, args: dict) -> dict:
         """中止当前动作序列, 切悬停。"""
-        self._state.current_action_plan = None
-        self._state.current_action_index = 0
-        self._state.small_model_status = "idle"
-        self._merged_safety = None
         with self._lock:
+            self._state.current_action_plan = None
+            self._state.current_action_index = 0
+            self._state.small_model_status = "idle"
+            self._merged_safety = None
             self._current_goal = None
         logger.warning("[small_model] abort — clearing action plan, hovering")
         return {"status": "ok", "action": "abort"}
 
     def _handle_hover(self, args: dict) -> dict:
         """安全悬停 — 目标点 = 当前位置。"""
-        self._state.current_action_plan = None
-        self._state.current_action_index = 0
-        self._state.small_model_status = FLIGHT_STATUS_HOVERING
-        self._merged_safety = None
-        try:
-            p = self._state.current_pose
-            goal = {"goal": p.pos[:], "yaw": yaw_from_quat(p.quat), "speed_max": 1.5}
-        except Exception:
-            goal = {"goal": [0, 0, 0.5], "yaw": 0.0, "speed_max": 1.5}
         with self._lock:
+            self._state.current_action_plan = None
+            self._state.current_action_index = 0
+            self._state.small_model_status = FLIGHT_STATUS_HOVERING
+            self._merged_safety = None
+            try:
+                p = self._state.current_pose
+                goal = {"goal": p.pos[:], "yaw": yaw_from_quat(p.quat), "speed_max": 1.5}
+            except Exception:
+                goal = {"goal": [0, 0, 0.5], "yaw": 0.0, "speed_max": 1.5}
             self._current_goal = goal
-        self._send_status(FLIGHT_STATUS_HOVERING, 0, 0)
+            self._send_status(FLIGHT_STATUS_HOVERING, 0, 0)
         logger.info("[small_model] hover — maintaining current position")
         return {"status": "ok", "action": "hover", "goal": goal}
 
@@ -191,13 +196,25 @@ class SmallModelComponent:
         dz = pos[2] - g[2]
         dist = (dx * dx + dy * dy + dz * dz) ** 0.5
         if dist < threshold:
-            # 悬停态不变
-            if self._state.small_model_status == FLIGHT_STATUS_HOVERING:
-                return True
-            return self._advance_action()
+            # B-6: 状态判定与推进在同一临界区 (get_current_goal 已释放锁, 无嵌套获取)
+            with self._lock:
+                # 悬停态不变
+                if self._state.small_model_status == FLIGHT_STATUS_HOVERING:
+                    return True
+                return self._advance_action()
         return False
 
     # ── helpers ──
+
+    def _normalize_reject(self, reason: str) -> tuple:
+        """把 stub/GoalGenError 错误消息规范化为 (冻结 reason, detail)。
+        兼容三种形式: 纯常量 / "常量:附加信息" / 未知字符串 (原样返回)。"""
+        for prefix in (REJECT_UNKNOWN_ACTION_CODE, REJECT_OUT_OF_BOUNDARY, REJECT_EGO_PLANNER_UNREACHABLE):
+            if reason == prefix:
+                return prefix, ""
+            if reason.startswith(prefix + ":"):
+                return prefix, reason
+        return reason, ""
 
     def _merge_safety(self, overrides: dict) -> dict:
         """合并默认约束与 ActionCommand 随附约束。"""
@@ -212,26 +229,27 @@ class SmallModelComponent:
             ],
         }
 
-    def _send_reject(self, reason: str, action_index: int):
+    def _send_reject(self, reason: str, action_index: int, detail: str = ""):
+        """上行 reject 事件。reason 必须为冻结枚举值 (🟡-5), 附加信息放 detail。"""
         if self._send_event:
             self._send_event({
-                "schema_version": 2,
+                "schema_version": SCHEMA_VERSION,
                 "from": "small_model",
-                "to": "alpha",
+                "to": TO_ALPHA,
                 "msg_type": "event",
                 "call_id": "",
                 "tool": EVENT_TOOL_REJECT,
                 "args": {},
-                "payload": {"reason": reason, "actionIndex": action_index},
+                "payload": {"reason": reason, "actionIndex": action_index, "detail": detail},
                 "ts": time.time(),
             })
 
     def _send_status(self, flight_status: str, current_action: int, total_actions: int):
         if self._send_event:
             self._send_event({
-                "schema_version": 2,
+                "schema_version": SCHEMA_VERSION,
                 "from": "small_model",
-                "to": "alpha",
+                "to": TO_ALPHA,
                 "msg_type": "event",
                 "call_id": "",
                 "tool": EVENT_TOOL_STATUS,

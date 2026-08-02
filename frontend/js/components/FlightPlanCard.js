@@ -3,6 +3,8 @@
  * schema_version=2: uses actions format (not legacy segments/waypoints).
  */
 
+import { esc } from '../escape.js';
+
 class FlightPlanCard {
     /**
      * @param {object} plan
@@ -85,7 +87,7 @@ class FlightPlanCard {
                         <span style="font-family: var(--font-mono);">
                             ${code === 'goto' || code === 'move'
                                 ? `目标: (${target[0] != null ? Number(target[0]).toFixed(2) : '?'}, ${target[1] != null ? Number(target[1]).toFixed(2) : '?'}, ${target[2] != null ? Number(target[2]).toFixed(2) : '?'})`
-                                : value ? `${units ? value + ' ' + units : value}` : ''
+                                : value ? `${esc(value + (units ? ' ' + units : ''))}` : ''
                             }
                         </span>
                     </div>
@@ -103,9 +105,7 @@ class FlightPlanCard {
     }
 
     static _esc(text) {
-        const div = document.createElement('div');
-        div.textContent = String(text);
-        return div.innerHTML;
+        return esc(text);
     }
 }
 

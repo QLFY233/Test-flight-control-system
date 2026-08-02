@@ -4,6 +4,8 @@
 
 import store from '../state.js';
 import { apiManager } from '../shared.js';
+import bus from '../event-bus.js';
+import { esc } from '../escape.js';
 
 class BottomBar {
     constructor(container) {
@@ -20,7 +22,8 @@ class BottomBar {
             : (currentActionIdx > 0 ? `动作 ${currentActionIdx}/${flight.totalActions || 0}` : '待命');
         const status = flight.status || 'idle';
 
-        const showAbort = status === 'running' || status === 'paused';
+        // 冻结枚举（shared/protocol.py schema_version=2）：idle/hovering/planned/executing/completed/aborted
+        const showAbort = status === 'executing';
 
         this.container.innerHTML = `
             <span class="bottom-bar__label">PROGRESS</span>
@@ -30,7 +33,7 @@ class BottomBar {
             <span class="bottom-bar__value">${progress}%</span>
             <span class="bottom-bar__sep"></span>
             <span class="bottom-bar__label">ACTION</span>
-            <span class="bottom-bar__action">${actionLabel}</span>
+            <span class="bottom-bar__action">${esc(actionLabel)}</span>
             ${showAbort ? `
                 <span class="bottom-bar__sep"></span>
                 <button class="btn btn--danger btn--sm" id="btn-abort">/// ABORT</button>
@@ -42,7 +45,7 @@ class BottomBar {
             abortBtn.addEventListener('click', async () => {
                 const sessionId = store.get('flight.sessionId');
                 if (!sessionId) {
-                    alert('没有活动中的试飞任务');
+                    bus.emit('toast', { message: '没有活动中的试飞任务', level: 'warning' });
                     return;
                 }
                 if (!confirm('确定要紧急中断当前试飞任务吗？')) return;
@@ -52,8 +55,9 @@ class BottomBar {
                 try {
                     await apiManager.abortSession(sessionId);
                     store.set('flight.status', 'aborted');
+                    bus.emit('toast', { message: '任务已紧急中断', level: 'success' });
                 } catch (e) {
-                    alert('中断失败: ' + e.message);
+                    bus.emit('toast', { message: '中断失败: ' + e.message, level: 'error' });
                 } finally {
                     abortBtn.disabled = false;
                     abortBtn.textContent = '紧急中断';

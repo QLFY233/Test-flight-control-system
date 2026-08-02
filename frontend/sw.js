@@ -1,7 +1,10 @@
 // Service Worker — PWA 离线缓存 (先导阶段 L)
-// 缓存策略: 首次访问缓存静态资源, 后续优先从缓存取 (Cache First)
+// 缓存策略: 静态资源 Stale-While-Revalidate（先用缓存即时响应，后台回源更新），
+// 避免 Cache First 导致的「代码更新后永不清缓存」。
+// 版本号变更（发布新版本时更新 BUILD_ID）会自动废弃旧缓存。
 
-const CACHE_NAME = 'flight-control-v1';
+const BUILD_ID = '2026-08-02';
+const CACHE_NAME = 'flight-control-v1-' + BUILD_ID;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -19,6 +22,7 @@ const STATIC_ASSETS = [
   '/js/sse.js',
   '/js/event-bus.js',
   '/js/shared.js',
+  '/js/escape.js',
   '/config-default.json',
   '/manifest.json',
 ];
@@ -47,7 +51,7 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// 请求拦截 — Cache First (静态), Network First (API)
+// 请求拦截 — Stale-While-Revalidate (静态), Network First (API)
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
@@ -56,11 +60,10 @@ self.addEventListener('fetch', (event) => {
     return; // 不拦截
   }
 
-  // 静态资源 — Cache First
+  // 静态资源 — Stale-While-Revalidate: 先用缓存即时响应，后台回源更新缓存
   event.respondWith(
     caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request).then((response) => {
-        // 缓存成功的网络请求
+      const networkFetch = fetch(event.request).then((response) => {
         if (response.ok && response.type === 'basic') {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -68,7 +71,9 @@ self.addEventListener('fetch', (event) => {
           });
         }
         return response;
-      });
+      }).catch(() => cached);
+
+      return cached || networkFetch;
     })
   );
 });

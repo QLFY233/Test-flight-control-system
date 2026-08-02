@@ -8,13 +8,19 @@ import asyncio
 import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from bus.protocol import SCHEMA_VERSION
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# 已连接前端列表
-_connected: list[WebSocket] = []
-_connected_lock = asyncio.Lock()
+# B2: 每个前端客户端一个独立 sender task + 有界发送队列。
+# broadcast 只 put_nowait 入队 (非阻塞) — 慢客户端不再持锁阻塞全部广播,
+# 也不再拖慢 IPC 收帧路径 (pose 10Hz 广播原与收帧循环串行 await)。
+_clients: dict[WebSocket, asyncio.Queue] = {}
+_clients_lock = asyncio.Lock()
+_QUEUE_MAX = 256          # 10Hz pose → ~25s 缓冲
+_WS_MSG_MAX = 64 * 1024   # S2: 单条上行消息上限
 
 # 全局引用
 _state_ref = None
@@ -25,26 +31,61 @@ def set_ws_context(state):
     _state_ref = state
 
 
-async def broadcast(msg: dict):
-    """向所有已连接前端推送消息。"""
-    dead = []
-    payload = json.dumps(msg, ensure_ascii=False)
-    async with _connected_lock:
-        for ws in _connected:
+async def _client_sender(ws: WebSocket, queue: asyncio.Queue):
+    """单客户端发送 task — 串行消费队列; 出错或收到关闭哨兵即退出。"""
+    try:
+        while True:
+            payload = await queue.get()
+            if payload is None:  # 关闭哨兵
+                break
             try:
                 await ws.send_text(payload)
             except Exception:
-                dead.append(ws)
-        for ws in dead:
-            if ws in _connected:
-                _connected.remove(ws)
+                break
+    finally:
+        await _remove_client(ws)
+
+
+async def _add_client(ws: WebSocket):
+    queue = asyncio.Queue(maxsize=_QUEUE_MAX)
+    async with _clients_lock:
+        _clients[ws] = queue
+    asyncio.create_task(_client_sender(ws, queue))
+
+
+async def _remove_client(ws: WebSocket):
+    async with _clients_lock:
+        queue = _clients.pop(ws, None)
+    if queue is not None:
+        try:
+            queue.put_nowait(None)
+        except asyncio.QueueFull:
+            pass
+
+
+async def broadcast(msg: dict):
+    """向所有已连接前端推送消息 (非阻塞入队, 队列满即断开慢客户端)。"""
+    payload = json.dumps(msg, ensure_ascii=False)
+    async with _clients_lock:
+        targets = list(_clients.items())
+    for ws, queue in targets:
+        try:
+            queue.put_nowait(payload)
+        except asyncio.QueueFull:
+            # 客户端消费太慢 → 主动断开, 避免无界积压
+            logger.warning("[ws] client too slow, dropping connection")
+            try:
+                await ws.close()
+            except Exception:
+                pass
+            await _remove_client(ws)
 
 
 async def broadcast_pose(pos, quat, vel, accel, angular_vel, ts):
     """推送位姿 (10Hz, 由 bridge._handle_pose 调用)。"""
     await broadcast({
         "type": "pose",
-        "schema_version": 2,
+        "schema_version": SCHEMA_VERSION,
         "pos": pos,
         "quat": quat,
         "vel": vel,
@@ -58,7 +99,7 @@ async def broadcast_alert(level: str, code: str, detail: str, suggestion: str | 
     """推送告警 (由 bridge._handle_alert 调用)。"""
     await broadcast({
         "type": "alert",
-        "schema_version": 2,
+        "schema_version": SCHEMA_VERSION,
         "level": level,
         "code": code,
         "detail": detail,
@@ -71,7 +112,7 @@ async def broadcast_status(flight_status: str, mode: str, current_action: int, t
     """推送任务状态。"""
     await broadcast({
         "type": "status",
-        "schema_version": 2,
+        "schema_version": SCHEMA_VERSION,
         "flightStatus": flight_status,
         "mode": mode,
         "currentAction": current_action,
@@ -84,7 +125,7 @@ async def broadcast_alpha_output(action: dict, goal: list | None, remaining: lis
     """推送 α 输出 (动作编码 + 目标点)。"""
     await broadcast({
         "type": "alpha_output",
-        "schema_version": 2,
+        "schema_version": SCHEMA_VERSION,
         "action": action,
         "goal": goal,
         "remaining_actions": remaining,
@@ -96,7 +137,7 @@ async def broadcast_reject(reason: str, action_index: int, suggestion: str | Non
     """推送 reject (小模型/ego-planner 无法生成可达目标)。"""
     await broadcast({
         "type": "reject",
-        "schema_version": 2,
+        "schema_version": SCHEMA_VERSION,
         "reason": reason,
         "actionIndex": action_index,
         "suggestedAction": suggestion,
@@ -108,7 +149,7 @@ async def broadcast_link_status(link: str, state: str, detail: str | None = None
     """推送链路状态变更。"""
     await broadcast({
         "type": "link_status",
-        "schema_version": 2,
+        "schema_version": SCHEMA_VERSION,
         "link": link,
         "state": state,
         "detail": detail,
@@ -120,14 +161,26 @@ async def broadcast_link_status(link: str, state: str, detail: str | None = None
 async def ws_endpoint(ws: WebSocket):
     """WebSocket 端点 — 双向实时通信。"""
     await ws.accept()
-    async with _connected_lock:
-        _connected.append(ws)
-    logger.info(f"[ws] client connected ({len(_connected)} total)")
+    await _add_client(ws)
+    logger.info(f"[ws] client connected ({len(_clients)} total)")
 
     try:
         while True:
             raw = await ws.receive_text()
-            msg = json.loads(raw)
+            # S2: 单消息限长
+            if len(raw) > _WS_MSG_MAX:
+                await ws.send_text(json.dumps({
+                    "type": "error", "message": "message too large",
+                }))
+                continue
+            # S2: 畸形 JSON 不回断, 回 error 帧
+            try:
+                msg = json.loads(raw)
+            except (json.JSONDecodeError, ValueError):
+                await ws.send_text(json.dumps({
+                    "type": "error", "message": "invalid json",
+                }))
+                continue
             msg_type = msg.get("type", "")
 
             if msg_type == "sync":
@@ -158,7 +211,5 @@ async def ws_endpoint(ws: WebSocket):
     except Exception as e:
         logger.warning(f"[ws] error: {e}")
     finally:
-        async with _connected_lock:
-            if ws in _connected:
-                _connected.remove(ws)
-        logger.info(f"[ws] client disconnected ({len(_connected)} total)")
+        await _remove_client(ws)
+        logger.info(f"[ws] client disconnected ({len(_clients)} total)")

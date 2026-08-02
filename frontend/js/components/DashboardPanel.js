@@ -4,6 +4,8 @@
  * Subscribes to WS 'dashboard_config' for updates.
  */
 
+import { esc, escAttr } from '../escape.js';
+
 class DashboardPanel {
     /**
      * @param {string} panelId - unique panel identifier
@@ -49,14 +51,14 @@ class DashboardPanel {
         this.container.innerHTML = `
             <div class="dashboard-panel">
                 <div class="dashboard-panel__header">
-                    <span>${title}</span>
-                    <span style="font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-disabled);">${this.spec.window || ''}</span>
+                    <span>${esc(title)}</span>
+                    <span style="font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-disabled);">${esc(this.spec.window || '')}</span>
                 </div>
-                <div class="dashboard-panel__body" id="dp-body-${this.panelId}"></div>
+                <div class="dashboard-panel__body" id="dp-body-${escAttr(this.panelId)}"></div>
             </div>
         `;
 
-        const bodyEl = this.container.querySelector(`#dp-body-${this.panelId}`);
+        const bodyEl = this.container.querySelector(`#dp-body-${CSS.escape(this.panelId)}`);
         if (!bodyEl) return;
 
         this._renderContent(bodyEl);
@@ -166,8 +168,8 @@ class DashboardPanel {
         const unit = this.spec.unit || '';
         container.innerHTML = `
             <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:var(--space-4);">
-                <div class="dashboard-panel__value">${value}</div>
-                <div class="dashboard-panel__unit">${unit}</div>
+                <div class="dashboard-panel__value">${esc(value)}</div>
+                <div class="dashboard-panel__unit">${esc(unit)}</div>
             </div>
         `;
     }

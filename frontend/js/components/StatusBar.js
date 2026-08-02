@@ -3,6 +3,7 @@
  */
 
 import store from '../state.js';
+import { esc } from '../escape.js';
 
 class StatusBar {
     constructor(container) {
@@ -47,7 +48,7 @@ class StatusBar {
                 <span class="status-bar__sep"></span>
                 <div class="status-bar__indicator">
                     <span style="color:var(--color-text-disabled)">MODE</span>
-                    <span>${flight.mode || '--'}</span>
+                    <span>${esc(flight.mode || '--')}</span>
                 </div>
                 <span class="status-bar__sep"></span>
                 <div class="status-bar__indicator">

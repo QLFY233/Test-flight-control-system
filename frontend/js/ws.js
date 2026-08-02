@@ -19,6 +19,12 @@ class WsManager {
         this.maxReconnectDelay = 30000;
         this.intentionalClose = false;
         this.currentRetry = 0;
+        // 心跳探测：interval 内若已收到过数据但长时间静默，判定连接假活并主动断开重连
+        this.heartbeatInterval = 25000;
+        this.heartbeatMissLimit = 3;
+        this.lastMessageTs = Date.now();
+        this._everReceived = false;
+        this.pingTimer = null;
     }
 
     /**
@@ -43,6 +49,9 @@ class WsManager {
             console.log('[WS] connected');
             this.currentRetry = 0;
             this.reconnectDelay = 1000;
+            this._everReceived = false;
+            this.lastMessageTs = Date.now();
+            this._startHeartbeat();
             this._emit('open', null);
 
             // Notify connection handlers
@@ -63,11 +72,14 @@ class WsManager {
                 return;
             }
 
+            this._everReceived = true;
+            this.lastMessageTs = Date.now();
             this._dispatch(data);
         };
 
         this.ws.onclose = (event) => {
             console.warn(`[WS] closed (code=${event.code}, reason=${event.reason})`);
+            this._stopHeartbeat();
             this._emit('close', event);
 
             if (!this.intentionalClose) {
@@ -132,6 +144,7 @@ class WsManager {
      */
     disconnect() {
         this.intentionalClose = true;
+        this._stopHeartbeat();
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
@@ -166,12 +179,16 @@ class WsManager {
     // ---- Internal ----
 
     _dispatch(data) {
+        // 兼容两种载荷结构：内部构造的消息带 payload 键（{type, payload}），
+        // 后端广播为顶层字段（{type, ...}，无 payload 键）。统一取 payload ?? data。
+        const payload = data.payload !== undefined ? data.payload : data;
+
         // Emit to type-specific handlers
         const typeHandlers = this.handlers.get(data.type);
         if (typeHandlers) {
             for (const handler of typeHandlers) {
                 try {
-                    handler(data.payload, data);
+                    handler(payload, data);
                 } catch (e) {
                     console.error(`[WS] handler error for "${data.type}":`, e);
                 }
@@ -183,7 +200,7 @@ class WsManager {
         if (starHandlers) {
             for (const handler of starHandlers) {
                 try {
-                    handler(data.payload, data);
+                    handler(payload, data);
                 } catch (e) {
                     console.error('[WS] wildcard handler error:', e);
                 }
@@ -215,7 +232,11 @@ class WsManager {
         }
 
         this.currentRetry++;
-        console.log(`[WS] reconnecting in ${this.reconnectDelay}ms (attempt ${this.currentRetry})`);
+
+        // 指数退避加 ±20% 随机抖动，避免多客户端同步重连冲击服务端
+        const jitter = 0.8 + Math.random() * 0.4;
+        const delay = Math.round(this.reconnectDelay * jitter);
+        console.log(`[WS] reconnecting in ${delay}ms (attempt ${this.currentRetry})`);
 
         this._dispatch({ type: 'connection', payload: { status: 'connecting', retryCount: this.currentRetry } });
 
@@ -225,7 +246,39 @@ class WsManager {
 
             // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s cap
             this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
-        }, this.reconnectDelay);
+        }, delay);
+    }
+
+    /**
+     * 心跳探测：周期性发送应用层 ping（保持代理/NAT 连接活跃），
+     * 并在「曾收到过数据但长时间静默」时判定假活连接并主动断开以触发重连。
+     */
+    _startHeartbeat() {
+        this._stopHeartbeat();
+        this.pingTimer = setInterval(() => {
+            if (!this.ws || this.ws.readyState !== WS_STATES.OPEN) return;
+
+            try {
+                this.ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+            } catch (e) {
+                console.warn('[WS] heartbeat send failed:', e);
+                this.ws.close(4000, 'heartbeat send failed');
+                return;
+            }
+
+            const idleMs = Date.now() - this.lastMessageTs;
+            if (this._everReceived && idleMs > this.heartbeatInterval * this.heartbeatMissLimit) {
+                console.warn(`[WS] heartbeat timeout (idle ${idleMs}ms) — closing stale connection`);
+                this.ws.close(4000, 'heartbeat timeout');
+            }
+        }, this.heartbeatInterval);
+    }
+
+    _stopHeartbeat() {
+        if (this.pingTimer) {
+            clearInterval(this.pingTimer);
+            this.pingTimer = null;
+        }
     }
 }
 

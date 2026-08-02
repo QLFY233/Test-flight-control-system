@@ -47,26 +47,49 @@ def _make_on_pose(s):
             s._pose.quat = [o.w, o.x, o.y, o.z]
             s._pose.ts = msg.header.stamp.to_sec()
             s._last_data_ts = time.time()
+            s._data_received = True
     return cb
 rospy.Subscriber(topics['local_position'], PoseStamped, _make_on_pose(st))
-rospy.Subscriber(topics['local_velocity'], TwistStamped, lambda m: None)
+# B-2: velocity 真实写入 _pose.vel (原 lambda m: None 直接丢弃 → 上行 vel 恒零, 安全监控失效)
+def _on_velocity(msg):
+    try:
+        with st.pose_lock:
+            st._pose.vel = [msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z]
+            st._last_data_ts = time.time()
+            st._data_received = True
+    except Exception:
+        pass
+rospy.Subscriber(topics['local_velocity'], TwistStamped, _on_velocity)
+# B-2: IMU 走 update_imu (单次加锁同时写 _imu 与 _pose.accel/angular_vel → 上行不再恒零)
 rospy.Subscriber(topics['imu_data'], Imu, lambda m: st.update_imu(
     [m.linear_acceleration.x, m.linear_acceleration.y, m.linear_acceleration.z],
     [m.angular_velocity.x, m.angular_velocity.y, m.angular_velocity.z], m.header.stamp.to_sec()))
 
 threading.Thread(target=ipc.recv_loop, name='ipc', daemon=True).start()
 mc.start()
+# 断连时显式切 hover (契约 §6: 断连 → small_model 切 hover, 与 lifecycle 路径一致)
+def _on_disconnect():
+    try:
+        comp.handle('hover', {})
+        print('[B] IPC disconnected — small_model switched to hover', flush=True)
+    except Exception as e:
+        print('[B] disconnect hover failed: {}'.format(e), flush=True)
+ipc.set_disconnect_handler(_on_disconnect)
 def uplink():
     while True:
         time.sleep(0.1)
         if not st.ipc_connected: continue
         p = st.current_pose
+        imu = st.current_imu
         for tool, payload in [
             ('pose', {'pos':p.pos[:],'quat':p.quat[:],'vel':p.vel[:],'accel':p.accel[:],'angularVel':p.angular_vel[:],'ts':time.time()}),
-            ('telemetry', {'accel':p.accel[:],'angularVel':p.angular_vel[:],'ts':time.time()})]:
+            # 🟡-7: 按冻结 payload 补 vel/imu 字段 (保留 angularVel 冗余向后兼容)
+            ('telemetry', {'vel':p.vel[:],'accel':imu.accel[:],'angularVel':imu.angular_vel[:],
+                           'imu':{'accel':imu.accel[:],'angular_vel':imu.angular_vel[:],'ts':imu.ts},'ts':time.time()})]:
             msg = {'schema_version':2,'from':'B','to':'alpha','msg_type':'event','tool':tool,'args':{},'payload':payload,'ts':time.time()}
             try: dispatch.send_event(msg)
-            except: pass
+            except Exception as e:  # B-14: 不再静默吞异常
+                print('[B] uplink send failed: {}'.format(e), flush=True)
 threading.Thread(target=uplink, name='uplink', daemon=True).start()
 print('[B] READY conn={} cb={}'.format(st.ipc_connected, cb_count[0]), flush=True)
 rospy.spin()

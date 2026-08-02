@@ -3,6 +3,8 @@
  * Types: human, agent, tool_call, tool_result, system (alert, alpha_output)
  */
 
+import { esc } from '../escape.js';
+
 class ChatMessage {
     /**
      * Create a ChatMessage element.
@@ -35,9 +37,9 @@ class ChatMessage {
                 <div class="tool-call-card">
                     <div class="tool-call-card__header">
                         <span class="tool-call-card__header-icon">&#9881;</span>
-                        <span>${toolName || 'Tool Call'}</span>
+                        <span>${esc(toolName || 'Tool Call')}</span>
                     </div>
-                    <div class="tool-call-card__body">${ChatMessage._escapeHtml(argsStr)}</div>
+                    <div class="tool-call-card__body">${esc(argsStr)}</div>
                 </div>
             `;
 
@@ -54,9 +56,9 @@ class ChatMessage {
                 <div class="tool-call-card">
                     <div class="tool-call-card__header">
                         <span class="tool-call-card__header-icon">&#10003;</span>
-                        <span>${toolName || 'Result'}</span>
+                        <span>${esc(toolName || 'Result')}</span>
                     </div>
-                    <div class="tool-call-card__body">${ChatMessage._escapeHtml(resultStr)}</div>
+                    <div class="tool-call-card__body">${esc(resultStr)}</div>
                 </div>
             `;
             const header = wrapper.querySelector('.tool-call-card__header');
@@ -87,7 +89,7 @@ class ChatMessage {
      */
     static _simpleMarkdown(text) {
         if (!text) return '';
-        let html = ChatMessage._escapeHtml(text);
+        let html = esc(text);
 
         // Code blocks (multi-line) — do before line breaks
         html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
@@ -98,8 +100,9 @@ class ChatMessage {
         // Bold
         html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
 
-        // Italic — only single * not double
-        html = html.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
+        // Italic — 无 lookbehind 写法（Safari < 16.4 不支持 (?<!..)，避免整个模块语法错误）
+        // **bold** 已在上一步转成 <strong>，此处剩余的 * 均为单星号
+        html = html.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
 
         // Headings (### Title)
         html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
@@ -154,12 +157,6 @@ class ChatMessage {
         });
 
         return html;
-    }
-
-    static _escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
 }
 

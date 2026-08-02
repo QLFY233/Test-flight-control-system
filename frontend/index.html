@@ -15,6 +15,19 @@
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
     </style>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js" defer></script>
+    <script>
+        // echarts 主 CDN 加载失败时回退到备用 CDN（unpkg）；图表组件另有 typeof echarts 守卫与降级提示
+        window.addEventListener('error', function (e) {
+            var t = e.target;
+            if (t && t.tagName === 'SCRIPT' && t.src && t.src.indexOf('echarts') !== -1 && !window.__echartsFallback) {
+                window.__echartsFallback = true;
+                var s = document.createElement('script');
+                s.src = 'https://unpkg.com/echarts@5.5.0/dist/echarts.min.js';
+                s.defer = true;
+                document.head.appendChild(s);
+            }
+        }, true);
+    </script>
 </head>
 <body>
 <div id="app"><div id="step" style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0A0A0A;color:#FF2A2A;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:0.15em;flex-direction:column;gap:8px;text-transform:uppercase;">[ SYS_INIT ] 加载中...</div></div>

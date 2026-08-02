@@ -14,11 +14,12 @@ import msgpack
 from bus.protocol import (
     SCHEMA_VERSION, IPC_SOCKET_PATH,
     IPC_PING_INTERVAL, IPC_PONG_TIMEOUT,
-    MSGPACK_USE_BIN_TYPE, IPC_FRAME_MAX_BYTES,
-    MSG_TYPE_EVENT, CALL_TOOL_PING, EVENT_TOOL_PONG,
+    IPC_FRAME_MAX_BYTES,
+    MSG_TYPE_CALL, MSG_TYPE_EVENT, CALL_TOOL_PING, EVENT_TOOL_PONG,
     TO_HEARTBEAT,
 )
 from bus.bridge import dispatch_b_event, set_ipc_sender
+from ipc.frames import encode_frame  # N3: 复用 frames.py 单实现, 不再内联打包
 
 logger = logging.getLogger(__name__)
 
@@ -67,11 +68,21 @@ class IpcServer:
 
         try:
             await self._recv_loop(reader)
+        except asyncio.IncompleteReadError:
+            # N2: B 正常断连 (帧未读满) — 降为 debug, B 每秒重连不应刷屏
+            logger.debug("[ipc-server] B closed connection (incomplete read)")
         except Exception as e:
             logger.warning(f"[ipc-server] recv error: {e}")
         finally:
             self._state.ipc_connected = False
             self._reader = None
+            # I5: 关闭 A 侧 writer — 原实现从不 close, B 每秒重连持续泄漏 fd
+            if self._writer and not self._writer.is_closing():
+                self._writer.close()
+                try:
+                    await self._writer.wait_closed()
+                except Exception:
+                    pass
             self._writer = None
             await self._broadcast_link("A-B", "down", "B disconnected")
             logger.info("[ipc-server] B disconnected")
@@ -93,6 +104,12 @@ class IpcServer:
             tool = msg.get("tool", "")
 
             if msg_type == MSG_TYPE_EVENT and tool == EVENT_TOOL_PONG:
+                # 🟡-8: 校验 to=='heartbeat' (冻结文档 §3 要求)
+                if msg.get("to") != TO_HEARTBEAT:
+                    logger.warning(
+                        f"[ipc-server] pong to={msg.get('to')!r} != 'heartbeat', ignoring"
+                    )
+                    continue
                 # 版本协商: 验证 B 侧 schema_version 与 A 侧一致
                 b_version = msg.get("schema_version")
                 if b_version != SCHEMA_VERSION:
@@ -121,9 +138,7 @@ class IpcServer:
         """发送帧给 B (bridge 用)。先导 fire-and-forget, 返回 ack。"""
         if self._writer is None:
             raise ConnectionError("B not connected")
-        data = msgpack.packb(msg, use_bin_type=MSGPACK_USE_BIN_TYPE)
-        header = struct.pack(">I", len(data))
-        self._writer.write(header + data)
+        self._writer.write(encode_frame(msg))
         await self._writer.drain()
         return {"status": "sent"}  # 先导不等待 result
 
@@ -137,15 +152,16 @@ class IpcServer:
                         "schema_version": SCHEMA_VERSION,
                         "from": "A",
                         "to": TO_HEARTBEAT,
-                        "msg_type": MSG_TYPE_EVENT,
-                        "call_id": "",
+                        # 🟡-8: 冻结文档 §6 写 call.ping — 实现对齐文档
+                        # (B 侧 dispatch 对 EVENT+ping 与 CALL+ping 均容忍)
+                        "msg_type": MSG_TYPE_CALL,
+                        "call_id": f"ping-{time.time_ns()}",
                         "tool": CALL_TOOL_PING,
                         "args": {},
                         "payload": {},
                         "ts": time.time(),
                     }
-                    data = msgpack.packb(ping, use_bin_type=MSGPACK_USE_BIN_TYPE)
-                    self._writer.write(struct.pack(">I", len(data)) + data)
+                    self._writer.write(encode_frame(ping))
                     await self._writer.drain()
                 except Exception as e:
                     logger.warning(f"[ipc-server] ping failed: {e}")

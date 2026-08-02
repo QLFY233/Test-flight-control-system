@@ -16,6 +16,7 @@ from .action_codes import (
     ACTION_CODE_RETURN_HOME,
 )
 from .goal_gen import GoalGenerator, GoalGenError
+from bus.protocol import REJECT_UNKNOWN_ACTION_CODE, REJECT_OUT_OF_BOUNDARY
 
 
 def _clamp(val, lo, hi):
@@ -115,11 +116,14 @@ class StubGoalGenerator(GoalGenerator):
             out_yaw = 0.0
 
         else:
-            raise GoalGenError(f"unknown_action_code:{code}")
+            # 🟡-5: 用冻结常量作 reason 前缀 (编码信息随 detail 上行, 由 component 拆分)
+            raise GoalGenError(f"{REJECT_UNKNOWN_ACTION_CODE}:{code}")
 
         # 最终校验: 夹紧后仍越界 → reject
+        # B-15: 防御性终检 — 上述各分支已用 _clamp_point 夹紧, 此分支正常不可达
+        # (恒不触发), 保留以防未来新增分支绕过夹紧。
         gx_c, gy_c, gz_c = _clamp_point(goal[0], goal[1], goal[2], b)
         if abs(gx_c - goal[0]) > 0.001 or abs(gy_c - goal[1]) > 0.001 or abs(gz_c - goal[2]) > 0.001:
-            raise GoalGenError("out_of_boundary_after_clamp")
+            raise GoalGenError(REJECT_OUT_OF_BOUNDARY)
 
         return {"goal": goal, "yaw": out_yaw, "speed_max": speed_max}

@@ -215,6 +215,9 @@ print("\n📋 Test 7: TelemetryBuffer 批量写入")
 
 async def test_buffer():
     import asyncio
+    # N8: PRAGMA foreign_keys=ON — 遥测须先有 flight_sessions 行
+    async with async_session() as s:
+        await create_flight_session(s, "buf", "buffer test")
     # 复用 test 6 的 TelemetryBuffer (同 DB)
     buf = TelemetryBuffer(flush_interval=0.3)
     await buf.start()
@@ -238,10 +241,101 @@ async def test_buffer():
 
 asyncio.run(test_buffer())
 
-try:
-    os.unlink(os.environ["FLIGHT_DB_PATH"])
-except:
-    pass
+# ── Test 11: B1 α 下发失败状态机 ──
+print("\n📋 Test 11: α _dispatch_action 错误状态机 (B1)")
+from agents.alpha import AlphaLoop
+from state import AppState, Config as StateConfig
+import bus.router as bus_router_mod
+from fastapi import HTTPException
+
+
+async def test_b1():
+    st = AppState(StateConfig())
+    translator_dummy = type("Dummy", (), {"translate": lambda self, i, p, e: {"actions": [{"code": "hover"}]}})()
+    loop = AlphaLoop(st, translator_dummy)
+
+    async def fake_call_ok(**kwargs):
+        return {"status": "sent"}  # 正常 ack (fire-and-forget)
+
+    bus_router_mod.call = fake_call_ok
+    await loop._dispatch_action({"actions": [{"code": "takeoff"}]})
+    check("B1 正常 ack → executing", st.flight_status == "executing")
+
+    async def fake_call_error(**kwargs):
+        return {"msg_type": "error", "payload": {"error": "B not connected"}}
+
+    bus_router_mod.call = fake_call_error
+    await loop._dispatch_action({"actions": [{"code": "takeoff"}]})
+    check("B1 error → 回退 hovering", st.flight_status == "hovering", f"got {st.flight_status}")
+
+    from bus.router import call as _orig_call
+    bus_router_mod.call = _orig_call
+
+
+asyncio.run(test_b1())
+
+# ── Test 12: 提议审批原子认领 (I2) ──
+print("\n📋 Test 12: approve_proposal TOCTOU (I2)")
+from web import routes as web_routes
+
+
+async def test_i2():
+    st = AppState(StateConfig())
+    st.pending_proposal = {"id": "p1", "intent": "起飞到 3 米"}
+    web_routes._state_ref = st
+    web_routes._db_factory = None
+
+    r1 = await web_routes.approve_proposal("p1")
+    check("I2 首次 approve 成功", r1["status"] == "approved")
+    check("I2 pending 已清空", st.pending_proposal is None)
+    try:
+        await web_routes.approve_proposal("p1")
+        check("I2 二次 approve 被拒", False, "未抛 404")
+    except HTTPException as e:
+        check("I2 二次 approve 被拒", e.status_code == 404)
+
+
+asyncio.run(test_i2())
+
+# ── Test 13: FFT 边界 (N12) ──
+print("\n📋 Test 13: FFT 边界 (N12)")
+from analytics.fft import FFTAnalyzer
+fft = FFTAnalyzer()
+r = fft.run([1.0])
+check("N12 n=1 不崩溃", r["status"] == "ok" and r["spectrum"]["dominant_freq"] == 0.0)
+r2 = fft.run([1.0, 2.0, 3.0])
+check("N12 n=3 正常", r2["status"] == "ok" and len(r2["spectrum"]["magnitudes"]) > 0)
+
+# ── Test 14: TelemetryBuffer OR IGNORE (I4) ──
+print("\n📋 Test 14: TelemetryBuffer 重复 t 不丢整批 (I4)")
+
+
+async def test_i4():
+    # N8: PRAGMA foreign_keys=ON — 遥测须先有 flight_sessions 行
+    async with async_session() as s:
+        await create_flight_session(s, "dup", "dup test")
+    buf = TelemetryBuffer(flush_interval=0.2)
+    await buf.start()
+    for _ in range(2):  # 同 (session_id, t) 两条
+        await buf.append({
+            "session_id": "dup", "t": 1.0,
+            "pos": [1.0, 0.0, 0.0], "quat": [1.0, 0, 0, 0],
+            "vel": [0.0, 0.0, 0.0], "accel": [0.0, 0.0, 0.0],
+            "angular_vel": [0.0, 0.0, 0.0],
+        })
+    await asyncio.sleep(0.5)
+    await buf.stop()
+    async with async_session() as s:
+        teles = await get_telemetry_range(s, "dup")
+        check("I4 重复 t 只落 1 行, 无异常", len(teles) == 1, f"got {len(teles)}")
+
+
+asyncio.run(test_i4())
+
+# ── Test 15: 会话 id 细粒度唯一性 (N8) ──
+print("\n📋 Test 15: 会话 id 细粒度 (N8)")
+ids = {web_routes._new_session_id() for _ in range(100)}
+check("N8 100 次生成全部唯一", len(ids) == 100, f"got {len(ids)}")
 
 # ── Test 8: Lifecycle + IPC server 结构 ──
 print("\n📋 Test 8: Lifecycle 初始化")
@@ -262,6 +356,12 @@ check("app title", app.title == "试飞控制系统 — Backend A")
 # ── Test 10: Web/static mount ──
 from web.static import FRONTEND_DIR
 check("FRONTEND_DIR == 'frontend'", FRONTEND_DIR == "frontend")
+
+# 清理测试 DB (在所有使用 DB 的测试之后)
+try:
+    os.unlink(os.environ["FLIGHT_DB_PATH"])
+except Exception:
+    pass
 
 # ── Summary ──
 print(f"\n{'='*50}")

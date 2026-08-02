@@ -143,23 +143,27 @@ class TelemetryBuffer:
         self._flush_interval = flush_interval
         self._running = False
         self._lock = asyncio.Lock()
+        self._task: asyncio.Task | None = None  # I3: 保存 flush task 引用
 
     async def start(self):
         self._running = True
-        asyncio.create_task(self._flush_loop())
+        self._task = asyncio.create_task(self._flush_loop())
 
     async def stop(self):
-        """停止缓冲。先 flush 残留数据再退出。"""
+        """停止缓冲: 等 flush_loop 退出后冲刷残留 (I3: 不再用 sleep 猜测)。"""
         self._running = False
-        # 等待 flush_loop 退出
-        await asyncio.sleep(0.05)
+        if self._task is not None:
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+            self._task = None
         # 最后 flush 一次残留 (flush_loop 退出前已清空 buffer)
         async with self._lock:
-            if self._buffer:
-                batch = self._buffer[:]
-                self._buffer.clear()
-                if batch:
-                    await self._flush_batch(batch)
+            batch = self._buffer[:]
+            self._buffer.clear()
+        if batch:
+            await self._flush_batch(batch)
 
     async def append(self, telemetry: dict):
         """追加一条遥测记录。telemetry 含 session_id, t, pos, quat, vel, accel, angular_vel。"""
@@ -185,7 +189,10 @@ class TelemetryBuffer:
             if rows:
                 async with async_session() as session:
                     async with session.begin():
-                        await session.execute(insert(Telemetry), rows)
+                        # I4: OR IGNORE — 单条 UNIQUE(session_id,t) 冲突不再丢整批
+                        await session.execute(
+                            insert(Telemetry).prefix_with("OR IGNORE"), rows
+                        )
             logger.debug(f"[TelemetryBuffer] flushed {len(rows)} rows")
         except Exception as e:
             logger.error(f"[TelemetryBuffer] flush error: {e}")

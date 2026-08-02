@@ -11,7 +11,7 @@ import bus from '../event-bus.js';
 import { renderTwoColumn, wsManager } from '../shared.js';
 import { ViewModeSelector } from '../components/ViewModeSelector.js';
 import { ViewPanel } from '../components/ViewPanel.js';
-import { FloatingBall } from '../components/FloatingBall.js';
+import { esc } from '../escape.js';
 
 class AlphaPage {
     constructor() {
@@ -19,7 +19,6 @@ class AlphaPage {
         this.title = '飞控';
         this.viewPanels = [];
         this.viewModeSelector = null;
-        this.floatingBall = null;
         this._boundOnViewModeChanged = this._onViewModeChanged.bind(this);
         this._boundOnViewSourceChanged = this._onViewSourceChanged.bind(this);
         this._boundOnAlert = this._onAlert.bind(this);
@@ -34,7 +33,6 @@ class AlphaPage {
     unmount() {
         this.viewPanels.forEach(vp => vp.unmount && vp.unmount());
         this.viewPanels = [];
-        if (this.floatingBall && this.floatingBall._collapsed) this.floatingBall._collapse();
         bus.off('view-mode-changed', this._boundOnViewModeChanged);
         bus.off('view-source-changed', this._boundOnViewSourceChanged);
         bus.off('alert', this._boundOnAlert);
@@ -75,7 +73,7 @@ class AlphaPage {
                             </div>
                             <div class="alpha-page__env-item">
                                 <span class="alpha-page__env-label">LOC</span>
-                                <span class="alpha-page__env-value">${env.location || '--'}</span>
+                                <span class="alpha-page__env-value">${esc(env.location || '--')}</span>
                             </div>
                         </div>
                     </div>
@@ -87,23 +85,23 @@ class AlphaPage {
                         <div class="card__body">
                             <div class="alpha-page__task-progress">
                                 <div class="alpha-page__task-title">
-                                    ${flight.taskTitle || 'NO TASK'}
+                                    ${esc(flight.taskTitle || 'NO TASK')}
                                 </div>
                                 <div class="progress-bar" style="margin-bottom: var(--space-3);">
                                     <div class="progress-bar__fill" style="width: ${flight.progress || 0}%"></div>
                                 </div>
                                 <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-3);">
-                                    ${flight.currentActionCode ? `[${flight.currentActionCode}] ${flight.currentAction}/${flight.totalActions || 0}` : (flight.currentAction > 0 ? `ACTION ${flight.currentAction}/${flight.totalActions || 0}` : 'STANDBY')}
-                                    ${flight.currentActionParams ? `<br><span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-text-disabled);">PARAMS: ${JSON.stringify(flight.currentActionParams)}</span>` : ''}
+                                    ${flight.currentActionCode ? `[${esc(flight.currentActionCode)}] ${flight.currentAction}/${flight.totalActions || 0}` : (flight.currentAction > 0 ? `ACTION ${flight.currentAction}/${flight.totalActions || 0}` : 'STANDBY')}
+                                    ${flight.currentActionParams ? `<br><span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-text-disabled);">PARAMS: ${esc(JSON.stringify(flight.currentActionParams))}</span>` : ''}
                                 </div>
                                 <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">
-                                    MODE: ${flight.mode || '--'}
-                                    &nbsp;|&nbsp;STATUS: ${flight.status || 'idle'}
+                                    MODE: ${esc(flight.mode || '--')}
+                                    &nbsp;|&nbsp;STATUS: ${esc(flight.status || 'idle')}
                                 </div>
                                 <div class="alpha-page__action-list" style="margin-top: var(--space-2);">
                                     ${(store.get('trajectory.actionSequence') || []).slice(0, 10).map((a, i) => `
                                         <div class="alpha-page__action-item ${i === (flight.currentAction || 0) ? 'alpha-page__action-item--active' : ''}">
-                                            ${i === (flight.currentAction || 0) ? '>>>' : ' · '} ${a.code || 'ACT_'}${a.params && a.params.target ? ` → (${a.params.target.x?.toFixed(1) || '?'}, ${a.params.target.y?.toFixed(1) || '?'}, ${a.params.target.z?.toFixed(1) || '?'})` : ''}
+                                            ${i === (flight.currentAction || 0) ? '>>>' : ' · '} ${esc(a.code || 'ACT_')}${a.params && a.params.target ? ` → (${esc(a.params.target.x?.toFixed(1) || '?')}, ${esc(a.params.target.y?.toFixed(1) || '?')}, ${esc(a.params.target.z?.toFixed(1) || '?')})` : ''}
                                         </div>
                                     `).join('') || ''}
                                 </div>
@@ -128,13 +126,6 @@ class AlphaPage {
         const viewArea = document.getElementById('right-view-area');
         if (viewArea) {
             this._setupViews(viewArea);
-        }
-
-        // FloatingBall
-        const fbContainer = document.getElementById('floating-ball-container');
-        if (fbContainer) {
-            this.floatingBall = new FloatingBall(fbContainer);
-            this.floatingBall.mount();
         }
     }
 

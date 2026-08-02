@@ -4,6 +4,7 @@ SQLAlchemy 引擎 + session factory。
 import os
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import event
 
 # 项目根目录 (backend-A/db/session.py → 上两级 = 项目根)
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,6 +18,16 @@ class Base(DeclarativeBase):
 
 
 engine = create_async_engine(DB_URL, echo=False)
+
+# N8: SQLite 默认不强制外键 — 每个新连接开启 PRAGMA foreign_keys,
+# 避免 conversations/telemetry 产生孤儿行 (FK 悬空)
+@event.listens_for(engine.sync_engine, "connect")
+def _set_sqlite_pragma(dbapi_conn, connection_record):
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
+
+
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
@@ -29,11 +40,3 @@ async def create_all():
     import db.models  # noqa: 确保模型导入
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
-
-async def get_session() -> AsyncSession:
-    """获取 AsyncSession context manager。
-    阶段 G/H: 作为 FastAPI Depends(get_session) 使用。
-    """
-    async with async_session() as session:
-        yield session

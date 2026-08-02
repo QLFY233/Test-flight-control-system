@@ -4,6 +4,7 @@
  * Shortcuts stored in localStorage.
  */
 import bus from '../event-bus.js';
+import { esc } from '../escape.js';
 
 const DEFAULT_SHORTCUTS = [
     { id: 'sc-1', icon: '⬆', name: '上升 0.5m', actions: [{ type: 'chat_message', text: '上升 0.5 米' }] },
@@ -20,6 +21,7 @@ class FloatingBall {
         this.expanded = false;
         this.shortcuts = this._loadShortcuts();
         this._dragState = null;
+        this._longPressed = false; // 长按编辑后抑制随后的 click 展开误触
         this._boundOutsideClick = this._handleOutsideClick.bind(this);
     }
 
@@ -42,6 +44,11 @@ class FloatingBall {
 
         ball.addEventListener('click', (e) => {
             e.stopPropagation();
+            // 长按进入编辑模式后，释放时的 click 不再触发展开（误触抑制）
+            if (this._longPressed) {
+                this._longPressed = false;
+                return;
+            }
             if (this.expanded) this._collapse();
             else this._expand();
         });
@@ -49,7 +56,9 @@ class FloatingBall {
         // Long press (600ms) for edit mode
         let longPressTimer = null;
         ball.addEventListener('pointerdown', (e) => {
+            this._longPressed = false;
             longPressTimer = setTimeout(() => {
+                this._longPressed = true;
                 this._enterEditMode();
             }, 600);
         });
@@ -83,7 +92,7 @@ class FloatingBall {
             el.className = 'fan-menu__item';
             el.style.cssText = `position:fixed;left:${tx}px;top:${ty}px;`;
             el.dataset.fanItem = item.id;
-            el.innerHTML = `<span class="fan-menu__item-icon">${item.icon}</span>`;
+            el.innerHTML = `<span class="fan-menu__item-icon">${esc(item.icon)}</span>`;
 
             el.addEventListener('click', (ev) => {
                 ev.stopPropagation();

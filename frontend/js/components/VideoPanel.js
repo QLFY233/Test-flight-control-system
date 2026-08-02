@@ -9,6 +9,7 @@ class VideoPanel {
         this.container = null;
         this.canvas = null;
         this.ctx = null;
+        this._ro = null;
     }
 
     mount(container) {
@@ -29,8 +30,8 @@ class VideoPanel {
         // Resize canvas when container changes
         if (this.canvas) {
             this._resizeCanvas();
-            const ro = new ResizeObserver(() => this._resizeCanvas());
-            ro.observe(container);
+            this._ro = new ResizeObserver(() => this._resizeCanvas());
+            this._ro.observe(container);
         }
     }
 
@@ -52,10 +53,21 @@ class VideoPanel {
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             this.ctx.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
         };
+        img.onerror = () => {
+            console.warn('[VideoPanel] frame decode failed');
+            // 坏帧回退到无信号占位
+            const noSignal = this.container && this.container.querySelector('#video-no-signal');
+            if (noSignal) noSignal.style.display = 'flex';
+            if (this.canvas) this.canvas.style.display = 'none';
+        };
         img.src = base64.startsWith('data:') ? base64 : 'data:image/jpeg;base64,' + base64;
     }
 
     unmount() {
+        if (this._ro) {
+            this._ro.disconnect();
+            this._ro = null;
+        }
         this.container = null;
         this.canvas = null;
         this.ctx = null;

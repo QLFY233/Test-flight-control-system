@@ -43,7 +43,6 @@ class Dispatch:
         """A→B call: 路由到 B 侧组件。"""
         tool = msg.get("tool")
         args = msg.get("args", {})
-        to = msg.get("to", "")
         call_id = msg.get("call_id", "")  # 保留以便后续启用 result 配对
 
         if tool == CALL_TOOL_PING:

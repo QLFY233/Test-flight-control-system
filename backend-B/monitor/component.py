@@ -7,7 +7,7 @@ import time
 import threading
 import logging
 from .detector import DETECTORS, get_all
-from bus.protocol import EVENT_TOOL_ALERT
+from bus.protocol import EVENT_TOOL_ALERT, SCHEMA_VERSION, TO_BETA
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +70,8 @@ class MonitorComponent:
                 "ts": time.time(),
                 "last_data_ts": self._state.last_data_ts,
                 "current_action_index": self._state.current_action_index,
+                # B-5: 首帧前不评估 (启动时 vel/accel 恒零、z=0, 会刷假阳性)
+                "data_received": self._state.data_received,
             }
         except Exception:
             return
@@ -99,12 +101,16 @@ class MonitorComponent:
             self._send_alert(alert)
 
     def _send_alert(self, alert: dict):
-        """上行 alert event。"""
+        """上行 alert event。
+
+        注意: to 保持 "beta" — 接口冻结 §3 表格明确 alert → "beta" (作 β 对话流系统消息),
+        非笔误, 与 run_b/lifecycle 的 pose/telemetry→alpha 是两套路由。
+        """
         if self._send_event:
             self._send_event({
-                "schema_version": 2,
+                "schema_version": SCHEMA_VERSION,
                 "from": "monitor",
-                "to": "beta",
+                "to": TO_BETA,
                 "msg_type": "event",
                 "call_id": "",
                 "tool": EVENT_TOOL_ALERT,

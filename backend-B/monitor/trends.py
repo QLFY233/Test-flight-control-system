@@ -35,16 +35,18 @@ class TrendDetector(Detector):
         self._pos_history.append(list(pos))
 
         # 突变检测: 相邻帧速度二阶差分超阈值 (抖动)
+        # B-11: 该值是逐帧二阶差分, 单位实为 m/s·帧⁻², 阈值 2.0 隐含 10Hz 采样帧率 (先导约定)。
+        # 若后续更换采样率, 需按 dt 归一化 (jerk ≈ 二阶差分 / dt²) 并重标阈值。
         if len(self._speed_history) >= 3:
             speeds = list(self._speed_history)
             accel1 = abs(speeds[-1] - speeds[-2])
             accel2 = abs(speeds[-2] - speeds[-3])
-            jerk = abs(accel1 - accel2)  # 二阶差分 (加加速度)
-            if jerk > 2.0:  # 阈值 m/s³
+            jerk = abs(accel1 - accel2)  # 二阶差分 (加加速度, m/s·帧⁻²)
+            if jerk > 2.0:  # 阈值 2.0 (10Hz 帧率下等效约 0.02 m/s³)
                 alerts.append({
                     "level": "warning",
                     "code": "speed_jerk",
-                    "detail": f"速度突变, jerk={jerk:.2f} m/s³",
+                    "detail": f"速度突变, jerk={jerk:.2f} m/s·帧⁻² (10Hz)",
                     "ts": ts, "action_index": action_idx,
                 })
 

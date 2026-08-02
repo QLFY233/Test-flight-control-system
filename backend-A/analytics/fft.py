@@ -42,6 +42,20 @@ class FFTAnalyzer:
 
         n = len(data)
 
+        # N12: n<2 提前返回 — numpy rfft/argmax 与 DFT 下标均会在 1 样本时崩溃
+        if n < 2:
+            return {
+                "status": "ok",
+                "spectrum": {
+                    "frequencies": [],
+                    "magnitudes": [],
+                    "dominant_freq": 0.0,
+                    "dominant_magnitude": 0.0,
+                },
+                "n_samples": n,
+                "sample_rate": sample_rate,
+            }
+
         if _HAS_NUMPY:
             result = self._fft_numpy(data, n, sample_rate, spectrum_type)
         else:
@@ -75,11 +89,13 @@ class FFTAnalyzer:
 
     def _fft_dft(self, data: list, n: int, sr: float, stype: str) -> dict:
         """纯 Python DFT 实现 (慢, 作为无 NumPy 时的 fallback)。"""
-        half = n // 2 + 1
-        freqs = [k * sr / n for k in range(min(50, half))]
+        # N12: frequencies 与 magnitudes 同源同长 (原实现 off-by-one:
+        # dominant_freq 取 freqs[1+max_idx] 与 magnitudes 下标错位)
+        k_max = min(51, n // 2 + 1)
+        freqs = [k * sr / n for k in range(1, k_max)]  # 去 DC
         magnitudes = []
 
-        for k in range(1, min(51, half)):  # skip DC
+        for k in range(1, k_max):
             real = 0.0
             imag = 0.0
             for i in range(n):
@@ -89,10 +105,16 @@ class FFTAnalyzer:
             mag = math.sqrt(real * real + imag * imag) / n
             magnitudes.append(mag)
 
-        max_idx = magnitudes.index(max(magnitudes)) if magnitudes else 0
+        if magnitudes:
+            max_idx = magnitudes.index(max(magnitudes))
+            dominant_freq = freqs[max_idx]
+            dominant_magnitude = magnitudes[max_idx]
+        else:
+            dominant_freq = 0.0
+            dominant_magnitude = 0.0
         return {
-            "frequencies": freqs[1:51],
+            "frequencies": freqs,
             "magnitudes": magnitudes,
-            "dominant_freq": freqs[1 + max_idx] if max_idx < len(freqs) - 1 else 0,
-            "dominant_magnitude": magnitudes[max_idx] if magnitudes else 0,
+            "dominant_freq": dominant_freq,
+            "dominant_magnitude": dominant_magnitude,
         }

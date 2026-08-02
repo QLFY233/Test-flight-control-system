@@ -26,8 +26,13 @@ class FlightSession(Base):
     """试飞会话。"""
     __tablename__ = "flight_sessions"
 
-    id = Column(String(20), primary_key=True)  # YYYYMMDDHHMMSS
-    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    id = Column(String(20), primary_key=True)  # YYYYMMDDHHMMSS(+ms)
+    # N13: 与其他表统一为 aware datetime — 原 naive utcnow 与 aware 混存
+    created_at = Column(
+        DateTime,
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        nullable=False,
+    )
     environment_id = Column(Integer, ForeignKey("environments.id"), nullable=True)
     task_description = Column(Text, nullable=True)
     beta_plan = Column(Text, nullable=True)        # β 产出的自然语言计划

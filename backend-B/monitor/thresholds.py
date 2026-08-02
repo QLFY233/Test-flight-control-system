@@ -34,6 +34,11 @@ class ThresholdDetector(Detector):
         ts = sample.get("ts", time.time())
         action_idx = sample.get("current_action_index", 0)
 
+        # B-5: 尚未收到首帧无人机数据时不评估 — 启动阶段 vel/accel/pos 全为默认零值,
+        # 会刷出 floor_breach / drone_data_stale 假阳性。默认 True 兼容直接调用方。
+        if not sample.get("data_received", True):
+            return alerts
+
         vel = sample.get("vel", [0, 0, 0])
         speed = (vel[0] ** 2 + vel[1] ** 2 + vel[2] ** 2) ** 0.5
         pos = sample.get("pos", [0, 0, 0])
@@ -58,7 +63,8 @@ class ThresholdDetector(Detector):
                 "detail": f"高度 {z:.2f} m 超过上限 {self._ceiling} m",
                 "ts": ts, "action_index": action_idx,
             })
-        if z < self._floor:
+        # B-5: z≤1cm 视为停机坪常态 (起飞前/降落在地面), 不报 floor_breach
+        if z < self._floor and z > 0.01:
             alerts.append({
                 "level": "warning",
                 "code": "floor_breach",

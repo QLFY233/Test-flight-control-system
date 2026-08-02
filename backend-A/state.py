@@ -92,7 +92,18 @@ class AppState:
 
     @property
     def current_pose(self) -> PoseData:
-        return self._pose
+        # S4: 返回拷贝 (含列表深拷) — 原直接返回活对象, 10Hz 更新时
+        # 跨协程可能读到半更新态 (update_pose 原地修改列表)
+        p = self._pose
+        return PoseData(
+            pos=list(p.pos),
+            quat=list(p.quat),
+            vel=list(p.vel),
+            accel=list(p.accel),
+            angular_vel=list(p.angular_vel),
+            ts=p.ts,
+            updated_at=p.updated_at,
+        )
 
     async def update_pose(self, pos, quat, vel, accel, angular_vel, ts):
         """更新位姿 (B→A上行)。NaN/Inf 截断为 0。"""

@@ -3,11 +3,10 @@ SSE (Server-Sent Events) — β Chat 流式响应。
 POST /api/chat/beta → SSE text/tool_call_start/tool_call_result/plan/error 事件。
 """
 import json
-import time
 import logging
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,7 @@ def set_beta_agent(agent):
 
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(..., max_length=4096)  # I8: 输入长度上限 (防 LLM 成本放大)
     session_id: str | None = None
 
 

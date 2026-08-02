@@ -79,7 +79,14 @@ class Lifecycle:
             set_alpha_loop(self._alpha_loop)
             await self._alpha_loop.start()
         except Exception as e:
-            logger.warning(f"[lifecycle] α agent not started (no API key?): {e}")
+            # I7: 缺 API key/未配置 provider 属可降级场景 (LLM 调用失败 → hover 兜底);
+            #     其余异常 (import/接线错误) fail-fast, 避免静默带病启动
+            msg = str(e)
+            if "api_key" in msg.lower() or "not set" in msg or "API key" in msg:
+                logger.warning(f"[lifecycle] α agent degraded (LLM unavailable): {e}")
+                return
+            logger.exception(f"[lifecycle] α agent startup failed: {e}")
+            raise
 
     async def _start_beta(self):
         """创建 β Agent 并注入 SSE handler。"""
@@ -90,7 +97,14 @@ class Lifecycle:
             set_beta_agent(self._beta_agent)
             logger.info("[lifecycle] β agent created")
         except Exception as e:
-            logger.warning(f"[lifecycle] β agent not created: {e}")
+            # I7: 缺 API key/未配置 provider 属可降级场景 (β 降级后 SSE 聊天不可用, 其余链路不受影响);
+            #     其余异常 (import/接线错误) fail-fast, 避免静默带病启动
+            msg = str(e)
+            if "api_key" in msg.lower() or "not set" in msg or "API key" in msg:
+                logger.warning(f"[lifecycle] β agent degraded (LLM unavailable): {e}")
+                return
+            logger.exception(f"[lifecycle] β agent startup failed: {e}")
+            raise
 
     def _init_web_context(self):
         """注入 REST/WS 上下文依赖。"""
@@ -121,7 +135,9 @@ class Lifecycle:
 
             logger.info("[lifecycle] web context wired (REST/WS/SSE/tools)")
         except Exception as e:
-            logger.warning(f"[lifecycle] web context wiring failed: {e}")
+            # I7: fail-fast — DB 路由/WS 依赖此注入, 失败继续会导致全量 500
+            logger.exception(f"[lifecycle] web context wiring failed: {e}")
+            raise
 
     async def shutdown(self):
         """FastAPI lifespan shutdown。"""

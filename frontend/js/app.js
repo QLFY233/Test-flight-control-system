@@ -19,6 +19,7 @@ import { StatusBar } from './components/StatusBar.js';
 import { BottomBar } from './components/BottomBar.js';
 import { ConnectionOverlay } from './components/ConnectionOverlay.js';
 import { ChatPanel } from './components/ChatPanel.js';
+import { ShortcutEditor } from './components/ShortcutEditor.js';
 
 
 initToast();
@@ -100,14 +101,28 @@ async function init() {
     renderRootLayout(appEl);
     console.log('layout rendered');
 
-    // WS
-    console.log('mounting StatusBar...');
-    new StatusBar(document.getElementById('status-bar')).mount();
-    console.log('StatusBar done');
+    // 状态栏/底栏：实例复用 + rAF 节流，避免每条遥测消息重建 5 次 DOM
+    const sb = new StatusBar(document.getElementById('status-bar'));
+    sb.mount();
+    const bb = new BottomBar(document.getElementById('bottom-bar'));
+    bb.mount();
 
-    // BottomBar
-    new BottomBar(document.getElementById('bottom-bar')).mount();
-    console.log('BottomBar done');
+    let sbRaf = null;
+    let bbRaf = null;
+    const scheduleStatusBar = () => {
+        if (sbRaf) return;
+        sbRaf = requestAnimationFrame(() => { sbRaf = null; sb.mount(); });
+    };
+    const scheduleBottomBar = () => {
+        if (bbRaf) return;
+        bbRaf = requestAnimationFrame(() => { bbRaf = null; bb.mount(); });
+    };
+    // 订阅一次：connection/drone 变更刷新状态栏，flight/trajectory 刷新底栏
+    store.subscribe('connection', scheduleStatusBar);
+    store.subscribe('drone', scheduleStatusBar);
+    store.subscribe('flight', () => { scheduleStatusBar(); scheduleBottomBar(); });
+    store.subscribe('trajectory', scheduleBottomBar);
+    console.log('StatusBar done');
 
     // ConnectionOverlay
     const co = new ConnectionOverlay(document.getElementById('connection-overlay'));
@@ -126,6 +141,9 @@ async function init() {
         new m.FloatingBall(fb).mount();
     }).catch(() => {});
 
+    // ShortcutEditor — 常驻监听 open-shortcut-editor 事件（长按悬浮球进入编辑）
+    new ShortcutEditor();
+
     // Router — register lazy page factories
     console.log('setting up router...');
     a.router = new Router(document.getElementById('page-container'));
@@ -135,15 +153,6 @@ async function init() {
     console.log('router init...');
     a.router.init();
     console.log('router done');
-
-    // Subscriptions
-    store.subscribe('connection', () => { const sb = document.getElementById('status-bar'); if (sb) new StatusBar(sb).mount(); });
-    store.subscribe('drone', () => { const sb = document.getElementById('status-bar'); if (sb) new StatusBar(sb).mount(); });
-    store.subscribe('flight', () => {
-        const sb = document.getElementById('status-bar'); if (sb) new StatusBar(sb).mount();
-        const bb = document.getElementById('bottom-bar'); if (bb) new BottomBar(bb).mount();
-    });
-    store.subscribe('trajectory', () => { const bb = document.getElementById('bottom-bar'); if (bb) new BottomBar(bb).mount(); });
 
     // WS
     a.wsManager.connect();
@@ -155,8 +164,28 @@ async function init() {
         if (fd) { store.set('field.boundary', fd.boundary || store.get('field.boundary')); store.set('field.obstacles', fd.obstacles || []); store.set('field.home', fd.home || store.get('field.home')); }
     }).catch(() => store.set('field.obstacles', []));
 
-    // Visibility
-    document.addEventListener('visibilitychange', () => { /* no-op after 3D removal */ });
+    // 可见性恢复：页面重新可见且 WS 未连接时主动重连
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible') return;
+        const wm = a.wsManager;
+        if (wm && wm.getStatus() !== 'connected' && wm.getStatus() !== 'connecting') {
+            console.log('[App] tab visible — reconnecting WS');
+            wm.connect();
+        }
+    });
+
+    // 设置页修改后端地址后重建 WS 连接（REST 与 WS 保持同一目标）
+    bus.on('backend-url-changed', ({ baseUrl, wsEndpoint }) => {
+        if (!baseUrl) return;
+        a.config.backend = { ...(a.config.backend || {}), base_url: baseUrl, ws_endpoint: wsEndpoint || '/ws' };
+        a.apiManager.setBaseUrl(baseUrl);
+        const wsUrl = baseUrl.replace(/^http/, 'ws') + (a.config.backend.ws_endpoint || '/ws');
+        a.wsManager.disconnect();
+        a.wsManager = new WsManager(wsUrl);
+        registerWsHandlers();
+        a.wsManager.connect();
+        bus.emit('toast', { message: '后端地址已更新，连接已重建', level: 'success' });
+    });
 
     // Tab bar + Nav strip (skip button elements)
     const syncTabs = () => { const h = window.location.hash || '#/overview'; document.querySelectorAll('.tab-bar__item[href], .nav-strip__item[href]').forEach(x => { const match = x.getAttribute('href') === h; x.classList.toggle('tab-bar__item--active', match); x.classList.toggle('nav-strip__item--active', match); }); };
@@ -174,12 +203,17 @@ async function init() {
 
 function registerWsHandlers() {
     const w = window.__app.wsManager;
+    // 后端广播为顶层字段：{type, pos, quat, vel, ...}（无 payload 键），
+    // _dispatch 已统一为 payload ?? data，此处 handler 直接收顶层对象。
     w.on('pose', p => {
         if (!p) return;
         store.batch(() => {
-            if (p.position) { store.set('drone.position', p.position); }
-            if (p.velocity) store.set('drone.velocity', p.velocity);
-            if (p.attitude) store.set('drone.attitude', p.attitude);
+            if (Array.isArray(p.pos)) store.set('drone.position', { x: p.pos[0], y: p.pos[1], z: p.pos[2] });
+            else if (p.pos) store.set('drone.position', p.pos);
+            if (Array.isArray(p.vel)) store.set('drone.velocity', { vx: p.vel[0], vy: p.vel[1], vz: p.vel[2] });
+            else if (p.vel) store.set('drone.velocity', p.vel);
+            // 后端广播 quat [w,x,y,z] (无 attitude 字段); 暂存原始四元数, 需要欧拉角时再转换
+            if (Array.isArray(p.quat)) store.set('drone.attitude', { quat: p.quat });
             store.set('drone.timestamp', Date.now()); store.set('drone.connected', true);
         });
     });
@@ -187,32 +221,54 @@ function registerWsHandlers() {
         if (!p) return;
         store.batch(() => {
             if (p.mode != null) store.set('flight.mode', p.mode);
-            if (p.status != null) store.set('flight.status', p.status);
-            if (p.current_action != null) store.set('flight.currentAction', p.current_action);
-            if (p.total_actions != null) store.set('flight.totalActions', p.total_actions);
-            if (p.current_action_code != null) store.set('flight.currentActionCode', p.current_action_code);
+            if (p.flightStatus != null) store.set('flight.status', p.flightStatus);
+            if (p.currentAction != null) store.set('flight.currentAction', p.currentAction);
+            if (p.totalActions != null) store.set('flight.totalActions', p.totalActions);
             if (p.progress != null) store.set('flight.progress', p.progress);
         });
         bus.emit('status-update', p);
     });
     w.on('alert', p => bus.emit('alert', p));
-    w.on('reject', p => bus.emit('proposal-rejected', p));
+    w.on('reject', p => {
+        bus.emit('proposal-rejected', p);
+        // 应急可见性: reject 直接 toast 提示 (reason/actionIndex 后端已广播)
+        if (p?.reason) {
+            bus.emit('toast', {
+                message: 'α 动作被拒绝: ' + p.reason + (p.actionIndex != null ? ' (动作 #' + p.actionIndex + ')' : ''),
+                level: 'warning',
+            });
+        }
+    });
     w.on('alpha_output', p => {
         if (!p) return;
         store.batch(() => {
-            if (p.planned) store.set('trajectory.planned', p.planned);
-            if (p.action_sequence) store.set('trajectory.actionSequence', p.action_sequence);
-            if (p.current_target) store.set('trajectory.currentTarget', p.current_target);
+            if (p.action?.code != null) store.set('flight.currentActionCode', p.action.code);
+            if (p.action?.params) store.set('flight.currentActionParams', p.action.params);
+            if (Array.isArray(p.goal)) store.set('trajectory.currentTarget', { x: p.goal[0], y: p.goal[1], z: p.goal[2] });
+            else if (p.goal) store.set('trajectory.currentTarget', p.goal);
+            if (Array.isArray(p.remaining_actions)) store.set('trajectory.actionSequence', p.remaining_actions);
+            if (Array.isArray(p.planned)) store.set('trajectory.planned', p.planned);
         });
         bus.emit('alpha-output', p);
     });
-    w.on('link_status', p => { if (p) store.batch(() => { if (p.backend_a != null) store.set('connection.backendA', p.backend_a); if (p.backend_b != null) store.set('connection.backendB', p.backend_b); if (p.drone != null) store.set('connection.drone', p.drone); if (p.llm != null) store.set('connection.llm', p.llm); }); });
+    w.on('link_status', p => {
+        if (!p || !p.link) return;
+        const state = p.state || 'unknown';
+        store.batch(() => {
+            if (p.link === 'A-B') {
+                store.set('connection.backendA', state);
+                store.set('connection.backendB', state);
+            } else if (p.link === 'llm') {
+                store.set('connection.llm', state);
+            }
+        });
+    });
     w.on('voice_tts', p => {
         if (!p?.audio) return;
         import('./components/AudioPlayer.js').then(m => m.AudioPlayer.play(p.audio)).catch(() => {});
     });
-    w.on('__event:open', () => { store.set('connection.ws', 'connected'); });
-    w.on('__event:close', () => { store.set('connection.ws', 'disconnected'); });
+    // 连接状态单一数据源：ws.js 内部 _dispatch({type:'connection', payload:{status}})，
+    // 不再经 __event:open/close 重复写 connection.ws
     w.on('connection', p => { if (p?.status) store.set('connection.ws', p.status); });
 }
 

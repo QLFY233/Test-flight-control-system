@@ -18,17 +18,17 @@
   },
 
   "voice": {
-    "auto_tts": false,
-    "stt_enabled": true,
-    "tts_enabled": true,
+    "autoTts": false,
+    "sttEnabled": true,
+    "ttsEnabled": true,
     "language": "zh-CN"
   },
 
   "environment": {
     "temperature": 25,
     "humidity": 60,
-    "wind_speed": 0,
-    "wind_direction": 0,
+    "windSpeed": 0,
+    "windDirection": 0,
     "pressure": 1013,
     "location": "default"
   },

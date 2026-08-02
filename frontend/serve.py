@@ -18,7 +18,9 @@ import sys
 import os
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
-BIND = sys.argv[2] if len(sys.argv) > 2 else "0.0.0.0"
+# 默认仅本机可访问；需要局域网/同网段访问时显式指定 0.0.0.0，如:
+#   python3 serve.py 8080 0.0.0.0
+BIND = sys.argv[2] if len(sys.argv) > 2 else "127.0.0.1"
 
 # Serve from the directory containing this script
 os.chdir(os.path.dirname(os.path.abspath(__file__)))

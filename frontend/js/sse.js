@@ -23,6 +23,7 @@ class SseManager {
      * @param {Function} callbacks.onPlan - (plan: object) => void
      * @param {Function} callbacks.onComplete - (fullText: string) => void
      * @param {Function} callbacks.onError - (error: string) => void
+     * @param {Function} [callbacks.onAbort] - (partialText: string) => void, abort 时调用（替代 onComplete）
      * @param {AbortSignal} [signal] - optional abort signal to cancel
      * @returns {Promise<void>}
      */
@@ -34,8 +35,10 @@ class SseManager {
             onPlan = () => {},
             onComplete = () => {},
             onError = () => {},
+            onAbort = null,
         } = callbacks;
 
+        let fullText = ''; // try 外声明: abort catch 分支也需要访问 (避免 ReferenceError)
         try {
             const response = await fetch(endpoint, {
                 method: 'POST',
@@ -54,8 +57,8 @@ class SseManager {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
-            let fullText = '';
             let currentEvent = '';
+            let errored = false; // error 事件后跳过 onComplete，避免重复渲染
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -81,6 +84,7 @@ class SseManager {
                             onError,
                             fullTextAcc: (chunk) => { fullText += chunk; },
                         });
+                        if (currentEvent === 'error') errored = true;
                         currentEvent = '';
                     } else if (line === '') {
                         currentEvent = ''; // empty line = event boundary
@@ -88,13 +92,18 @@ class SseManager {
                 }
             }
 
-            // Notify completion
-            onComplete(fullText);
+            // Notify completion (error 事件后不调用，避免与 onError 重复渲染)
+            if (!errored) {
+                onComplete(fullText);
+            }
 
         } catch (e) {
             if (e.name === 'AbortError') {
                 console.log('[SSE] request aborted');
-                onComplete('');
+                // 中断时不渲染空消息：交给 onAbort 回调（若有）
+                if (typeof onAbort === 'function') {
+                    onAbort(fullText || '');
+                }
                 return;
             }
             console.error('[SSE] error:', e);

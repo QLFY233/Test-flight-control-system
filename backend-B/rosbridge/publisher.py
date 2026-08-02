@@ -35,7 +35,10 @@ class GoalPublisher:
         logger.info(f"[goal-publisher] started at {self._rate}Hz")
 
     def stop(self):
-        """停止发布线程, 发最后一帧悬停。"""
+        """停止发布线程。
+
+        注意: 本方法只 join 线程、不发最后一帧悬停 — 实际悬停由
+        lifecycle._shutdown 的 bus hover 兜底 (B-13)。"""
         self._running = False
         if self._thread:
             self._thread.join(timeout=2.0)

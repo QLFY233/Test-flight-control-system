@@ -41,6 +41,8 @@ class Router {
 
     /**
      * Handle hash change event (async to support lazy-loaded pages).
+     * 竞态处理：动态 import() 期间再次发生 hashchange 时，旧的 _onChange 在
+     * finally 中对比当前 hash，若已被新一轮导航改变则递归补跑，避免导航被吞。
      */
     async _onChange() {
         if (this._changing) return;
@@ -111,6 +113,11 @@ class Router {
             }
         } finally {
             this._changing = false;
+            // 若本次导航期间 hash 又变了（快速连点），补跑一次以收敛到最终目标页
+            const finalHash = window.location.hash || '#/overview';
+            if (finalHash !== this.currentHash && !this._changing) {
+                this._onChange();
+            }
         }
     }
 }

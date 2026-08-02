@@ -104,7 +104,9 @@ class Store {
     /**
      * Subscribe to changes at a path or prefix.
      * Returns an unsubscribe function.
-     * @param {string} path
+     * @param {string} path - dot-path 前缀订阅；通知值可能是前缀路径下的标量/对象值
+     *   （如订阅 'drone' 会在 drone.position / drone.velocity 等任意子路径变更时触发），
+     *   回调收到 (newValue, oldValue, changedPath)。
      * @param {Function} callback - receives (newValue, oldValue, path)
      * @returns {Function} unsubscribe
      */
@@ -196,7 +198,7 @@ const initial = {
     // Flight session state
     flight: {
         sessionId: null,
-        status: 'idle',         // 'idle' | 'running' | 'paused' | 'completed' | 'aborted'
+        status: 'idle',         // 冻结枚举（shared/protocol.py schema_version=2）: 'idle' | 'hovering' | 'planned' | 'executing' | 'completed' | 'aborted'
         taskTitle: '',
         taskDescription: '',
         currentAction: 0,       // current action index in actionSequence

@@ -8,6 +8,7 @@ import { apiManager, router } from '../shared.js';
 import { SessionCard } from '../components/SessionCard.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { genScrollWheel } from '../components/ScrollWheel.js';
+import { esc } from '../escape.js';
 
 const WHEEL_OPTS = {
     temperature: { vals: (() => { const a = []; for (let t = -10; t <= 50; t++) a.push(t); return a; })(), fmt: v => v },
@@ -31,7 +32,8 @@ class OverviewPage {
         this._loadData();
         this._unsubFlight = store.subscribe('flight', () => {
             const status = store.get('flight.status');
-            const dis = status === 'running' || status === 'paused';
+            // 冻结枚举：executing = 任务执行中
+            const dis = status === 'executing';
             if (dis !== this._wheelsDisabled) {
                 this._wheelsDisabled = dis;
                 this._updateCardStates();
@@ -49,7 +51,7 @@ class OverviewPage {
         const conn = store.get('connection');
         const env = store.get('environment');
         const flight = store.get('flight');
-        const locked = flight.status === 'running' || flight.status === 'paused';
+        const locked = flight.status === 'executing';
 
         const indicators = [
             { label: 'Backend A', status: conn.backendA || 'unknown' },
@@ -59,12 +61,12 @@ class OverviewPage {
         ];
 
         const getDotClass = s => {
-            if (s === 'ok' || s === 'connected') return 'indicator-light__dot--green';
-            if (s === 'connecting' || s === 'warning') return 'indicator-light__dot--yellow';
+            if (s === 'ok' || s === 'connected' || s === 'up') return 'indicator-light__dot--green';
+            if (s === 'connecting' || s === 'warning' || s === 'degraded' || s === 'down') return 'indicator-light__dot--yellow';
             return 'indicator-light__dot--red';
         };
         const getStatusText = s => {
-            const m = { ok: 'OK', connected: 'ONLINE', connecting: 'CONN', warning: 'WARN', error: 'ERR', unknown: 'UNK' };
+            const m = { ok: 'OK', connected: 'ONLINE', connecting: 'CONN', warning: 'WARN', error: 'ERR', unknown: 'UNK', up: 'UP', down: 'DOWN', degraded: 'DEGRADED' };
             return m[s] || (s || '').toUpperCase();
         };
 
@@ -77,7 +79,7 @@ class OverviewPage {
                 </div>
                 <div class="overview-page__section">
                     <div class="overview-page__section-title">[ 系统状态 ]</div>
-                    <div class="indicator-grid">${indicators.map(i => `<div class="indicator-light"><div class="indicator-light__dot ${getDotClass(i.status)}"></div><div><div class="indicator-light__label">${i.label}</div><div class="indicator-light__status">${getStatusText(i.status)}</div></div></div>`).join('')}</div>
+                    <div class="indicator-grid">${indicators.map(i => `<div class="indicator-light"><div class="indicator-light__dot ${getDotClass(i.status)}"></div><div><div class="indicator-light__label">${esc(i.label)}</div><div class="indicator-light__status">${esc(getStatusText(i.status))}</div></div></div>`).join('')}</div>
                 </div>
                 <div class="overview-page__section">
                     <div class="overview-page__section-title" id="env-section-title">[ 环境概要 ]${locked ? ' <span style="color:var(--color-red);">/// LOCKED — 任务执行中</span>' : ''}</div>
@@ -138,7 +140,7 @@ class OverviewPage {
         cardEl.appendChild(container);
 
         this._activeWheel = { container, cardEl, valEl, envKey, timer: null };
-        // Don't start auto-hide timer — user must click to confirm
+        // 无自动隐藏计时器 — 用户必须点击确认（_resetHideTimer 已废弃删除）
         this._setupWheelClickToClose(container);
 
         // Re-focus scroll after DOM is attached
@@ -148,12 +150,6 @@ class OverviewPage {
                 w.scroller.scrollTop = Math.max(0, initIdx) * w.itemHeight + w.centeringOffset;
             }
         });
-    }
-
-    _resetHideTimer() {
-        if (this._activeWheel?.timer) clearTimeout(this._activeWheel.timer);
-        if (!this._activeWheel) return;
-        this._activeWheel.timer = setTimeout(() => this._destroyWheel(), 5000);
     }
 
     _setupWheelClickToClose(container) {
@@ -202,7 +198,7 @@ class OverviewPage {
         } catch (e) {
             console.warn('[OverviewPage] load sessions:', e.message);
             const grid = this.container?.querySelector('#recent-sessions');
-            if (grid) grid.innerHTML = '<div style="color:var(--color-red);padding:var(--space-8);font-family:var(--font-mono);font-size:var(--text-xs);">加载失败: ' + e.message + '</div>';
+            if (grid) grid.innerHTML = '<div style="color:var(--color-red);padding:var(--space-8);font-family:var(--font-mono);font-size:var(--text-xs);">加载失败: ' + esc(e.message) + '</div>';
         }
     }
 }

@@ -4,6 +4,7 @@
  */
 
 import { DashboardPanel } from './DashboardPanel.js';
+import { escAttr } from '../escape.js';
 
 class DashboardGrid {
     constructor(container) {
@@ -72,17 +73,25 @@ class DashboardGrid {
         this.panels.forEach(p => p.unmount());
         this.panels.clear();
         this.panelOrder = [];
-        this.container = null;
+        this.container =     _mountPanels() {
+        this.panels.forEach((panel, id) => {
+            // 与插入侧 escAttr(id) 对称: 查询侧用 CSS.escape, 避免特殊字符导致选择器失效
+            const contentEl = this.container?.querySelector(`#dash-panel-${CSS.escape(id)}`);
+            if (contentEl && contentEl.children.length === 0) {
+                panel.mount(contentEl);
+            }
+        });
+    };
     }
 
     _render() {
         this.container.innerHTML = `
             <div class="dashboard-grid" style="grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); grid-auto-rows: minmax(200px, auto);">
                 ${this.panelOrder.map((id, i) => `
-                    <div class="dashboard-grid__cell" data-panel-id="${id}" draggable="true" style="border:var(--border-hair);background:var(--color-surface);min-height:180px;display:flex;flex-direction:column;position:relative;">
+                    <div class="dashboard-grid__cell" data-panel-id="${escAttr(id)}" draggable="true" style="border:var(--border-hair);background:var(--color-surface);min-height:180px;display:flex;flex-direction:column;position:relative;">
                         <div class="dashboard-grid__drag-handle" style="cursor:grab;padding:2px 6px;text-align:center;color:var(--color-text-disabled);font-family:var(--font-mono);font-size:var(--text-2xs);border-bottom:var(--border-hair);" title="DRAG">:::</div>
-                        <div class="dashboard-grid__panel-content" style="flex:1;min-height:0;" id="dash-panel-${id}"></div>
-                        <button class="dashboard-grid__close-btn" data-panel-id="${id}" style="position:absolute;top:2px;right:4px;background:none;border:none;color:var(--color-text-disabled);cursor:pointer;font-family:var(--font-mono);font-size:var(--text-xs);padding:2px;">×</button>
+                        <div class="dashboard-grid__panel-content" style="flex:1;min-height:0;" id="dash-panel-${escAttr(id)}"></div>
+                        <button class="dashboard-grid__close-btn" data-panel-id="${escAttr(id)}" style="position:absolute;top:2px;right:4px;background:none;border:none;color:var(--color-text-disabled);cursor:pointer;font-family:var(--font-mono);font-size:var(--text-xs);padding:2px;">×</button>
                     </div>
                 `).join('')}
                 <div class="dashboard-grid__add-cell" style="border:1px dashed var(--color-border);min-height:180px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--color-text-disabled);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--track-wide);transition:all var(--duration-fast) var(--ease-out-expo);">
@@ -97,7 +106,8 @@ class DashboardGrid {
 
     _mountPanels() {
         this.panels.forEach((panel, id) => {
-            const contentEl = this.container?.querySelector(`#dash-panel-${id}`);
+            // 与插入侧 escAttr(id) 对称: 属性选择器 + CSS.escape, 避免特殊字符导致选择器失效
+            const contentEl = this.container?.querySelector(`.dashboard-grid__cell[data-panel-id="${CSS.escape(id)}"] .dashboard-grid__panel-content`);
             if (contentEl && contentEl.children.length === 0) {
                 panel.mount(contentEl);
             }

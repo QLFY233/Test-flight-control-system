@@ -29,9 +29,7 @@ class TtsClient:
             raise RuntimeError("TTS not configured — set XF_API_PASSWORD")
 
         # 构建鉴权 URL (x-api-key 方式)
-        import base64 as b64
-        import time
-        import hashlib
+        import base64 as b64  # N11: 移除未使用的 time/hashlib import
 
         # TTS 使用 x-api-key 鉴权, 签名参数附加到 URL
         try:

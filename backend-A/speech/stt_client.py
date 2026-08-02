@@ -2,8 +2,10 @@
 讯飞 STT 客户端 — WebSocket 连接, 发送 PCM 音频, 接收识别结果。
 支持 wpgs (动态修正) 中间结果。
 """
+import asyncio
 import json
 import logging
+from urllib.parse import urlparse
 from .xfyun_config import (
     STT_WS_URL, XF_APP_ID, XF_API_KEY, XF_API_SECRET, is_stt_configured,
 )
@@ -34,8 +36,8 @@ class SttClient:
         if not is_stt_configured():
             raise RuntimeError("STT not configured — set XF_APP_ID/XF_API_KEY/XF_API_SECRET")
 
-        # 从 URL 提取 host
-        host = STT_WS_URL.replace("wss://", "").replace("/v1", "")
+        # N10: 用 urlparse 提取 host — 原 replace("wss://","").replace("/v1","") 脆若弦
+        host = urlparse(STT_WS_URL).netloc
         url = build_auth_url(host, XF_API_KEY, XF_API_SECRET)
 
         try:
@@ -80,8 +82,11 @@ class SttClient:
         }
         await self._ws.send(json.dumps(frame))
 
-    async def finish(self) -> str:
-        """发送结束帧, 接收最终识别结果。"""
+    async def finish(self, timeout: float = 15.0) -> str:
+        """发送结束帧, 接收最终识别结果。
+
+        N10: 接收循环带超时 — 服务端不返回 status=2 时不再永久挂起。
+        """
         if not self._ws:
             return ""
 
@@ -99,7 +104,12 @@ class SttClient:
         # 接收结果
         full_text = []
         try:
-            async for msg in self._ws:
+            while True:
+                try:
+                    msg = await asyncio.wait_for(self._ws.recv(), timeout=timeout)
+                except asyncio.TimeoutError:
+                    logger.warning(f"[stt] receive timeout after {timeout}s")
+                    break
                 resp = json.loads(msg)
                 if resp.get("code") != 0:
                     logger.warning(f"[stt] error: {resp}")

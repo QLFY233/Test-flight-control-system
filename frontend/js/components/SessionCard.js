@@ -2,6 +2,8 @@
  * SessionCard — History session card with date, status badge, summary, and checkbox.
  */
 
+import { esc, escAttr } from '../escape.js';
+
 class SessionCard {
     /**
      * @param {object} session
@@ -39,11 +41,11 @@ class SessionCard {
 
         el.innerHTML = `
             <input type="checkbox" class="session-card__checkbox" ${this.session.selected ? 'checked' : ''}>
-            <span class="session-card__badge session-card__badge--${this.session.status || 'info'}">
-                ${statusLabels[this.session.status] || this.session.status || '--'}
+            <span class="session-card__badge session-card__badge--${escAttr(this.session.status || 'info')}">
+                ${esc(statusLabels[this.session.status] || this.session.status || '--')}
             </span>
-            <span class="session-card__date">${dateStr}</span>
-            <span class="session-card__summary" title="${FlightPlanCard_esc(this.session.task_summary || '')}">${FlightPlanCard_esc(summary)}</span>
+            <span class="session-card__date">${esc(dateStr)}</span>
+            <span class="session-card__summary" title="${escAttr(this.session.task_summary || '')}">${esc(summary)}</span>
         `;
 
         // Click on card (not checkbox)
@@ -61,12 +63,6 @@ class SessionCard {
 
         return el;
     }
-}
-
-function FlightPlanCard_esc(text) {
-    const div = document.createElement('div');
-    div.textContent = String(text || '');
-    return div.innerHTML;
 }
 
 export { SessionCard };

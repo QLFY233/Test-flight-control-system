@@ -4,8 +4,6 @@
 """
 
 import os
-import time
-import json
 import asyncio
 import logging
 
@@ -16,6 +14,7 @@ from bus import router as bus_router
 from bus.protocol import (
     TO_SMALL_MODEL, CALL_TOOL_ACTION, CALL_TOOL_HOVER,
     FLIGHT_STATUS_EXECUTING, FLIGHT_STATUS_HOVERING,
+    MSG_TYPE_ERROR,
 )
 
 logger = logging.getLogger(__name__)
@@ -89,6 +88,12 @@ class AlphaLoop:
             await self._send_hover()
         except Exception:
             pass
+        # I1: 关闭 LLM 常驻事件循环线程 (若翻译器支持)
+        if self._translator is not None and hasattr(self._translator, "close"):
+            try:
+                self._translator.close()
+            except Exception:
+                pass
         logger.info("[alpha] loop stopped")
 
     async def _loop(self):
@@ -124,12 +129,18 @@ class AlphaLoop:
             intent = " ".join(inputs)
             logger.info(f"[alpha] processing input: {intent[:80]}...")
             action_cmd = await self._translate(intent)
-            self._state.current_action_plan = action_cmd
+            # N6: 计划改用类型化 ActionPlan (原裸 dict, 死代码 dataclass 复活)
+            from state import ActionPlan
+            self._state.current_action_plan = ActionPlan(
+                task_id=action_cmd.get("task_id", ""),
+                actions=action_cmd.get("actions", []),
+                safety_constraints=action_cmd.get("safety_constraints", {}),
+            )
             self._state.last_intent = action_cmd
             await self._dispatch_action(action_cmd)
             # 训练标的: 记录成功翻译 + 下发 (metadata 含 approved/path/action_code)
             await self._log_action(action_cmd, "forward")
-        elif self._state.current_action_plan and self._state.current_action_plan.get("actions"):
+        elif self._state.current_action_plan and self._state.current_action_plan.actions:
             # 预设未完成 → 继续 (B 侧 small_model 管动作推进)
             pass
         else:
@@ -152,12 +163,11 @@ class AlphaLoop:
             )
             return action_cmd
         except TranslateError as e:
-            logger.warning(f"[alpha] translation failed, sending hover: {e}")
-            await self._send_hover()
+            # S3: hover 去重 — 由 _loop 的 except 统一兜底, 此处不再重复发送
+            logger.warning(f"[alpha] translation failed: {e}")
             raise
         except Exception as e:
             logger.error(f"[alpha] unexpected translation error: {e}")
-            await self._send_hover()
             raise TranslateError(str(e))
 
     async def _dispatch_action(self, action_cmd: dict):
@@ -170,13 +180,32 @@ class AlphaLoop:
                 _from="alpha",
             )
             payload = result.get("payload", {})
+            # B1: IPC 先导 fire-and-forget 只回 ack; B 断开/组件错误时 router 吞异常返回
+            # msg_type=error。必须显式校验, 否则被误报为 executing → 状态机卡死永不回退。
+            if (
+                result.get("msg_type") == MSG_TYPE_ERROR
+                or payload.get("status") == "error"
+                or payload.get("error")
+            ):
+                detail = (
+                    payload.get("error")
+                    or payload.get("status")
+                    or result.get("msg_type")
+                    or "unknown"
+                )
+                logger.error(f"[alpha] dispatch to B failed: {detail}")
+                self._state.last_llm_call_ok = False
+                await self._send_hover()
+                return
             if payload.get("status") == "rejected":
                 reason = payload.get("reason", "unknown")
                 logger.warning(f"[alpha] small_model rejected: {reason}")
                 await self._send_hover()
-            else:
-                self._state.flight_status = FLIGHT_STATUS_EXECUTING
-                logger.info("[alpha] action dispatched to small_model")
+                return
+            self._state.flight_status = FLIGHT_STATUS_EXECUTING
+            logger.info("[alpha] action dispatched to small_model")
+            # 🟡-3: 广播 α 产出到前端 WS (spec §5 注: 动作编码 + 目标点)
+            await self._broadcast_alpha_output(action_cmd)
         except Exception as e:
             logger.error(f"[alpha] dispatch to B failed: {e}")
             self._state.last_llm_call_ok = False
@@ -194,6 +223,25 @@ class AlphaLoop:
             )
         except Exception as e:
             logger.warning(f"[alpha] hover dispatch failed: {e}")
+
+    async def emergency_hover(self):
+        """B 侧 reject 时由 bridge 调用 (🟡-6) — 安全默认: 清计划 + 悬停。"""
+        self._state.current_action_plan = None
+        await self._send_hover()
+
+    async def _broadcast_alpha_output(self, action_cmd: dict):
+        """推送 α 产出 (动作序列 + 目标点) 到前端 WS (🟡-3)。"""
+        try:
+            from web.ws import broadcast_alpha_output
+            actions = action_cmd.get("actions", [])
+            goal = None
+            for a in reversed(actions):
+                if a.get("target"):
+                    goal = a["target"]
+                    break
+            await broadcast_alpha_output(action_cmd, goal, actions)
+        except Exception:
+            pass
 
     async def _broadcast_llm_status(self, state: str, detail: str = ""):
         """推送 LLM 链路状态到前端 WS。"""
@@ -214,11 +262,15 @@ class AlphaLoop:
         """
         try:
             if not self._state.session_id:
-                # 自动创建 session (YYYYMMDDHHMMSS)
+                # N8: 细粒度 session id — 秒级会令同一秒内两条指令共享 id (会话混淆)
                 import time as _time
-                self._state.session_id = _time.strftime("%Y%m%d%H%M%S")
+                self._state.session_id = (
+                    _time.strftime("%Y%m%d%H%M%S")
+                    + f"{_time.time_ns() % 100_000:05d}"
+                )
 
-            from db.repos import save_conversation
+            from db.repos import save_conversation, create_session as _create_session
+            from db.repos import get_session as _get_session
             from db.session import async_session as _db_sess
             import json as _json
 
@@ -226,6 +278,12 @@ class AlphaLoop:
             codes = [a.get("code", "") for a in actions]
 
             async with _db_sess() as session:
+                # N8: 显式建 session 行 — 此前全仓无 create_session 调用,
+                # conversations/telemetry 全是孤儿行 (FK 悬空)
+                existing = await _get_session(session, self._state.session_id)
+                if existing is None:
+                    await _create_session(session, self._state.session_id, task_desc=None)
+
                 await save_conversation(
                     session,
                     session_id=self._state.session_id,

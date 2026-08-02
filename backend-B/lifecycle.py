@@ -13,6 +13,7 @@ from config_loader import load_field, load_constraints
 from state import BState
 from bus import registry as bus_registry
 from bus.router import call as bus_call
+from bus.protocol import SCHEMA_VERSION, TO_SMALL_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,8 @@ class Lifecycle:
         self._small_model_component.set_event_sender(self.dispatch.send_event)
         # Wire monitor event sender → dispatch.send_event
         self._monitor_component.set_event_sender(self.dispatch.send_event)
+        # 契约 §6: 断连 → small_model 切 hover (与 run_b.py 路径一致)
+        self.ipc_client.set_disconnect_handler(self._on_ipc_disconnect)
 
         # 6. Init ROS subscriber
         self._subscriber = self._init_subscriber()
@@ -209,6 +212,14 @@ class Lifecycle:
         if _keep_running:
             self._start_goal_publisher()
 
+    def _on_ipc_disconnect(self):
+        """IPC 意外断连回调 — small_model 切 hover (契约 §6)。"""
+        try:
+            bus_call(to=TO_SMALL_MODEL, tool="hover", args={})
+            logger.warning("[lifecycle] IPC disconnected — small_model switched to hover")
+        except Exception as e:
+            logger.warning(f"[lifecycle] disconnect hover failed: {e}")
+
     def _uplink_loop(self):
         """10Hz 上行线程: 读 BState → IPC 发 pose + telemetry。"""
         period = 0.1  # 10Hz
@@ -230,7 +241,7 @@ class Lifecycle:
         try:
             p = self.state.current_pose
             msg = {
-                "schema_version": 2,
+                "schema_version": SCHEMA_VERSION,
                 "from": "B",
                 "to": "alpha",
                 "msg_type": "event",
@@ -243,7 +254,8 @@ class Lifecycle:
                     "vel": p.vel[:],
                     "accel": p.accel[:],
                     "angularVel": p.angular_vel[:],
-                    "ts": p.ts,
+                    # B-10: 统一 wall time (与 run_b.py 一致; ROS header stamp 不用于停产判定)
+                    "ts": time.time(),
                 },
                 "ts": time.time(),
             }
@@ -252,13 +264,15 @@ class Lifecycle:
             _warn_rate_limited(logger, f"[uplink] pose send failed: {e}", period=5.0)
 
     def _send_uplink_telemetry(self):
-        """上行 telemetry event (接口冻结 §5, 不入前端, 仅入库)。"""
+        """上行 telemetry event (接口冻结 §5, 不入前端, 仅入库)。
+        payload 按冻结 {vel, accel, imu, ts}; 保留 angularVel 冗余字段向后兼容。"""
         if not self.state.ipc_connected:
             return
         try:
+            p = self.state.current_pose
             imu = self.state.current_imu
             msg = {
-                "schema_version": 2,
+                "schema_version": SCHEMA_VERSION,
                 "from": "B",
                 "to": "alpha",
                 "msg_type": "event",
@@ -266,9 +280,11 @@ class Lifecycle:
                 "tool": "telemetry",
                 "args": {},
                 "payload": {
+                    "vel": p.vel[:],
                     "accel": imu.accel[:],
                     "angularVel": imu.angular_vel[:],
-                    "ts": imu.ts,
+                    "imu": {"accel": imu.accel[:], "angular_vel": imu.angular_vel[:], "ts": imu.ts},
+                    "ts": time.time(),
                 },
                 "ts": time.time(),
             }

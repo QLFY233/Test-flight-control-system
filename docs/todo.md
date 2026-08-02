@@ -4,7 +4,15 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-07-29 14:00 (阶段L 完成 — 语音/分析/看板/PWA)
+最近更新：2026-08-02 16:00 (代码审查修复 #3 — 全仓并行审查+修复+验证)
+
+> **2026-08-02 (代码审查修复 #3 — 全仓并行审查 9🔴/36🟡 + 3 worker 并行修复 + 2 reviewer 独立验证)**:
+> 审查：4 路并行 reviewer（backend-A / backend-B / frontend / A-B 契约，依据 code-review-skill）→ 9 🔴 / 36 🟡 / 38 🟢 / 12 💡
+> backend-A 修复（worker-A，20 文件）：α 下发失败误报 executing 状态机（B1）、WS 广播持锁+队列化解耦（B2）、POST /api/sessions/{id}/abort 路由（🔴-3）、status 转发 WS（🔴-4）、LLM 常驻事件循环线程（I1）、approve TOCTOU 原子认领（I2）、TelemetryBuffer task 管理 + OR IGNORE（I3/I4）、IPC writer 关闭（I5）、INFO 日志（I6）、接线 fail-fast + 缺 key 白名单降级（I7）、默认绑 127.0.0.1 + 输入限长（I8）、reject 注入 α + emergency_hover（🟡-6）、ping 改 call（🟡-8）、会话端点补齐（🟡-9）、CORS 白名单（S1）、WS 防御（S2）、current_pose 拷贝（S4）、PRAGMA foreign_keys + ns 级 session id（N8）、FFT/STT/时区/死代码清理（N9~N14）、monitor_trigger 删除、SCHEMA_VERSION 导入 → **测试 47→56/56**
+> backend-B 修复（worker-B，16 文件）：IMU 嵌套锁死锁（B-1，已实证）、run_b.py vel/accel 恒零数据通路（B-2）、入口 python -m backend_B 修复（B-3）、recv 线程兜底（B-4）、monitor 启动假阳性（B-5）、small_model 跨线程锁收敛（B-6）、socket 5s 超时（B-7）、start_all.sh 路径自推导（B-8）、reject 冻结常量（🟡-5）、telemetry 补 vel/imu（🟡-7）、ts 统一 wall time、指数退避、断连 hover、alert to=beta 与冻结文档确认一致 → **测试 58→70/70**
+> frontend 修复（worker-F，40+ 文件）：WS payload 兼容（🔴-1）、/api/field/config（🔴-2）、路由竞态（🟡1）、StatusBar rAF 节流（🟡2）、HistoryChart 泄漏（🟡3）、SSE error 重复渲染（🟡4）、ChatPanel 闭包流状态（🟡5）、XSS 组统一 esc/escAttr（🟡6~8，新建 escape.js）、WS 心跳/jitter/可见性恢复（🟡9）、API 全方法超时（🟡10）、WS 重建（🟡11）、sw.js 版本化缓存（🟡12）、VideoPanel disconnect（🟡13）、FloatingBall 长按（🟡14）、枚举对齐冻结值、死代码/图表动画/lookbehind/config 键名清理 → **node --check 40+ 文件全过 + 行为测试 22 PASS**
+> 独立验证（2 路 reviewer）：A 56/56 + B 70/70 + AST 3.8 零违例 + 协议 md5 一致 + 集成冒烟（health/field/config/sessions/abort 全部符合预期）→ 发现并修复 3 项遗留（β 降级回归 FAIL-1、sse.js fullText 作用域、pose handler 缺 quat）+ 4 项 note（alert.detail/reject toast/CSS.escape/SettingsPage 统一 escAttr）→ 复测全绿
+> 残余风险：LLM 双连发实证需 API key；端到端 A+B+ROS 全链路需真机/仿真环境
 
 > **2026-07-29 (阶段H 完成)**:
 > 实现 `backend-A/tools/beta_tools.py`: 15 个 β 工具 — 实时状态 (field_map/pose/telemetry/env), 历史查询 (sessions/telemetry/env/conversations), α 调度 (propose_to_alpha 总线拦截→pending + forward_last_human_message 免审), analytics stub, dashboard stub

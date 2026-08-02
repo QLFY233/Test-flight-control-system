@@ -4,8 +4,12 @@ REST 路由 — /api/sessions, /api/overview, /api/history/*, /api/environments,
 import json
 import time
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
+
+from bus.protocol import (
+    FLIGHT_STATUS_ABORTED, TO_SMALL_MODEL, CALL_TOOL_ABORT, MSG_TYPE_ERROR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,10 +20,19 @@ _state_ref = None
 _db_factory = None
 
 
+# I8: 变更类输入长度上限 (防 LLM 成本放大/滥用)
+_MAX_INTENT_LEN = 4096
+
+
 def set_rest_context(state, db_factory):
     global _state_ref, _db_factory
     _state_ref = state
     _db_factory = db_factory
+
+
+def _new_session_id() -> str:
+    """细粒度会话 id: YYYYMMDDHHMMSS + 纳秒尾 5 位 (与 alpha._log_action 同规则, 防同秒/同毫秒冲突)。"""
+    return time.strftime("%Y%m%d%H%M%S") + f"{time.time_ns() % 100_000:05d}"
 
 
 # ── Pydantic models ──
@@ -31,6 +44,16 @@ class ApproveProposalRequest(BaseModel):
 class CreateEnvironmentRequest(BaseModel):
     name: str
     data: dict
+
+
+class CreateSessionRequest(BaseModel):
+    task_description: str | None = None
+    environment_id: int | None = None
+
+
+class UpdateSessionRequest(BaseModel):
+    status: str | None = None
+    task_description: str | None = None
 
 
 # ── 健康检查 ──
@@ -86,18 +109,21 @@ async def approve_proposal(proposal_id: str):
     if not s:
         raise HTTPException(503, "state not available")
 
-    pending = s.pending_proposal
-    if not pending or pending.get("id") != proposal_id:
-        raise HTTPException(404, f"proposal {proposal_id} not found or already processed")
+    # I2: 原子认领 — 锁内取出并立即清空, 杜绝并发 approve 重复注入 α 队列
+    async with s._lock:
+        pending = s.pending_proposal
+        if not pending or pending.get("id") != proposal_id:
+            raise HTTPException(404, f"proposal {proposal_id} not found or already processed")
+        s.pending_proposal = None
 
     intent = pending.get("intent", "")
     if intent:
+        if len(intent) > _MAX_INTENT_LEN:  # I8: 输入长度上限
+            raise HTTPException(400, f"intent too long (> {_MAX_INTENT_LEN})")
         await s.push_alpha_input(intent)
         logger.info(f"[routes] proposal {proposal_id} approved → α queue")
 
-    # 标记为已处理
     pending["status"] = "approved"
-    s.pending_proposal = None
 
     return {"status": "approved", "proposal_id": proposal_id}
 
@@ -109,12 +135,14 @@ async def reject_proposal(proposal_id: str):
     if not s:
         raise HTTPException(503, "state not available")
 
-    pending = s.pending_proposal
-    if not pending or pending.get("id") != proposal_id:
-        raise HTTPException(404, f"proposal {proposal_id} not found")
+    # I2: 原子认领 (与 approve 对称)
+    async with s._lock:
+        pending = s.pending_proposal
+        if not pending or pending.get("id") != proposal_id:
+            raise HTTPException(404, f"proposal {proposal_id} not found")
+        s.pending_proposal = None
 
     pending["status"] = "rejected"
-    s.pending_proposal = None
 
     return {"status": "rejected", "proposal_id": proposal_id}
 
@@ -122,7 +150,7 @@ async def reject_proposal(proposal_id: str):
 # ── 会话 ──
 
 @router.get("/sessions")
-async def list_sessions(limit: int = 10):
+async def list_sessions(limit: int = Query(10, le=100)):  # N5: limit 上限 100, 防 ?limit=100000 拖垮 DB
     try:
         async with _db_factory() as session:
             from db.repos import get_recent_sessions
@@ -141,6 +169,84 @@ async def list_sessions(limit: int = 10):
     except Exception as e:
         logger.exception(f"Failed: {e}")
         raise HTTPException(500, "Internal server error")
+
+
+@router.post("/sessions")
+async def create_session_endpoint(req: CreateSessionRequest):
+    """创建新试飞会话 (前端 spec: POST /api/sessions)。"""
+    try:
+        async with _db_factory() as session:
+            from db.repos import create_session as _create_session
+            session_id = _new_session_id()
+            fs = await _create_session(session, session_id, req.task_description)
+            if req.environment_id is not None:
+                fs.environment_id = req.environment_id
+                await session.commit()
+            if _state_ref:
+                _state_ref.session_id = session_id
+            return {
+                "id": fs.id,
+                "status": fs.status,
+                "created_at": str(fs.created_at) if fs.created_at else None,
+            }
+    except Exception as e:
+        logger.exception(f"Failed: {e}")
+        raise HTTPException(500, "Internal server error")
+
+
+@router.patch("/sessions/{session_id}")
+async def update_session_endpoint(session_id: str, req: UpdateSessionRequest):
+    """更新会话状态/描述 (前端 spec: PATCH /api/sessions/{id})。"""
+    try:
+        async with _db_factory() as session:
+            from db.repos import get_session as _get_session
+            fs = await _get_session(session, session_id)
+            if fs is None:
+                raise HTTPException(404, f"session {session_id} not found")
+            if req.status is not None:
+                fs.status = req.status
+            if req.task_description is not None:
+                fs.task_description = req.task_description
+            await session.commit()
+            return {"id": fs.id, "status": fs.status}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed: {e}")
+        raise HTTPException(500, "Internal server error")
+
+
+@router.post("/sessions/{session_id}/abort")
+async def abort_session_endpoint(session_id: str):
+    """中止会话 (前端 spec 行 562) — 本地状态置 aborted + 经 IPC 下发 call.abort。"""
+    s = _state_ref
+    if s:
+        s.flight_status = FLIGHT_STATUS_ABORTED
+        s.current_action_plan = None
+
+    try:
+        from bus.router import call as bus_call
+        result = await bus_call(
+            to=TO_SMALL_MODEL, tool=CALL_TOOL_ABORT, args={}, _from="routes"
+        )
+        if result.get("msg_type") == MSG_TYPE_ERROR:
+            detail = result.get("payload", {}).get("error", "unknown")
+            logger.error(f"[routes] abort dispatch failed: {detail}")
+            raise HTTPException(502, f"abort dispatch failed: {detail}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[routes] abort dispatch error: {e}")
+        raise HTTPException(502, "abort dispatch error")
+
+    try:
+        async with _db_factory() as session:
+            from db.repos import update_session_status
+            await update_session_status(session, session_id, FLIGHT_STATUS_ABORTED)
+    except Exception:
+        pass  # 会话行可能不存在 — 本地状态已更新, 不阻断
+
+    return {"status": "aborted", "session_id": session_id}
 
 @router.get("/overview")
 async def get_overview():
@@ -168,23 +274,25 @@ async def get_overview():
 # ── 历史 ──
 
 @router.get("/history/telemetry/{session_id}")
-async def get_telemetry(session_id: str, t_start: float = 0, t_end: float | None = None):
+async def get_telemetry(
+    session_id: str,
+    t_from: float = 0,          # 契约 🟢: 参数名对齐 spec (原 t_start)
+    t_end: float | None = None,
+    limit: int = Query(1000, le=10000),  # N4: 显式 limit, 静默截断改为受控分页
+):
     try:
         async with _db_factory() as session:
             from db.repos import get_telemetry_range
-            rows = await get_telemetry_range(session, session_id, t_start, t_end)
-            return {
-                "session_id": session_id,
-                "count": len(rows),
-                "data": [
-                    {
-                        "t": r.t,
-                        "pos": [r.position_x, r.position_y, r.position_z],
-                        "vel": [r.velocity_x, r.velocity_y, r.velocity_z],
-                    }
-                    for r in rows[:1000]
-                ],
-            }
+            rows = await get_telemetry_range(session, session_id, t_from, t_end)
+            data = [
+                {
+                    "t": r.t,
+                    "pos": [r.position_x, r.position_y, r.position_z],
+                    "vel": [r.velocity_x, r.velocity_y, r.velocity_z],
+                }
+                for r in rows[:limit]
+            ]
+            return {"session_id": session_id, "count": len(data), "data": data}
     except Exception as e:
         logger.exception(f"Failed: {e}")
         raise HTTPException(500, "Internal server error")

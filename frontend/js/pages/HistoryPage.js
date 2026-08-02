@@ -11,6 +11,7 @@ import { SessionCard } from '../components/SessionCard.js';
 import { TimelineControl } from '../components/TimelineControl.js';
 import { ViewPanel } from '../components/ViewPanel.js';
 import { EmptyState } from '../components/EmptyState.js';
+import { esc } from '../escape.js';
 
 class HistoryPage {
     constructor() {
@@ -182,10 +183,10 @@ class HistoryPage {
                 <div class="history-page__detail-section">
                     <div class="history-page__detail-title">任务详情</div>
                     <div class="card card--raised" style="padding: var(--space-md);">
-                        <div style="font-size: var(--font-lg); font-weight: 600; margin-bottom: var(--space-sm);">${session.task_title || session.name || '未知任务'}</div>
-                        <div style="font-size: var(--font-sm); color: var(--color-text-secondary);">时间: ${dateStr}</div>
-                        <div style="font-size: var(--font-sm); color: var(--color-text-secondary);">状态: ${session.status || '--'}</div>
-                        <div style="font-size: var(--font-sm); color: var(--color-text-secondary); margin-top: var(--space-sm);">${session.task_summary || session.description || '无描述'}</div>
+                        <div style="font-size: var(--font-lg); font-weight: 600; margin-bottom: var(--space-sm);">${esc(session.task_title || session.name || '未知任务')}</div>
+                        <div style="font-size: var(--font-sm); color: var(--color-text-secondary);">时间: ${esc(dateStr)}</div>
+                        <div style="font-size: var(--font-sm); color: var(--color-text-secondary);">状态: ${esc(session.status || '--')}</div>
+                        <div style="font-size: var(--font-sm); color: var(--color-text-secondary); margin-top: var(--space-sm);">${esc(session.task_summary || session.description || '无描述')}</div>
                     </div>
                 </div>
 

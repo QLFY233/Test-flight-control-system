@@ -142,6 +142,51 @@ bs.update_pose([1.0, 2.0, 3.0], [1.0, 0.0, 0.0, 0.0], [0.1, 0.2, 0.0], [0.0, 0.0
 check("pose.pos 正确", bs.current_pose.pos == [1.0, 2.0, 3.0])
 check("pose.quat 正确 [w,x,y,z]", bs.current_pose.quat == [1.0, 0.0, 0.0, 0.0])
 check("last_data_ts > 0", bs.last_data_ts > 0)
+check("data_received 置位 (B-5)", bs.data_received is True)
+
+# B-1/B-2 回归: update_imu 单次加锁同步写 _imu 与 _pose.accel/angular_vel
+# (修复前 IMU 回调只写 _imu, 上行 pose 的 accel/angularVel 恒零 → 安全监控失效)
+bs2 = BState(field, constraints["global"])
+check("初始 data_received == False (B-5)", bs2.data_received is False)
+check("初始 _last_data_ts 为启动时刻 (B-5, 非 0)", bs2.last_data_ts > 0)
+bs2.update_imu([0.1, 0.2, 0.3], [0.4, 0.5, 0.6], time.time())
+check("update_imu 写 _imu.accel", bs2.current_imu.accel == [0.1, 0.2, 0.3])
+check("update_imu 写 _pose.accel (B-2)", bs2.current_pose.accel == [0.1, 0.2, 0.3])
+check("update_imu 写 _pose.angular_vel (B-2)", bs2.current_pose.angular_vel == [0.4, 0.5, 0.6])
+check("update_imu 置 data_received", bs2.data_received is True)
+
+# B-1 回归: update_imu 完成后锁应可正常获取 (无死锁残留)
+bs2.update_imu([0.1, 0.2, 0.3], [0.4, 0.5, 0.6], time.time())
+_acquired = bs2.pose_lock.acquire(timeout=1.0)
+if _acquired:
+    bs2.pose_lock.release()
+check("update_imu 后锁可获取 (B-1 无死锁残留)", _acquired)
+
+# B-6 回归: small_model 计划推进锁纪律 — generate 后 index=0, advance 逐条推进不越界
+from small_model.component import SmallModelComponent
+smc = SmallModelComponent(bs2)
+plan = {"action": {"actions": [{"code": "hover"}, {"code": "hover"}], "safety_constraints": {}}}
+r = smc._handle_generate_goal(plan)
+check("generate_goal 返回 ok", r.get("status") == "ok")
+check("generate 后 index == 0 (B-6)", bs2.current_action_index == 0)
+smc._advance_action()
+check("advance 后 index == 1, 不跳过首条 (B-6)", bs2.current_action_index == 1)
+
+# B-6 并发回归: 多线程 check_arrival_and_advance 无异常/无死锁
+import threading as _th2
+_errs = []
+def _adv():
+    try:
+        for _ in range(50):
+            smc.check_arrival_and_advance([100.0, 100.0, 100.0])  # 永不到达 → 只读不推进
+    except Exception as e:
+        _errs.append(str(e))
+_ths = [_th2.Thread(target=_adv) for _ in range(4)]
+for _t in _ths:
+    _t.start()
+for _t in _ths:
+    _t.join(timeout=5.0)
+check("并发 check_arrival 无异常 (B-6)", not _errs)
 
 # ── Test 5: B 内总线注册表 + 路由器 ──
 print("\n📋 Test 5: B 侧总线注册表 + 路由器")

@@ -52,6 +52,21 @@ def create_app(config_dir: str = "config") -> FastAPI:
 
     app = FastAPI(title="试飞控制系统 — Backend A", lifespan=lifespan)
 
+    # S1: dev 流程 (CLAUDE.md §4.3: frontend :3456 http.server) 跨域白名单;
+    # 生产同源 (StaticFiles 挂 /) 不受影响
+    from fastapi.middleware.cors import CORSMiddleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:3456",
+            "http://127.0.0.1:3456",
+            "http://localhost:8000",
+            "http://127.0.0.1:8000",
+        ],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     # SSE (β Chat) — 先于 StaticFiles
     from web.sse import router as sse_router
     app.include_router(sse_router)
@@ -75,7 +90,12 @@ def main():
     parser = argparse.ArgumentParser(description="后端 A — Agent 中枢")
     parser.add_argument("--config-dir", default="config", help="配置文件目录")
     parser.add_argument("--port", default=8000, type=int, help="HTTP 端口")
-    parser.add_argument("--host", default="0.0.0.0", help="绑定地址")
+    # I8: 默认绑定回环地址 (防局域网任意对端触发飞控指令); 远程访问设 BACKEND_A_HOST=0.0.0.0
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("BACKEND_A_HOST", "127.0.0.1"),
+        help="绑定地址 (默认 127.0.0.1)",
+    )
     args = parser.parse_args()
 
     import uvicorn

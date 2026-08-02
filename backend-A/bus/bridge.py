@@ -5,9 +5,23 @@ B→A inbound event 经此注入 A 总线分发。
 import time
 import logging
 
-from bus.protocol import SCHEMA_VERSION, MSG_TYPE_CALL, MSG_TYPE_RESULT
+from bus.protocol import (
+    SCHEMA_VERSION, MSG_TYPE_CALL, MSG_TYPE_RESULT,
+    TO_ALPHA, TO_BETA,
+    EVENT_TOOL_POSE, EVENT_TOOL_TELEMETRY, EVENT_TOOL_STATUS,
+    EVENT_TOOL_REJECT, EVENT_TOOL_ALERT,
+)
 
 logger = logging.getLogger(__name__)
+
+# 🟡-4: 各 B→A event.tool 应携带的 to 组件 (冻结文档 §3: 未知/错配 to 视为协议错误丢弃)
+_EVENT_EXPECTED_TO = {
+    EVENT_TOOL_POSE: TO_ALPHA,
+    EVENT_TOOL_TELEMETRY: TO_ALPHA,
+    EVENT_TOOL_STATUS: TO_ALPHA,
+    EVENT_TOOL_REJECT: TO_ALPHA,
+    EVENT_TOOL_ALERT: TO_BETA,
+}
 
 # 由 ipc/server.py 在启动时设置
 _ipc_sender = None  # async callable: send_and_wait(msg) -> dict
@@ -51,6 +65,15 @@ async def dispatch_b_event(msg: dict):
     """
     tool = msg.get("tool", "")
     payload = msg.get("payload", {})
+
+    # 🟡-4: 校验 to — 不匹配即记日志丢弃 (契约防御)
+    expected_to = _EVENT_EXPECTED_TO.get(tool)
+    if expected_to is not None and msg.get("to") != expected_to:
+        logger.warning(
+            f"[bridge] event tool={tool} to={msg.get('to')!r} != expected "
+            f"{expected_to!r}, dropping"
+        )
+        return
 
     if tool == "pose":
         await _handle_pose(payload)
@@ -126,7 +149,8 @@ async def _handle_pose(payload: dict):
     if _state_ref:
         await _state_ref.update_pose(pos, quat, vel, accel, angular_vel, ts)
 
-    # WS broadcast
+    # WS broadcast — B2 修复后 broadcast 为非阻塞入队, 不再拖慢 IPC 收帧循环;
+    # N1: 位姿更新/缓冲为内存操作, 队列化 WS 后此处已无阻塞点
     if _ws_pose:
         try:
             await _ws_pose(pos, quat, vel, accel, angular_vel, ts)
@@ -149,24 +173,43 @@ async def _handle_telemetry(payload: dict):
 
 
 async def _handle_status(payload: dict):
+    flight_status = payload.get("flightStatus", "idle")
     if _state_ref:
-        _state_ref.flight_status = payload.get("flightStatus", "idle")
+        _state_ref.flight_status = flight_status
+    # 🔴-4: 转发 WS status (冻结文档 §5) — 此前 broadcast_status 全仓无调用点,
+    # 前端永远收不到任务进度
+    if _ws_status:
+        try:
+            await _ws_status(
+                flight_status,
+                payload.get("mode", "manual"),
+                payload.get("currentAction", 0),
+                payload.get("totalActions", 0),
+            )
+        except Exception:
+            pass
     logger.info(f"[bridge] status: {payload}")
 
 
 async def _handle_reject(payload: dict):
-    logger.warning(f"[bridge] REJECT: reason={payload.get('reason')} actionIndex={payload.get('actionIndex')}")
+    reason = payload.get("reason", "unknown")
+    action_index = payload.get("actionIndex", 0)
+    logger.warning(f"[bridge] REJECT: reason={reason} actionIndex={action_index}")
+    # 🟡-6: reject 注入 α — 清空 A 侧计划 + 兜底 hover。
+    # 原注释"α 下轮 tick 会发送 hover"不成立: _tick 在计划非空时 pass, 永不回退。
+    if _state_ref:
+        _state_ref.current_action_plan = None
+    if _alpha_loop_ref:
+        try:
+            await _alpha_loop_ref.emergency_hover()
+        except Exception:
+            pass
     # WS broadcast reject
     if _ws_reject:
         try:
-            await _ws_reject(
-                payload.get("reason", "unknown"),
-                payload.get("actionIndex", 0),
-                payload.get("suggestedAction"),
-            )
+            await _ws_reject(reason, action_index, payload.get("suggestedAction"))
         except Exception:
             pass
-    # α 下轮 tick 会发送 hover (安全默认)
 
 
 async def _handle_alert(payload: dict):

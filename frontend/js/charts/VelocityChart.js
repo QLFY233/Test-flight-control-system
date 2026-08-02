@@ -22,6 +22,11 @@ class VelocityChart {
         chartEl.style.height = '100%';
         container.appendChild(chartEl);
 
+        if (typeof echarts === 'undefined') {
+            chartEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--color-text-disabled);font-size:var(--text-sm);">ECharts 加载失败（CDN 不可达）</div>';
+            return;
+        }
+
         this.chart = echarts.init(chartEl, null, {
             backgroundColor: 'transparent',
         });
@@ -116,8 +121,8 @@ class VelocityChart {
                     lineStyle: { color: '#2196F3', width: 1.5 },
                 },
             ],
-            animation: true,
-            animationDuration: 300,
+            // 高频 pose 更新下关闭动画，避免动画队列堆积
+            animation: false,
         };
     }
 

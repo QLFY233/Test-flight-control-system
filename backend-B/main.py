@@ -1,6 +1,7 @@
 """
 后端 B 入口 — 实时飞控桥 (Python 3.8 + ROS Noetic)。
-用法: python -m backend_B.main [--config-dir config]
+用法: python main.py --config-dir ../config   (在 backend-B/ 目录下执行)
+注意: 目录名 backend-B 含连字符, 不能用 `python -m backend_B.main` 导入 (B-3)。
 """
 import sys
 import os

@@ -8,6 +8,7 @@ import store from '../state.js';
 import bus from '../event-bus.js';
 import { config, apiManager } from '../shared.js';
 import { deepMerge } from '../config.js';
+import { escAttr } from '../escape.js';
 
 class SettingsPage {
     constructor() {
@@ -51,15 +52,15 @@ class SettingsPage {
                     <div class="settings-page__section-title">后端连接</div>
                     <div class="settings-page__field">
                         <label class="input-group__label">Base URL</label>
-                        <input type="text" class="input" id="cfg-backend-url" value="${this._escAttr(bc.base_url || 'http://localhost:8000')}" placeholder="http://localhost:8000">
+                        <input type="text" class="input" id="cfg-backend-url" value="${escAttr(bc.base_url || 'http://localhost:8000')}" placeholder="http://localhost:8000">
                     </div>
                     <div class="settings-page__field">
                         <label class="input-group__label">WebSocket Endpoint</label>
-                        <input type="text" class="input" id="cfg-backend-ws" value="${this._escAttr(bc.ws_endpoint || '/ws')}" placeholder="/ws">
+                        <input type="text" class="input" id="cfg-backend-ws" value="${escAttr(bc.ws_endpoint || '/ws')}" placeholder="/ws">
                     </div>
                     <div class="settings-page__field">
                         <label class="input-group__label">SSE Beta Endpoint</label>
-                        <input type="text" class="input" id="cfg-backend-sse" value="${this._escAttr(bc.sse_beta || '/api/chat/beta')}" placeholder="/api/chat/beta">
+                        <input type="text" class="input" id="cfg-backend-sse" value="${escAttr(bc.sse_beta || '/api/chat/beta')}" placeholder="/api/chat/beta">
                     </div>
                 `;
                 break;
@@ -122,7 +123,7 @@ class SettingsPage {
                         </div>
                         <div class="settings-page__field">
                             <label class="input-group__label">地点</label>
-                            <input type="text" class="input" id="cfg-env-location" value="${this._escAttr(envStore.location || '')}" placeholder="地点描述">
+                            <input type="text" class="input" id="cfg-env-location" value="${escAttr(envStore.location || '')}" placeholder="地点描述">
                         </div>
                     </div>
                     <div style="margin-top: var(--space-md); display: flex; gap: var(--space-sm);">
@@ -230,26 +231,38 @@ class SettingsPage {
         const theme = this._getSelectVal('cfg-display-theme');
         if (theme) this.localConfig.display = { ...(this.localConfig.display || {}), theme };
 
+        // 数值输入校验：parseFloat 产出 NaN 时回退保存值/默认值（避免 JSON.stringify 落 null）
+        const toNum = (raw, fallback) => {
+            const n = raw !== '' && raw != null ? parseFloat(raw) : NaN;
+            return Number.isFinite(n) ? n : fallback;
+        };
+
         // Read environment (preserve existing saved values, update from DOM if on env tab)
         const envTemp = this._getInputVal('cfg-env-temp');
         const savedEnv = this.localConfig.environment || {};
         this.localConfig.environment = {
-            temperature: (envTemp ? parseFloat(envTemp) : savedEnv.temperature) ?? 25,
-            humidity: (envTemp ? parseFloat(this._getInputVal('cfg-env-humidity')) : savedEnv.humidity) ?? 60,
-            windSpeed: (envTemp ? parseFloat(this._getInputVal('cfg-env-wind-speed')) : savedEnv.windSpeed) ?? 0,
-            windDirection: (envTemp ? parseFloat(this._getInputVal('cfg-env-wind-dir')) : savedEnv.windDirection) ?? 0,
-            pressure: (envTemp ? parseFloat(this._getInputVal('cfg-env-pressure')) : savedEnv.pressure) ?? 1013,
+            temperature: (envTemp ? toNum(envTemp, savedEnv.temperature ?? 25) : savedEnv.temperature) ?? 25,
+            humidity: (envTemp ? toNum(this._getInputVal('cfg-env-humidity'), savedEnv.humidity ?? 60) : savedEnv.humidity) ?? 60,
+            windSpeed: (envTemp ? toNum(this._getInputVal('cfg-env-wind-speed'), savedEnv.windSpeed ?? 0) : savedEnv.windSpeed) ?? 0,
+            windDirection: (envTemp ? toNum(this._getInputVal('cfg-env-wind-dir'), savedEnv.windDirection ?? 0) : savedEnv.windDirection) ?? 0,
+            pressure: (envTemp ? toNum(this._getInputVal('cfg-env-pressure'), savedEnv.pressure ?? 1013) : savedEnv.pressure) ?? 1013,
             location: (envTemp ? this._getInputVal('cfg-env-location') : savedEnv.location) || '',
         };
 
         localStorage.setItem('flight-control-config', JSON.stringify(this.localConfig));
 
+        const oldBase = window.__app?.config?.backend?.base_url;
         // Update API base URL if changed
         if (backend.base_url) {
             window.__app.apiManager?.setBaseUrl?.(backend.base_url);
         }
 
-        alert('设置已保存');
+        // 后端地址变更：通知 app.js 重建 WS 连接，避免 REST 走新地址、WS 走旧地址
+        if (backend.base_url && oldBase && backend.base_url.replace(/\/+$/, '') !== oldBase.replace(/\/+$/, '')) {
+            bus.emit('backend-url-changed', { baseUrl: backend.base_url, wsEndpoint: backend.ws_endpoint || '/ws' });
+        } else {
+            bus.emit('toast', { message: '设置已保存', level: 'success' });
+        }
     }
 
     _resetSettings() {
@@ -267,8 +280,7 @@ class SettingsPage {
             windDirection: parseFloat(this._getInputVal('cfg-env-wind-dir')) || 0,
             pressure: parseFloat(this._getInputVal('cfg-env-pressure')) || 1013,
             location: this._getInputVal('cfg-env-location') || '',
-        };
-        // Persist to in-memory store
+        };        // Persist to in-memory store
         store.batch(() => {
             for (const [key, val] of Object.entries(env)) {
                 store.set(`environment.${key}`, val);
@@ -277,7 +289,7 @@ class SettingsPage {
         // Also persist to localStorage so it survives refresh
         this.localConfig.environment = { ...(this.localConfig.environment || {}), ...env };
         localStorage.setItem('flight-control-config', JSON.stringify(this.localConfig));
-        alert('环境参数已应用并保存');
+        bus.emit('toast', { message: '环境参数已应用并保存', level: 'success' });
     }
 
     _presetEnvironment(preset) {
@@ -319,10 +331,6 @@ class SettingsPage {
     _updateJsonPreview() {
         const el = this.container?.querySelector('#cfg-json-preview');
         if (el) el.value = this._getConfigPreview();
-    }
-
-    _escAttr(str) {
-        return String(str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 }
 

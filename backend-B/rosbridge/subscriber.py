@@ -38,6 +38,7 @@ class DroneSubscriber:
                 st._pose.quat = quat
                 st._pose.ts = ts
                 st._last_data_ts = time.time()
+                st._data_received = True
 
         self._subs.append(rospy.Subscriber(topics["local_position"], PoseStamped, on_pose))
 
@@ -45,12 +46,13 @@ class DroneSubscriber:
         def on_velocity(msg):
             try:
                 vel = [msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z]
-                ts = msg.header.stamp.to_sec()
             except Exception:
                 return
             with st.pose_lock:
                 st._pose.vel = vel
-                st._pose.ts = ts
+                # B-9: 不覆盖 pose.ts (保持位姿帧时间戳语义), 但刷新停产监测基准
+                st._last_data_ts = time.time()
+                st._data_received = True
 
         self._subs.append(rospy.Subscriber(topics["local_velocity"], TwistStamped, on_velocity))
 
@@ -62,10 +64,9 @@ class DroneSubscriber:
                 ts = msg.header.stamp.to_sec()
             except Exception:
                 return
-            with st.pose_lock:
-                st._pose.accel = accel
-                st._pose.angular_vel = angular_vel
-                st.update_imu(accel, angular_vel, ts)
+            # B-1 死锁修复: 不再外层持有 pose_lock — update_imu 内部会加锁 (非重入锁),
+            # 嵌套获取同一把锁会永久阻塞 (首条 IMU 即挂死)。单次加锁即可同时写 _imu 与 _pose。
+            st.update_imu(accel, angular_vel, ts)
 
         self._subs.append(rospy.Subscriber(topics["imu_data"], Imu, on_imu))
 

@@ -4,7 +4,8 @@
 # 用法: bash start_all.sh
 #===========================================================
 set -e
-PROJ=/home/nibuhao/Test-flight-control-system
+# B-8: 自推导项目根, 不再硬编码家目录 (原 /home/nibuhao/... 指向他机, 本机直接失败)
+PROJ=$(cd "$(dirname "$0")" && pwd)
 cd "$PROJ"
 rm -f /tmp/flight_control_AB.sock
 
@@ -63,7 +64,8 @@ echo "  ✅ Backend B OK (PID=$B_PID)"
 #===========================================================
 echo "[4/4] 启动 Backend A..."
 fuser -k 8000/tcp 2>/dev/null || true  # 释放端口
-/home/nibuhao/.pyenv/versions/3.10.19/bin/python3 -u "$PROJ/backend-A/run_a.py" &>/tmp/backend-a.log &
+# B-8: 改用项目 venv-A (Py3.10+), 不再硬编码 pyenv 3.10.19 路径
+"$PROJ/.venv-A/bin/python3" -u "$PROJ/backend-A/run_a.py" &>/tmp/backend-a.log &
 A_PID=$!
 for i in $(seq 1 20); do
     sleep 1

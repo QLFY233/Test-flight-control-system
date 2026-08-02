@@ -5,6 +5,8 @@
 class ApiManager {
     constructor(baseUrl = 'http://localhost:8000') {
         this.baseUrl = baseUrl.replace(/\/+$/, '');
+        // 超时默认值：config-default.json backend.request_timeout，缺省 10000ms
+        this.defaultTimeout = window.__app?.config?.backend?.request_timeout || 10000;
     }
 
     /**
@@ -18,23 +20,11 @@ class ApiManager {
      * GET request.
      * @param {string} path - e.g. '/api/overview'
      * @param {object} [params] - query parameters
-     * @param {number} [timeout] - request timeout in ms (default: 10000)
+     * @param {number} [timeout] - request timeout in ms (default: config/10000)
      * @returns {Promise<any>}
      */
-    async get(path, params = {}, timeout = 10000) {
-        const url = this._buildUrl(path, params);
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeout);
-        try {
-            const res = await fetch(url, {
-                method: 'GET',
-                headers: this._headers(),
-                signal: controller.signal,
-            });
-            return await this._handleResponse(res);
-        } finally {
-            clearTimeout(timer);
-        }
+    async get(path, params = {}, timeout) {
+        return this._fetchWithTimeout('GET', path, params, undefined, timeout);
     }
 
     /**
@@ -44,13 +34,7 @@ class ApiManager {
      * @returns {Promise<any>}
      */
     async post(path, body = {}) {
-        const url = this._buildUrl(path);
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: this._headers(),
-            body: JSON.stringify(body),
-        });
-        return this._handleResponse(res);
+        return this._fetchWithTimeout('POST', path, {}, body);
     }
 
     /**
@@ -60,13 +44,7 @@ class ApiManager {
      * @returns {Promise<any>}
      */
     async patch(path, body = {}) {
-        const url = this._buildUrl(path);
-        const res = await fetch(url, {
-            method: 'PATCH',
-            headers: this._headers(),
-            body: JSON.stringify(body),
-        });
-        return this._handleResponse(res);
+        return this._fetchWithTimeout('PATCH', path, {}, body);
     }
 
     /**
@@ -75,12 +53,7 @@ class ApiManager {
      * @returns {Promise<any>}
      */
     async delete(path) {
-        const url = this._buildUrl(path);
-        const res = await fetch(url, {
-            method: 'DELETE',
-            headers: this._headers(),
-        });
-        return this._handleResponse(res);
+        return this._fetchWithTimeout('DELETE', path, {});
     }
 
     // ==========================================================
@@ -97,14 +70,14 @@ class ApiManager {
         return this.get('/api/sessions', params);
     }
 
-    /** GET /api/telemetry — current telemetry snapshot */
-    async getTelemetry() {
-        return this.get('/api/telemetry');
+    /** GET /api/history/telemetry/{sid} — 会话遥测历史（对齐后端实际路由） */
+    async getTelemetry(sessionId, params = {}) {
+        return this.get(`/api/history/telemetry/${encodeURIComponent(sessionId)}`, params);
     }
 
-    /** GET /api/conversations — chat history */
+    /** GET /api/history/conversations/{sid} — 会话对话历史（对齐后端实际路由） */
     async getConversations(sessionId) {
-        return this.get('/api/conversations', { session_id: sessionId });
+        return this.get(`/api/history/conversations/${encodeURIComponent(sessionId)}`);
     }
 
     /** GET /api/environments — saved environments */
@@ -117,9 +90,9 @@ class ApiManager {
         return this.post('/api/environments', env);
     }
 
-    /** GET /api/pose — current drone pose */
+    /** GET /api/current-pose — current drone pose（对齐后端实际路由） */
     async getCurrentPose() {
-        return this.get('/api/pose');
+        return this.get('/api/current-pose');
     }
 
     /** POST /api/sessions — create a new flight session */
@@ -133,8 +106,8 @@ class ApiManager {
     }
 
     /** GET /api/proposals — get planning proposals */
-    async getProposals(sessionId) {
-        return this.get('/api/proposals', { session_id: sessionId });
+    async getProposals() {
+        return this.get('/api/proposals');
     }
 
     /** POST /api/proposals/{id}/approve — approve a proposal */
@@ -147,14 +120,47 @@ class ApiManager {
         return this.post(`/api/proposals/${proposalId}/reject`, { reason });
     }
 
-    /** GET /api/field — field configuration */
+    /** GET /api/field/config — field configuration（后端路由为 /field/config） */
     async getFieldConfig() {
-        return this.get('/api/field');
+        return this.get('/api/field/config');
     }
 
     // ==========================================================
     // Internal
     // ==========================================================
+
+    /**
+     * 统一带超时的 fetch 封装：所有方法（GET/POST/PATCH/DELETE）共享。
+     * 超时以 AbortError 抛出，由调用方转为用户可读提示。
+     */
+    async _fetchWithTimeout(method, path, params = {}, body, timeout) {
+        const url = this._buildUrl(path, params);
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeout || this.defaultTimeout);
+        try {
+            const init = {
+                method,
+                headers: this._headers(),
+                signal: controller.signal,
+            };
+            if (body !== undefined && method !== 'GET' && method !== 'DELETE') {
+                init.body = JSON.stringify(body);
+            }
+            const res = await fetch(url, init);
+            return await this._handleResponse(res);
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
+    /**
+     * 判断错误是否为请求超时（AbortError）。
+     * @param {Error} e
+     * @returns {boolean}
+     */
+    isTimeoutError(e) {
+        return !!e && e.name === 'AbortError';
+    }
 
     _buildUrl(path, params = {}) {
         const url = new URL(`${this.baseUrl}${path}`);

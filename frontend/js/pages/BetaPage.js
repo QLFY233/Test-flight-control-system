@@ -11,6 +11,7 @@ import { renderTwoColumn, wsManager, apiManager } from '../shared.js';
 import { ViewModeSelector } from '../components/ViewModeSelector.js';
 import { ViewPanel } from '../components/ViewPanel.js';
 import { FlightPlanCard } from '../components/FlightPlanCard.js';
+import { esc } from '../escape.js';
 
 class BetaPage {
     constructor() {
@@ -60,7 +61,7 @@ class BetaPage {
                                 <span style="color: var(--color-text-secondary);">风速:</span>
                                 <span>${env.windSpeed ?? '--'} m/s, ${env.windDirection ?? '--'}°</span>
                                 <span style="color: var(--color-text-secondary);">地点:</span>
-                                <span>${env.location || '--'}</span>
+                                <span>${esc(env.location || '--')}</span>
                             </div>
                         </div>
                     </div>
@@ -139,7 +140,7 @@ class BetaPage {
                         await apiManager.approveProposal(proposalId);
                         planArea.innerHTML = '<div style="padding: var(--space-lg); color: var(--color-success); text-align: center;">计划已批准 ✓</div>';
                     } catch (e) {
-                        planArea.innerHTML = `<div style="padding: var(--space-lg); color: var(--color-error); text-align: center;">批准失败: ${e.message}</div>`;
+                        planArea.innerHTML = `<div style="padding: var(--space-lg); color: var(--color-error); text-align: center;">批准失败: ${esc(e.message)}</div>`;
                     }
                 } else {
                     // Fallback: send via WS if no proposalId
@@ -157,7 +158,7 @@ class BetaPage {
                         await apiManager.rejectProposal(proposalId, 'user rejected');
                         planArea.innerHTML = '<div style="padding: var(--space-lg); color: var(--color-error); text-align: center;">计划已驳回</div>';
                     } catch (e) {
-                        planArea.innerHTML = `<div style="padding: var(--space-lg); color: var(--color-error); text-align: center;">驳回失败: ${e.message}</div>`;
+                        planArea.innerHTML = `<div style="padding: var(--space-lg); color: var(--color-error); text-align: center;">驳回失败: ${esc(e.message)}</div>`;
                     }
                 } else {
                     wsManager.send('reject_plan', { plan: p });

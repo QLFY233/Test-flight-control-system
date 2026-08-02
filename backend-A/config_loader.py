@@ -2,21 +2,19 @@
 A 侧配置加载器 — 加载 field.yaml + default_constraints.yaml + 环境变量。
 """
 import os
-import sys
 import yaml
 
 from state import Config
 
 
 def _load_yaml(path: str) -> dict:
+    # S5: 库函数不再 print+exit — 抛带路径信息的异常, 由 main/调用方决定退出
     if not os.path.isfile(path):
-        print(f"[config_loader] FATAL: missing {path}", file=sys.stderr)
-        sys.exit(1)
+        raise FileNotFoundError(f"[config_loader] missing config file: {path}")
     with open(path) as f:
         data = yaml.safe_load(f)
     if data is None:
-        print(f"[config_loader] FATAL: empty YAML: {path}", file=sys.stderr)
-        sys.exit(1)
+        raise ValueError(f"[config_loader] empty YAML: {path}")
     return data
 
 
