@@ -141,10 +141,17 @@ class Lifecycle:
         logger.info("[lifecycle] bus registry initialized (small_model + monitor)")
 
     def _init_subscriber(self):
-        """初始化 ROS 订阅器。"""
+        """初始化 ROS 订阅器 (按 PHASE 注入 NED→ENU 变换, design §6)。"""
         try:
+            import os
             from rosbridge.subscriber import DroneSubscriber
-            sub = DroneSubscriber(self.state)
+            phase = int(os.environ.get("PHASE", "1"))
+            if phase == 2:
+                from rosbridge.adapter import ned_to_enu, ned_quat_to_enu_quat
+                sub = DroneSubscriber(self.state, transform=ned_to_enu,
+                                      quat_transform=ned_quat_to_enu_quat)
+            else:
+                sub = DroneSubscriber(self.state)
             return sub
         except Exception as e:
             logger.warning(f"[lifecycle] ROS subscriber init failed (no ROS?): {e}")
@@ -190,13 +197,16 @@ class Lifecycle:
         logger.info("[lifecycle] threads started (ipc + uplink + goal)")
 
     def _start_goal_publisher(self):
-        """启动目标点发布线程。"""
+        """启动目标点发布线程 (按 PHASE 选择 adapter; 阶段2 先 preflight)。"""
         if self._goal_publisher is not None:
             return
         try:
-            from rosbridge.adapter import Phase1Adapter
+            from rosbridge.adapter import make_adapter
             from rosbridge.publisher import GoalPublisher
-            adapter = Phase1Adapter()
+            adapter = make_adapter()
+            # 阶段2: 等 offboard 就绪 (阻塞 ≤90s, 失败仅告警 — publisher 仍会持续发 setpoint)
+            if not adapter.preflight(timeout=90.0):
+                logger.warning("[lifecycle] phase2 preflight failed — goal publisher runs without offboard")
             self._goal_publisher = GoalPublisher(
                 self.state, self._small_model_component, adapter, rate=20.0
             )

@@ -6,6 +6,9 @@ ROS 话题常量 — 阶段1 假无人机 / 阶段2 PX4 SITL。
 # 阶段1: 假无人机
 PHASE1_PREFIX = "/drone"
 
+# 阶段2: PX4 SITL + MAVROS (PX4-阶段2-design.md §4.1)
+PHASE2_PREFIX = "/mavros"
+
 # ── B → 无人机 ──
 TOPIC_SETPOINT_POSITION = "/setpoint_position/local"
 TOPIC_SETPOINT_VELOCITY = "/cmd_vel"
@@ -17,13 +20,33 @@ TOPIC_IMU_DATA = "/imu/data"
 
 
 def get_topics(prefix: str = PHASE1_PREFIX) -> dict:
-    """返回完整话题名映射。"""
+    """返回完整话题名映射 (阶段1)。"""
     return {
         "setpoint_position": f"{prefix}{TOPIC_SETPOINT_POSITION}",
         "setpoint_velocity": f"{prefix}{TOPIC_SETPOINT_VELOCITY}",
         "local_position": f"{prefix}{TOPIC_LOCAL_POSITION}",
         "local_velocity": f"{prefix}{TOPIC_LOCAL_VELOCITY}",
         "imu_data": f"{prefix}{TOPIC_IMU_DATA}",
+    }
+
+
+def get_phase2_topics(prefix: str = PHASE2_PREFIX) -> dict:
+    """阶段2 (PX4 + MAVROS) 话题/服务映射 (design §4.1)。
+
+    上行 pose/vel/imu 类型与阶段1 相同 (PoseStamped/TwistStamped/Imu),
+    subscriber 复用; 下行 setpoint 为 mavros_msgs/PositionTarget;
+    state/arming/set_mode 供 offboard 状态机使用。
+    """
+    return {
+        "setpoint_raw": f"{prefix}/setpoint_raw/local",
+        "setpoint_position": f"{prefix}/setpoint_position/local",  # fallback (PoseStamped)
+        "setpoint_velocity": f"{prefix}/setpoint_velocity/cmd_vel_unstamped",
+        "local_position": f"{prefix}/local_position/pose",
+        "local_velocity": f"{prefix}/local_position/velocity_local",
+        "imu_data": f"{prefix}/imu/data",
+        "state": f"{prefix}/state",
+        "arming": f"{prefix}/cmd/arming",      # mavros_msgs/CommandBool srv
+        "set_mode": f"{prefix}/set_mode",      # mavros_msgs/SetMode srv
     }
 
 # 阶段2 (PX4 + mavros)  前缀, 远期使用
