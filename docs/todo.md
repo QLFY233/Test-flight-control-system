@@ -4,7 +4,16 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-03 01:30 (阶段M PX4 SITL 实测 — offboard 全链路打通)
+最近更新：2026-08-03 14:40 (阶段M S8.3b 爬升受限根因解决 — 实飞验证)
+
+> **2026-08-03 14:40 (阶段M S8.3b 解决 + 启动脚本收尾)**:
+> ① start_px4_sitl.sh 收尾：gazebo_iris target（v1.13.3 实测名）、`tail -f /dev/null |` stdin 保活、pkill ERE 修正（原 \| 只匹配字面竖线从未生效）、SITL 就绪检查改 UDP 14580、EKF 预热等待、A 端口 8000 bind 失败自动降级 8001（Windows 侧服务间歇抢占）；
+> ② rcS 参数补丁脚本化：`patch_px4_rcs.sh` 幂等注入（marker v2，删除不存在的 EKF2_EN 参数，去掉调试 echo），启动时自动检查/注入源码树与 build 副本；
+> ③ **S8.3b 爬升受限根因（2026-08-03 全链路定位）**：mavros 1.20.1 setpoint_raw local_cb 对非 body 帧自动 ENU→NED，B 侧 adapter 再变换 = 双重变换 → FCU 收到 ENU 值当 NED（ulog raw_sp.z=+1.0 实证，takeoff 变下降）→ PX4 want_takeoff 永不成立 → 起飞状态机卡死（mc_pos_control not_taken_off 分支重置 setpoint 为 NaN+100m/s² 向下加速度）→ 爬升受限；
+> ④ 修复（backend-B）：adapter.publish_position 透传 ENU（mavros 负责转换）；GoalPublisher 限速推进改以"上一帧 setpoint"为锚（旧实现每帧重锚当前位置 → 漂移力大于纠正力时 setpoint 跟着漂、目标永不可达）+ hover 锁定保持点（零恢复力→自由漂移修复）；preflight 加固：等首帧真实位姿、已武装落地静止先 disarm/arm 强制起飞边沿、OFFBOARD→ARM 重试环；abort→AUTO.LAND 接线（dispatch set_abort_handler）+ offboard-lost 检测在 emergency 下不重切；
+> ⑤ **实飞验证（金标准 GT）**：takeoff(1.0) 爬升至 1.0m ×4 复现（ulog groundtruth z 0.73→-0.60 物理离地）、1m 悬停 6s 漂移 ≤0.04m、abort→AUTO.LAND 2s 落地；S8.3 ✅ / S8.5 ✅ / S8.4 部分（land 动作为 goal 下压 0.3m，AUTO.LAND 仅在 abort 路径）；
+> ⑥ 遗留：S8.2 需按 §4.3 修正重验（旧"通过"系双端同源空转）、land 动作接 AUTO.LAND、S8.6-8.8 待测；DEEPSEEK_API_KEY 未在本会话环境（LLM 链路用 mini-A 注入验证，α 翻译链路此前已验）；
+> 提交：后续（spec §4.3/§5.2/§5.3/§8/§9/§10 已同步）
 
 > **2026-08-03 01:30 (阶段M PX4 SITL 实测 — offboard 全链路打通)**:
 > PX4 v1.13.3 SITL + Gazebo Classic 全链路实测（大量排障后打通）:

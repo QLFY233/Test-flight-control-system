@@ -18,8 +18,10 @@ logger = logging.getLogger(__name__)
 class DroneSubscriber:
     """订阅无人机位姿/速度/IMU 话题, 写 BState。
 
-    phase2 (PX4, NED) 时传入 transform/ned_quat_to_enu_quat:
-    坐标在回调内变换为 ENU 后写 BState — BState 恒为 ENU (design §4.3)。
+    两阶段默认恒等变换: MAVROS 上行话题已是 ROS ENU/FLU (REP-103,
+    frame_id=map/base_link), 不需再变换 — 曾误注 ned_to_enu 造成双重
+    变换 (B 侧 z 实为 NED z, 爬升受限, 2026-08-03 ulog 实证 S8.3b)。
+    transform 参数保留给未来接入裸 NED 数据源 (design §4.3)。
     """
 
     def __init__(self, state, prefix: str | None = None,
@@ -28,7 +30,7 @@ class DroneSubscriber:
         topics = get_topics(prefix) if prefix else get_topics()
         self._subs = []
         st = state  # 闭包引用
-        # 坐标变换 (默认恒等; Phase2 注入 ned_to_enu / ned_quat_to_enu_quat)
+        # 坐标变换 (默认恒等; 仅裸 NED 数据源才需注入, 见类 docstring)
         xform = transform or (lambda x, y, z: (x, y, z))
         qxform = quat_transform or (lambda q: q)
 

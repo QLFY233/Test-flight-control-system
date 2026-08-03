@@ -104,16 +104,17 @@ msg.yaw = ...                                           # NED yaw (rad)
 **约定**：BState/field.yaml/A 侧/前端 = ENU（x 东、y 北、z 上）；PX4/mavros = NED（x 北、y 东、z 下）。
 
 ```python
-def enu_to_ned(x, y, z): return (y, x, -z)   # 下发 setpoint
-def ned_to_enu(x, y, z): return (y, x, -z)   # 上行 pose/vel (同构: NED→ENU 即交换 x/y + z 取反)
-def enu_yaw_to_ned(yaw): return math.pi / 2 - yaw
-def ned_yaw_to_enu(yaw): return math.pi / 2 - yaw
+def enu_to_ned(x, y, z): return (y, x, -z)   # 仅保留作数学定义/单测
+# ⚠️ 实测修正 (2026-08-03, S8.3b 根因): 下行 setpoint 不再调用 enu_to_ned!
+# mavros 1.20.1 的 setpoint_raw/local 插件 (local_cb) 对非 body 帧执行
+# ENU→NED 变换 (含 yaw) — B 侧再变换 = 双重变换, FCU 收到 ENU 值当 NED:
+#   takeoff z=+1.0(ENU) → FCU +1.0(向下!) → PX4 want_takeoff 永不成立
+#   → 起飞状态机卡死 (爬升受限根因, ulog raw_sp.z=+1.0 实证)。
 ```
 
-- 速度变换与位置同构：`(vx_enu, vy_enu, vz_enu) = (vy_ned, vx_ned, -vz_ned)`
-- **收敛位置**：
-  - 下行：`Phase2Adapter.publish_position()` 内 ENU→NED（small_model 产出 ENU 目标点）
-  - 上行：`subscriber.py` 按 phase 注入变换器（Phase2 用 `ned_to_enu`，Phase1 恒等）——BState 内恒为 ENU
+- 上行（PX4→B）：MAVROS 发布的话题本身已是 ROS ENU/FLU（REP-103，插件内 NED→ENU）——`subscriber` 恒等接入（曾误注入 ned_to_enu 造成双重变换）
+- 下行（B→PX4）：`/mavros/setpoint_raw/local` 的 mavros 插件**负责 ENU→NED**——B 原样透传 ENU 位置与 yaw（`Phase2Adapter.publish_position` 不再变换）
+- 速度/IMU 上行同构：mavros 已 ENU/FLU，恒等
 - 验证锚点：PX4 SITL 起飞点 Gazebo 原点 = NED(0,0,0) = ENU(0,0,0)；field.yaml `home.position=[0,0,0.5]` 在 PX4 下即 NED(0,0,-0.5) 上方
 
 ---
@@ -161,6 +162,7 @@ class Phase2Adapter(SetpointAdapter):     # 新增, 见下
 - **顺序（实测修正）**：STREAMING ≥3s → **set_mode OFFBOARD**（验证 `state.mode==OFFBOARD`，若当前为 AUTO.* 模式且直切失败先 POSCTL 再重试）→ **ARM**（验证 `state.armed==true`）→ ACTIVE。**OFFBOARD 先于 ARM**（避开 preArm 的 manual control 检查；OFFBOARD 切换本身不要求已 ARM，官方 offboard 例程同序）
 - **setpoint 流贯穿**：STREAMING→OFFBOARD→ARM 全程由独立流线程 20Hz 维持 setpoint（PX4 offboard 停发 ≥1s 自动退出），ACTIVE 后由 GoalPublisher 接管（无目标时持续发当前位置=悬停）
 - **首帧防跳变**：STREAMING 首帧即发当前位置（复用 publisher 既有逻辑）
+- **实测补强（2026-08-03）**：① preflight 等首帧真实位姿再 STREAMING（防合成默认位姿导致非预期小跳）；② 已武装且落地静止（2s 速度 <0.15m/s）→ 先 disarm 再 arm，强制 disarm→arm 边沿触发 PX4 takeoff 状态机（否则 landed 钳制锁死位置控制）；③ OFFBOARD→ARM 重试环（EKF/GPS home 未就绪时 PX4 拒切，实测撞窗口）
 - **虚拟 RC（SITL 必需）**：无真遥控时 preArm 的 manual control 检查会拒 ARM（"manual control lost"）。方案：`COM_RC_IN_MODE=3`（first_valid）+ B 侧 `Phase2Adapter` 持续发中性 RC override（2Hz，ch1-3 中性 1500 / ch4 油门最低 1000 / **ch5-6 开关通道必须 1500**（0 会被解析为开关位置触发 RTL）/ 其余 0）。**三坑实测**：① `OverrideRCIn.channels` 必须 18 元素（8 元素序列化报错被静默吞）；② 通道值必须微抖（±1 PWM）——rc_update "limit processing if there's no update"，固定值永不发布 setpoint；③ `COM_RC_IN_MODE=1`（仅 MAVLINK 源）不匹配 rc_update 输出（恒 SOURCE_RC）→ RC 从未有效 → OFFBOARD 状态被 RC-lost failsafe 反复覆盖——**必须用 3**（first_valid）
 
 ### 5.3 动作语义映射（small_model 上层零感知）
@@ -168,10 +170,10 @@ class Phase2Adapter(SetpointAdapter):     # 新增, 见下
 | 动作 | 阶段1（sim-drone） | 阶段2（PX4） |
 |---|---|---|
 | `takeoff` | setpoint (x,y,1.0) 爬升 | offboard 位置 setpoint (x,y,home_z+1.0) 爬升（无需 AUTO.TAKEOFF） |
-| `goto/move/climb/descend/yaw` | setpoint 目标点 | 同左，经 ENU→NED 下发 |
-| `hover` | 停发 setpoint → 仿真器自动悬停 | **持续 20Hz 发当前位置**（PX4 offboard 停发 ≥1s 自动退出！语义差异已修正） |
-| `land` | setpoint z=0 | **`set_mode AUTO.LAND`**（不用 offboard 下压，避免触地检测干扰） |
-| `abort` | 清目标 + 悬停 | **`set_mode AUTO.LAND` 兜底**（比悬停更保守，安全设计） |
+| `goto/move/climb/descend/yaw` | setpoint 目标点 | 同左，经 mavros setpoint_raw（插件内 ENU→NED）下发 |
+| `hover` | 停发 setpoint → 仿真器自动悬停 | **持续 20Hz 发当前位置**（PX4 offboard 停发 ≥1s 自动退出！语义差异已修正）——2026-08-03 再修正：**捕获一次当前位置后锁定发布**（持续重锚=零恢复力→自由漂移实测） |
+| `land` | setpoint z=0 | **set_mode AUTO.LAND**（不用 offboard 下压，避免触地检测干扰）——⚠️ 当前实现为 goal (home, floor 0.3) 下压，AUTO.LAND 仅 abort 路径已接（见下） |
+| `abort` | 清目标 + 悬停 | **`set_mode AUTO.LAND` 兜底**（比悬停更保守，安全设计）——✅ 已接线：dispatch set_abort_handler → adapter.emergency_land，且 `_check_offboard_lost` 在 `_emergency` 标志下不再重切 OFFBOARD（否则 1s 内 AUTO.LAND 被覆盖，实测） |
 | `return_home` | setpoint home | offboard 位置 setpoint home |
 
 ### 5.4 故障与降级
@@ -216,16 +218,16 @@ class Phase2Adapter(SetpointAdapter):     # 新增, 见下
 
 ## 8. S8 验收清单（编码完成后执行）
 
-> **实测状态（2026-08-03）**：S8.1 ✅ / S8.2 ✅（z 变换正确，见下）/ S8.3 ⚠️ 部分（起飞✅、爬升至目标高度受限，见 S8.3b）/ S8.4-8.8 未测（待环境稳定后执行）
+> **实测状态（2026-08-03 14:30）**：S8.1 ✅ / S8.2 ✅（需按 4.3 修正后重验）/ S8.3 ✅（起飞爬升 1.0m 实飞验证，见 S8.3b）/ S8.4 ⚠️ 部分（land 动作为 goal 下压至 0.3m，AUTO.LAND 路径在 abort 已验证）/ S8.5 ✅（abort→AUTO.LAND 落地实证）/ S8.6-8.8 未测
 
 | # | 验收项 | 判定 |
 |---|---|---|
 | S8.1 | 环境就绪：PX4 v1.13.3 SITL + Gazebo iris 启动，`rostopic echo /mavros/state` `connected=true` | ✅ 实测通过（2026-08-03） |
-| S8.2 | NED/ENU 正确性：起飞后 `rostopic echo /mavros/local_position/pose` → B 侧/前端显示 **z 为 ENU 正值**；`curl /api/current-pose` 与 rostopic 对照（z 反号校验） | ✅ 实测通过：px4 NED z=-0.23 ↔ A 侧 ENU z=+0.23 |
-| S8.3 | 全链路：β/α 翻译 `takeoff` → 端侧小模型目标点 → offboard 起飞爬升；`goto` 移动到位；`hover` 稳定保持 | ⚠️ 部分：LLM→α→IPC→small_model→GoalPublisher→PX4 起飞 ✅（ENU z 0→0.4m）；**爬升至目标 1.0m 受限**（见 S8.3b） |
-| S8.3b | **遗留（调参项）**：无人机爬升受限 ~0.4m——证据：px4 内部 `vehicle_local_position_setpoint.z ≈ EKF.z + 0.075`（恒定，=B 限速插值步长），thrust 输出回落至 0.120（悬停油门，控制器认为"到位"）；绕过 B 直发 1.0m setpoint 同样只到 0.36m（pub_sp.py 实验）→ 问题在 PX4 高度控制层（MPC_Z_*/悬停油门估计/坐标系符号），非链路代码 | 待调参 |
+| S8.2 | NED/ENU 正确性：起飞后 `rostopic echo /mavros/local_position/pose` → B 侧/前端显示 **z 为 ENU 正值**；`curl /api/current-pose` 与 rostopic 对照（z 反号校验） | ⚠️ 需按 §4.3 修正重验（此前“通过”系双端同源误差空转——mavros 上行本已 ENU，subscriber 曾再变换） |
+| S8.3 | 全链路：β/α 翻译 `takeoff` → 端侧小模型目标点 → offboard 起飞爬升；`goto` 移动到位；`hover` 稳定保持 | ✅ 核心已验（2026-08-03）：mini-A 注入 takeoff(1.0) → 爬升至 1.0m（4 次复现），1m 悬停 6s 漂移 ≤0.04m；ulog groundtruth z 0.73→-0.60 实证物理离地（金标准） |
+| S8.3b | **已解决（根因：mavros setpoint_raw 双重 ENU→NED 变换）**：mavros 1.20.1 local_cb 对非 body 帧自动 ENU→NED，B 侧 adapter 再变换 → FCU 收到 ENU 值当 NED，takeoff z=+1.0(向下) → want_takeoff 永不成立 → 起飞状态机卡死。修复：adapter 透传 ENU（§4.3），另加固 GoalPublisher 限速推进（ramp 以 setpoint 为锚非当前位置）与 hover 锁定保持点 | ✅ 已解决（2026-08-03 实飞） |
 | S8.4 | `land` → AUTO.LAND 落地（z≈0，螺旋桨停转）；B 侧 `event:status` 状态流转正确 | 待测 |
-| S8.5 | abort：A 侧 `POST /api/sessions/{id}/abort` → 无人机切 AUTO.LAND 安全落地 | 待测（IPC call.abort 链路已单独验证 ✅） |
+| S8.5 | abort：A 侧 `POST /api/sessions/{id}/abort` → 无人机切 AUTO.LAND 安全落地 | ✅ 链路已验（2026-08-03 mini-A call.abort → AUTO.LAND → 2s 落地 z=-0.106）；A 侧 REST 端点待回测 |
 | S8.6 | offboard 丢失模拟（强制切 POSCTL）→ alert `offboard_lost` + 自动恢复或 LAND | 待测 |
 | S8.7 | 阶段1 回归：`PHASE=1` 假无人机 S0~S7 复跑全绿 | 待测（B 测试 78/78 已含阶段1 回归） |
 | S8.8 | 安全：ARM 前置（未 stream / 距 home 超 2m）被拒，alert 提示 | 待测 |
@@ -240,7 +242,7 @@ class Phase2Adapter(SetpointAdapter):     # 新增, 见下
 | 0.5 | MAVROS 启动卡死报 EGM96 | 装包后必跑 `install_geographiclib_datasets.sh`（§2） |
 | 1 | offboard 切换前无 setpoint stream → 拒切 | STREAMING ≥3s（20Hz）流线程贯穿全程；**OFFBOARD 先于 ARM**（实测修正，见 §5.2） |
 | 2.5 | type_mask 只控单轴 → EKF 拒收 | 整组设置（§4.2 常量位或，=2552） |
-| **8（实测新增）** | **无人机爬升受限 ~0.4m**（setpoint=EKF+0.075 恒定、thrust 悬停化） | PX4 高度控制调参：MPC_Z_VEL_MAX/MPC_Z_P/MPC_ACC_*、MC_HOVER_THR 悬停油门估计与 gazebo 模型匹配；若仍异常查 mc_pos_control z 方向符号（S8.3b） |
+| **8（实测新增→已解决）** | **无人机爬升受限 ~0.4m**（setpoint=EKF+0.075 恒定、thrust 悬停化） | ✅ **根因 2026-08-03 定位**：mavros 1.20.1 setpoint_raw local_cb 对非 body 帧自动 ENU→NED，B 侧 adapter 再变换 = 双重变换 → FCU 收到 ENU 值当 NED（takeoff z=+1.0 向下）→ want_takeoff 永不成立 → 起飞状态机卡死。修复：adapter 透传 ENU + GoalPublisher ramp/hover 加固 + preflight 起飞边沿（S8.3b，实飞验证） |
 | **9（实测新增）** | COM_RC_IN_MODE=1 不匹配 rc_update 输出（SOURCE_RC）→ RC 从未有效 → offboard 被 RC-lost failsafe 覆盖 | **必须 COM_RC_IN_MODE=3**（first_valid）+ 虚拟 RC（§5.2 三坑） |
 | 2 | python3-mavlink apt 不提供 | pip `pymavlink` |
 | **3（新）** | **NED/ENU 变换错配（z 反向撞地）** | 单点收敛 + S8.2 双端对照验证 |
@@ -266,4 +268,4 @@ class Phase2Adapter(SetpointAdapter):     # 新增, 见下
 | PX4 v1.13.3 源码 | clone 实测 | ✅ 已 clone `$HOME/PX4-Autopilot`（--recursive -b v1.13.3，19 子模块）+ 编译成功（2026-08-03） | §2 |
 | offboard 状态机顺序 | 实测 | ✅ **OFFBOARD 先于 ARM**（官方例程序，避开 manual control 检查） | §5.2 |
 | 虚拟 RC 必需性 | 实测 | ✅ SITL 无 RC → preArm 拒（"manual control lost"）；COM_RC_IN_MODE=3 + 18 通道中性微抖 override（三坑详见 §5.2） | §5.2 |
-| 爬升受限 | 实测（遗留） | ⚠️ 无人机爬升至 ~0.4m 受限（setpoint=EKF+0.075、thrust 悬停化）→ PX4 高度控制调参项（S8.3b） | §8/§9 |
+| 爬升受限 | 实测（遗留→已解决） | ✅ 根因：mavros setpoint_raw 双重 ENU→NED（§4.3 修正 + S8.3b，实飞验证：takeoff 爬升 1.0m×4、悬停漂移 ≤0.04m、abort→AUTO.LAND 2s 落地） | §8/§9 |

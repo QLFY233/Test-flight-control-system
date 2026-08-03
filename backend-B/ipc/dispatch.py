@@ -23,6 +23,11 @@ class Dispatch:
     def __init__(self, state, ipc_client):
         self._state = state
         self._ipc = ipc_client
+        self._abort_handler = None  # S8.5: abort → AUTO.LAND 兜底 (adapter.emergency_land)
+
+    def set_abort_handler(self, fn):
+        """注册 abort 兜底 (design §5.3: abort → AUTO.LAND, 比悬停更保守)。"""
+        self._abort_handler = fn
 
     def handle_incoming(self, msg: dict):
         """
@@ -57,6 +62,12 @@ class Dispatch:
                 CALL_TOOL_HOVER: "hover",
             }[tool]
             result = bus_router.call(to=TO_SMALL_MODEL, tool=sm_tool, args=args, _from="A")
+            # S8.5: abort 除切悬停外, 触发 AUTO.LAND 兜底 (design §5.3/§5.4)
+            if tool == CALL_TOOL_ABORT and self._abort_handler:
+                try:
+                    self._abort_handler()
+                except Exception as e:
+                    logger.error(f"[dispatch] abort handler failed: {e}")
             # 暂不回 result 给 A (fire-and-forget 先导)
             if result.get("msg_type") == MSG_TYPE_ERROR:
                 logger.error(f"[dispatch] small_model error: {result}")

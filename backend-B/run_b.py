@@ -11,6 +11,13 @@ from geometry_msgs.msg import PoseStamped, TwistStamped
 from sensor_msgs.msg import Imu
 
 rospy.init_node('backend_b', anonymous=True, disable_signals=True)
+# rospy.init_node 会用 RotatingFileHandler (~/.ros/log/) 替换 root handlers,
+# 吞掉所有非 rospy 日志的 stderr 输出 (2026-08-03 实测: rosbridge/preflight 日志全灭)。
+# 补回 stderr handler — 启动脚本 /tmp/backend-b.log 依赖它排障。
+import logging as _lg
+_stderr_h = _lg.StreamHandler()
+_stderr_h.setFormatter(_lg.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s', datefmt='%H:%M:%S'))
+_lg.getLogger().addHandler(_stderr_h)
 
 from state import BState
 from config_loader import load_field, load_constraints
@@ -38,16 +45,21 @@ ok = ipc.connect()
 print('[B] IPC connect: {}'.format(ok), flush=True)
 
 from rosbridge.topics import get_topics, get_phase2_topics
-from rosbridge.adapter import ned_to_enu, ned_quat_to_enu_quat, make_adapter
+from rosbridge.adapter import make_adapter
 import os as _os
 PHASE = int(_os.environ.get('PHASE', '1'))
 if PHASE == 2:
     topics = get_phase2_topics()
-    _xf = ned_to_enu; _qxf = ned_quat_to_enu_quat
 else:
     topics = get_topics()
-    _xf = lambda x, y, z: (x, y, z)
-    _qxf = lambda q: q
+# 上行恒等变换 (两阶段同): MAVROS 发布的话题本身已是 ROS ENU/FLU 约定
+# (REP-103, frame_id=map/base_link, NED→ENU 在 mavros 插件内完成),
+# 再施加 ned_to_enu 会造成双重变换 — 2026-08-03 ulog 实证: GT.z 恒定
+# (无人机从未离地) 而 B 侧 z 骑行 EKF 噪声, 爬升受限根因 (S8.3b)。
+# 仅下行 /mavros/setpoint_raw/local 是裸传 mavlink (FRAME_LOCAL_NED),
+# 需 adapter 内 enu_to_ned 变换 (PX4-阶段2-design.md §4.3)。
+_xf = lambda x, y, z: (x, y, z)
+_qxf = lambda q: q
 cb_count = [0]
 def _make_on_pose(s):
     def cb(msg):
@@ -79,6 +91,8 @@ rospy.Subscriber(topics['imu_data'], Imu, lambda m: st.update_imu(
 # 目标点下发 (B-16 对齐 lifecycle: 阶段1/2 均启用 GoalPublisher; 阶段2 先 preflight offboard)
 from rosbridge.publisher import GoalPublisher
 gp_adapter = make_adapter(PHASE, state=st)
+# S8.5: abort → AUTO.LAND 兜底 (design §5.3, 比悬停更保守)
+dispatch.set_abort_handler(gp_adapter.emergency_land)
 if PHASE == 2 and not gp_adapter.preflight(timeout=90.0):
     print('[B] phase2 preflight failed — goal publisher runs without offboard', flush=True)
 gp = GoalPublisher(st, comp, gp_adapter, rate=20.0)

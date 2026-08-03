@@ -24,8 +24,16 @@ class GoalPublisher:
         self._period = 1.0 / rate
         self._running = False
         self._thread: threading.Thread | None = None
-        # 首帧标志: 防跳变
-        self._first_frame = True
+        # 限速推进 (2026-08-03 S8.3b 根因修复):
+        #   _ramp_pos/_ramp_key — 每个新目标从当前位置起坡, 沿目标方向按
+        #   speed_max*dt 推进, 以"上一帧 setpoint"为锚而非"当前位姿"。
+        #   旧实现每帧 set = cur + step: setpoint 永远只领先无人机一步,
+        #   漂移力大于该误差纠正力时 setpoint 跟着无人机走, 目标永不可达
+        #   (实测: 无人机 7cm/s 漂离原点, takeoff 目标 (0,0,1.0) 永不追踪)。
+        #   _hold_point — hover 捕获一次当前位置后锁定发布 (零恢复力→自由漂移)。
+        self._ramp_pos: list | None = None
+        self._ramp_key = None
+        self._hold_point: list | None = None
 
     def start(self):
         """启动目标点发布线程。"""
@@ -60,62 +68,61 @@ class GoalPublisher:
         """单次 tick: 读取目标点 → 限速 → 下发 setpoint。"""
         goal = self._component.get_current_goal()
         if goal is None:
-            # 无目标: 下发悬停 (当前位置)
+            # 无目标: 下发悬停 (锁定保持点, 不随位姿重锚 — 修复自由漂移)
             self._publish_hover()
             return
 
         target = goal["goal"]
         yaw = goal.get("yaw", 0.0)
         speed_max = goal.get("speed_max", 1.5)
+        key = (tuple(target), yaw)
 
-        # 当前位置
-        with self._state.pose_lock:
-            cur_x, cur_y, cur_z = (
-                self._state._pose.pos[0],
-                self._state._pose.pos[1],
-                self._state._pose.pos[2],
-            )
+        # 新目标: 从当前位置起坡 (防跳变), 并失效旧 hover 保持点
+        if key != self._ramp_key:
+            with self._state.pose_lock:
+                cur_x, cur_y, cur_z = self._state._pose.pos[:3]
+            self._ramp_pos = [cur_x, cur_y, cur_z]
+            self._ramp_key = key
+            self._hold_point = None
+            self._hold_point = None
 
-        # 首帧防跳变: 先填当前位置
-        if self._first_frame:
-            self._adapter.publish_position([cur_x, cur_y, cur_z], yaw)
-            self._first_frame = False
-            return
-
-        # 限速: 目标点不一次性跳到, 沿方向移动不超过 speed_max * dt
-        dx = target[0] - cur_x
-        dy = target[1] - cur_y
-        dz = target[2] - cur_z
+        # 限速: 沿"上一帧 setpoint→目标"方向推进不超过 speed_max*dt
+        rx, ry, rz = self._ramp_pos
+        dx = target[0] - rx
+        dy = target[1] - ry
+        dz = target[2] - rz
         dist = (dx * dx + dy * dy + dz * dz) ** 0.5
 
         step = speed_max * self._period
         if dist <= step:
-            set_x, set_y, set_z = target[0], target[1], target[2]
+            self._ramp_pos = list(target)
         else:
             ratio = step / dist
-            set_x = cur_x + dx * ratio
-            set_y = cur_y + dy * ratio
-            set_z = cur_z + dz * ratio
+            self._ramp_pos = [rx + dx * ratio, ry + dy * ratio, rz + dz * ratio]
 
-        self._adapter.publish_position([set_x, set_y, set_z], yaw)
+        self._adapter.publish_position(self._ramp_pos, yaw)
 
-        # 到达检测
-        if dist < 0.15:
+        # 到达检测用实际位姿 (而非 setpoint)
+        with self._state.pose_lock:
+            cur_x, cur_y, cur_z = self._state._pose.pos[:3]
+        dcur = ((target[0] - cur_x) ** 2 + (target[1] - cur_y) ** 2 + (target[2] - cur_z) ** 2) ** 0.5
+        if dcur < 0.15:
             self._component.check_arrival_and_advance([cur_x, cur_y, cur_z])
 
     def _publish_hover(self):
-        """下发悬停 (当前位姿)。"""
+        """下发悬停: 捕获一次当前位置后锁定发布 (零恢复力→自由漂移修复)。"""
+        if self._hold_point is None:
+            try:
+                with self._state.pose_lock:
+                    self._hold_point = self._state._pose.pos[:3]
+            except Exception:
+                self._hold_point = [0.0, 0.0, 0.5]
+            logger.info(f"[goal-publisher] hover hold point set: {[round(v, 2) for v in self._hold_point]}")
         try:
             with self._state.pose_lock:
-                px, py, pz = (
-                    self._state._pose.pos[0],
-                    self._state._pose.pos[1],
-                    self._state._pose.pos[2],
-                )
                 quat = self._state._pose.quat[:]
         except Exception:
-            px, py, pz = 0.0, 0.0, 0.5
             quat = [1.0, 0.0, 0.0, 0.0]
 
         yaw = yaw_from_quat(quat)
-        self._adapter.publish_position([px, py, pz], yaw)
+        self._adapter.publish_position(self._hold_point, yaw)

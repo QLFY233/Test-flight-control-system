@@ -11,9 +11,11 @@ export ROS_MASTER_URI=http://localhost:11311
 export ROS_IP=127.0.0.1
 export no_proxy=localhost,127.0.0.1,$no_proxy
 
-# 清理旧进程 (含 roscore 重启清 ROS 死节点)
+# 清理旧进程 (含 roscore 重启清 ROS 死节点; tail -f /dev/null 是 SITL stdin 保活管道)
+# pkill 用 ERE: 必须为 | 而非 \| (\| 只匹配字面竖线, 历史上清理从未生效!);
+# [] 字符类技巧防匹配脚本自身 (start_px4_sitl.sh 含 px4 字样)
 echo "[0/5] 清理旧进程..."
-pkill -9 -f "px4\|gzserver\|mavros\|run_a.py\|run_b.py\|roscore\|rosmaster" 2>/dev/null || true
+pkill -9 -f "[b]in/px4|[m]ake px4_sitl|[s]itl_run|[g]zserver|[m]avros|[r]un_a.py|[r]un_b.py|[r]oscore|[r]osmaster|[t]ail -f /dev/null" 2>/dev/null || true
 sleep 2
 rm -f /tmp/flight_control_AB.sock
 
@@ -27,22 +29,27 @@ rostopic list &>/dev/null || { echo "ERROR: roscore 启动失败"; exit 1; }
 echo "  ✅ roscore OK"
 
 # [2/5] PX4 SITL (Gazebo Classic, 无头)
-echo "[2/5] 启动 PX4 SITL (gazebo-classic_iris)..."
+echo "[2/5] 启动 PX4 SITL (gazebo_iris)..."
 if [ ! -d "$PX4_DIR" ]; then
     echo "ERROR: PX4 源码不存在: $PX4_DIR (先 clone: git clone --recursive -b v1.13.3 ...)"
     exit 1
 fi
+# rcS 参数补丁 (幂等注入, COM_RC_IN_MODE=3/BAT1_*/NAV_RCL_ACT/COM_OBL_ACT — 实测修正 §5.2)
+bash "$PROJ/patch_px4_rcs.sh" "$PX4_DIR"
 cd "$PX4_DIR"
-HEADLESS=1 nohup make px4_sitl gazebo-classic_iris &>/tmp/px4-sitl.log &
+# v1.13.3 target 名为 gazebo_iris (gazebo-classic_* 是 v1.14+ 命名);
+# tail -f /dev/null | 保活 stdin — 否则本脚本退出后 pxh 读到 EOF, PX4 随即退出 (实测)
+tail -f /dev/null | HEADLESS=1 nohup make px4_sitl gazebo_iris &>/tmp/px4-sitl.log &
 PX4_PID=$!
 sleep 5
-# 等 SITL 就绪 (UDP 14540 端口监听)
-for i in $(seq 1 60); do
-    ss -uln 2>/dev/null | grep -q ":14540 " && break
+# 等 SITL 就绪 — PX4 onboard mavlink 实例绑定 UDP 14580 (发往 mavros 14540;
+# 14540 是 MAVROS 侧端口, 此处等不到)。双保险: 日志出现启动成功标记也算。
+for i in $(seq 1 90); do
+    ss -uln 2>/dev/null | grep -q ":14580 " && break
+    grep -q "Startup script returned successfully" /tmp/px4-sitl.log 2>/dev/null && sleep 3 && break
     sleep 1
 done
-ss -uln 2>/dev/null | grep -q ":14540 " || { echo "  ⚠️ SITL 未在 60s 内就绪, 查看: tail -50 /tmp/px4-sitl.log"; }
-echo "  ✅ PX4 SITL OK (PID=$PX4_PID, 首次编译 15~30min)"
+ss -uln 2>/dev/null | grep -q ":14580 " && echo "  ✅ PX4 SITL OK (PID=$PX4_PID)" || { echo "  ⚠️ SITL 未在 90s 内就绪, 查看: tail -50 /tmp/px4-sitl.log"; }
 
 # [3/5] MAVROS
 echo "[3/5] 启动 MAVROS (fcu_url=udp://:14540@127.0.0.1:14557)..."
@@ -58,9 +65,19 @@ done
 rostopic echo -n1 /mavros/state --noarr 2>/dev/null | grep -q "connected: True" || {
     echo "  ⚠️ MAVROS 未连接, 查看: tail -30 /tmp/mavros.log (EGM96 装了吗?)"
 }
+# 等 EKF 预热 (local_position 开始发布 + GPS home 就绪) — 否则 B preflight
+# 切 OFFBOARD 会被 PX4 拒 (2026-08-03 实测: B 启动过快撞 EKF 预热窗口)
+echo "  等待 EKF 预热 (local_position + home set)..."
+for i in $(seq 1 30); do
+    timeout 2 rostopic echo -n1 /mavros/local_position/pose --noarr &>/dev/null && break
+    sleep 1
+done
+grep -q "home set" /tmp/px4-sitl.log 2>/dev/null || sleep 5
+echo "  ✅ EKF OK"
 
 # [4/5] Backend B (PHASE=2)
 echo "[4/5] 启动 Backend B (PHASE=2)..."
+cd "$PROJ"   # run_b.py 虽自 chdir, 统一起始目录防日志/相对路径意外
 source "$PROJ/ros_ws/devel/setup.bash" 2>/dev/null || true
 PHASE=2 nohup /usr/bin/python3 -u "$PROJ/backend-B/run_b.py" &>/tmp/backend-b.log &
 B_PID=$!
@@ -70,8 +87,43 @@ echo "  ✅ Backend B OK (PID=$B_PID)"
 
 # [5/5] Backend A
 echo "[5/5] 启动 Backend A..."
-fuser -k 8000/tcp 2>/dev/null || true
-"$PROJ/.venv-A/bin/python3" -u "$PROJ/backend-A/run_a.py" &>/tmp/backend-a.log &
+cd "$PROJ"   # run_a.py create_app('config') 用相对路径, 必须在项目根启动
+A_PORT=${BACKEND_A_PORT:-8000}
+fuser -k ${A_PORT}/tcp 2>/dev/null || true
+# fuser 杀死旧进程后端口释放有延迟 (TIME_WAIT), 等真正空闲再启动防 bind 竞态
+for i in $(seq 1 10); do
+    ss -tln 2>/dev/null | grep -q ":${A_PORT} " || break
+    sleep 0.5
+done
+# WSL mirrored 模式下 Windows 侧服务 (XDAgent 等) 会间歇抢占 8000 — WSL 内杀不掉,
+# 启动失败 (bind 竞态) 则自动降级重试 8001 (前端 base_url 同源自适应, 不受影响)
+start_a() {
+    BACKEND_A_PORT=$1 "$PROJ/.venv-A/bin/python3" -u "$PROJ/backend-A/run_a.py" &>/tmp/backend-a.log &
+    for i in $(seq 1 20); do
+        sleep 1
+        # uvicorn 先打 "startup complete" 再报 bind 错误 — 必须同时排除 bind 失败
+        if grep -q "address already in use" /tmp/backend-a.log 2>/dev/null; then
+            return 1
+        fi
+        if grep -q "Application startup complete" /tmp/backend-a.log 2>/dev/null; then
+            sleep 1
+            if ! grep -q "address already in use" /tmp/backend-a.log 2>/dev/null; then
+                return 0
+            fi
+            return 1
+        fi
+    done
+    return 1
+}
+if ! start_a "$A_PORT"; then
+    if [ "$A_PORT" != "8001" ]; then
+        echo "  ⚠️ 端口 ${A_PORT} bind 失败 (Windows 侧服务抢占?), 降级重试 8001"
+        A_PORT=8001
+        start_a "$A_PORT" || echo "  ⚠️ A 启动失败 (8001 也失败), 查看: tail /tmp/backend-a.log"
+    else
+        echo "  ⚠️ A 启动失败, 查看: tail /tmp/backend-a.log"
+    fi
+fi
 A_PID=$!
 for i in $(seq 1 20); do
     sleep 1
@@ -95,9 +147,9 @@ echo "Backend A:  $(pgrep -cf run_a.py 2>/dev/null || echo 0) 进程"
 echo "--- offboard 状态 ---"
 grep -E "preflight|offboard|ACTIVE|emergency" /tmp/backend-b.log 2>/dev/null | tail -5 || true
 echo "--- REST ---"
-echo -n "  health:      "; curl -sf http://127.0.0.1:8000/api/health 2>/dev/null || echo "FAIL"
-echo -n "  current-pose: "; curl -sf http://127.0.0.1:8000/api/current-pose 2>/dev/null || echo "FAIL"
+echo -n "  health:      "; curl -sf http://127.0.0.1:${A_PORT:-8000}/api/health 2>/dev/null || echo "FAIL"
+echo -n "  current-pose: "; curl -sf http://127.0.0.1:${A_PORT:-8000}/api/current-pose 2>/dev/null || echo "FAIL"
 echo ""
-echo "  启动完成! 前端: http://localhost:8000 | 日志: tail -f /tmp/{px4-sitl,mavros,backend-b,backend-a}.log"
-echo "  停止: pkill -f 'px4\|gzserver\|mavros\|run_a.py\|run_b.py\|roscore'"
+echo "  启动完成! 前端: http://localhost:${A_PORT:-8000} | 日志: tail -f /tmp/{px4-sitl,mavros,backend-b,backend-a}.log"
+echo "  停止: pkill -f '[b]in/px4|[g]zserver|[m]avros|[r]un_a.py|[r]un_b.py|[r]oscore|[t]ail -f /dev/null'"
 echo "==============================================="

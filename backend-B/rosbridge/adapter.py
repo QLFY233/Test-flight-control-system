@@ -6,7 +6,12 @@ Phase1: sim-drone 假无人机 (/drone 前缀, PoseStamped setpoint)
 Phase2: PX4 SITL + MAVROS (/mavros 前缀, PositionTarget + offboard 状态机)
 
 坐标系: BState/A/前端/field.yaml 保持 ENU (x东 y北 z上);
-NED↔ENU 变换单点收敛于此模块与 subscriber 注入点 (design §4.3)。
+NED↔ENU 变换单点收敛于本模块 (design §4.3)。
+
+⚠️ 实测修正 (2026-08-03, S8.3b): MAVROS 上行话题 (local_position/pose、
+velocity_local、imu/data) 本身已是 ROS ENU/FLU 约定 (REP-103), subscriber
+恒等接入; 仅下行 /mavros/setpoint_raw/local 为裸传 mavlink (FRAME_LOCAL_NED),
+须由本模块 enu_to_ned 变换。ned_to_enu 系列保留给未来裸 NED 数据源。
 """
 from __future__ import annotations
 import math
@@ -25,6 +30,9 @@ logger = logging.getLogger(__name__)
 # ══════════════════════════════════════════════════════════════════
 # NED ↔ ENU 变换 (单点收敛, PX4-阶段2-design.md §4.3)
 # NED: x北 y东 z下 ; ENU: x东 y北 z上
+# 用途: enu_to_ned/enu_yaw_to_ned = 下行 setpoint 现役路径;
+#       ned_to_enu/ned_yaw_to_enu/ned_quat_to_enu_quat = 留给裸 NED 源
+#       (MAVROS 上行已 ENU, 勿对 mavros 话题使用 — 会双重变换, 见 S8.3b)
 # ══════════════════════════════════════════════════════════════════
 
 def enu_to_ned(x, y, z):
@@ -193,9 +201,13 @@ class Phase2Adapter(SetpointAdapter):
 
     # ── setpoint 下发 ──
     def publish_position(self, pos: list, yaw: float):
-        """下发位置 setpoint (入参 ENU; 内部 ENU→NED + PositionTarget)。"""
-        nx, ny, nz = enu_to_ned(pos[0], pos[1], pos[2])
-        yaw_ned = enu_yaw_to_ned(yaw)
+        """下发位置 setpoint (入参 ENU, 直接透传)。
+
+        ⚠️ 2026-08-03 实测修正 (S8.3b 根因): mavros 1.20.1 的 setpoint_raw
+        local_cb 对非 body 帧执行 ENU→NED 变换 (含 yaw), B 侧若再变换 =
+        双重变换, FCU 收到 ENU 值当 NED — takeoff z=+1.0(向下) → PX4
+        want_takeoff 永不成立 → 起飞状态机卡死 (爬升受限)。故此处原样透传。
+        """
         msg = self._msg_cls()
         msg.header.stamp = rospy.Time.now()
         msg.coordinate_frame = self._msg_cls.FRAME_LOCAL_NED
@@ -204,8 +216,8 @@ class Phase2Adapter(SetpointAdapter):
             | self._msg_cls.IGNORE_AFX | self._msg_cls.IGNORE_AFY | self._msg_cls.IGNORE_AFZ
             | self._msg_cls.IGNORE_YAW_RATE
         )  # = 2552 (0x9F8): 控位置 xyz + yaw
-        msg.position = Point(x=nx, y=ny, z=nz)
-        msg.yaw = yaw_ned
+        msg.position = Point(x=pos[0], y=pos[1], z=pos[2])
+        msg.yaw = yaw
         self._setpoint_pub.publish(msg)
 
         # STREAMING 计数 (ARM 前置条件)
@@ -327,6 +339,22 @@ class Phase2Adapter(SetpointAdapter):
             return False
         logger.info("[rosbridge] Phase2 preflight: mavros connected")
 
+        # 等首帧真实位姿 (subscriber → BState) 再发 setpoint — 否则 STREAMING
+        # 首帧发合成默认位姿 [0,0,0], 与真实地面位置的偏差会被 PX4 执行为
+        # 非预期小跳 (2026-08-03 实测: 启动即 "Takeoff detected" 漂移)
+        if self._state is not None:
+            while time.time() < deadline:
+                try:
+                    if getattr(self._state, "_data_received", False):
+                        break
+                except Exception:
+                    pass
+                time.sleep(0.1)
+            else:
+                logger.error("[rosbridge] Phase2 preflight timeout: no pose from subscriber")
+                return False
+            logger.info("[rosbridge] Phase2 preflight: first real pose received")
+
         with self._lock:
             self._phase = "STREAMING"
             self._stream_count = 0
@@ -347,41 +375,63 @@ class Phase2Adapter(SetpointAdapter):
             self._stop_streaming()
             return False
 
-        # 切 OFFBOARD (先于 ARM — 官方 offboard 例程顺序: OFFBOARD 模式的
-        # flag_control_manual_enabled=false, preArm 的 manual control 检查被跳过,
-        # 避免无 RC 环境 "Arming denied! manual control lost")
-        # 若当前是自动模式 (AUTO.*) 且 OFFBOARD 切换失败, 先 POSCTL 再重试
-        if not self._call_mode("OFFBOARD") or not self._wait_mode("OFFBOARD", timeout=3.0):
-            logger.warning("[rosbridge] Phase2 preflight: direct OFFBOARD failed, via POSCTL")
-            if not self._call_mode("POSCTL"):
-                logger.error("[rosbridge] Phase2 preflight failed: cannot switch POSCTL")
-                self._stop_streaming()
-                return False
-            time.sleep(0.3)
+        # OFFBOARD→ARM 重试环: PX4 在 EKF/GPS home 未就绪时拒切 OFFBOARD
+        # (2026-08-03 实测: B 启动过快撞上 EKF 预热窗口 → OFFBOARD rejected)。
+        # 对齐 design §5.4 "PX4 拒 ARM → 停在 STREAMING 重试", 流线程全程维持。
+        attempt = 0
+        while time.time() < deadline:
+            attempt += 1
+            # 切 OFFBOARD (先于 ARM — 官方 offboard 例程顺序: OFFBOARD 模式的
+            # flag_control_manual_enabled=false, preArm 的 manual control 检查被跳过,
+            # 避免无 RC 环境 "Arming denied! manual control lost")
+            # 若当前是自动模式 (AUTO.*) 且直切失败, 先 POSCTL 再重试
             if not self._call_mode("OFFBOARD") or not self._wait_mode("OFFBOARD", timeout=3.0):
-                logger.error("[rosbridge] Phase2 preflight failed: OFFBOARD rejected")
-                self._stop_streaming()
-                return False
-        with self._lock:
-            self._phase = "OFFBOARD"
+                logger.warning("[rosbridge] Phase2 preflight: direct OFFBOARD failed, via POSCTL")
+                if self._call_mode("POSCTL"):
+                    time.sleep(0.3)
+                    if not self._call_mode("OFFBOARD") or not self._wait_mode("OFFBOARD", timeout=3.0):
+                        logger.warning(f"[rosbridge] Phase2 preflight attempt {attempt}: OFFBOARD rejected, retry")
+                        time.sleep(2.0)
+                        continue
+                else:
+                    logger.warning(f"[rosbridge] Phase2 preflight attempt {attempt}: cannot switch POSCTL, retry")
+                    time.sleep(2.0)
+                    continue
+            with self._lock:
+                self._phase = "OFFBOARD"
 
-        # ARM (OFFBOARD 模式下 manual control 检查不生效; 流线程持续发 setpoint)
-        if not self._call_arm(True):
-            logger.error("[rosbridge] Phase2 preflight failed: ARM rejected")
+            # ARM (OFFBOARD 模式下 manual control 检查不生效; 流线程持续发 setpoint)
+            if not self._call_arm(True):
+                logger.warning(f"[rosbridge] Phase2 preflight attempt {attempt}: ARM rejected, retry")
+                time.sleep(2.0)
+                continue
+            # 验证 armed
+            if not self._wait_armed(timeout=3.0):
+                logger.warning(f"[rosbridge] Phase2 preflight attempt {attempt}: not armed after ARM, retry")
+                self._call_arm(False)
+                time.sleep(2.0)
+                continue
+            # 起飞边沿: 已武装但落地静止时, PX4 landed 钳制锁死位置控制
+            # (takeoff 状态机需要 disarm→arm 边沿才触发) — 实测 2026-08-03:
+            # 地面已武装无人机对爬升 setpoint 完全无响应。静止判定见
+            # _is_grounded_still (2s 速度 < 0.15m/s)。
+            if self._is_grounded_still():
+                logger.warning("[rosbridge] Phase2 preflight: grounded & armed — disarm/re-arm for takeoff edge")
+                self._call_arm(False)
+                time.sleep(1.5)
+                if not self._call_arm(True) or not self._wait_armed(timeout=3.0):
+                    logger.warning(f"[rosbridge] Phase2 preflight attempt {attempt}: re-arm after disarm failed, retry")
+                    time.sleep(2.0)
+                    continue
+            with self._lock:
+                self._phase = "ACTIVE"
+            # ACTIVE: 停流线程, 由 GoalPublisher 接管 (20Hz 持续)
             self._stop_streaming()
-            return False
-        # 验证 armed
-        if not self._wait_armed(timeout=3.0):
-            logger.error("[rosbridge] Phase2 preflight failed: not armed after ARM")
-            self._call_arm(False)
-            self._stop_streaming()
-            return False
-        with self._lock:
-            self._phase = "ACTIVE"
-        # ACTIVE: 停流线程, 由 GoalPublisher 接管 (20Hz 持续)
+            logger.info(f"[rosbridge] Phase2 preflight: ACTIVE (offboard engaged, armed, attempt {attempt})")
+            return True
+        logger.error("[rosbridge] Phase2 preflight failed: OFFBOARD/ARM retry exhausted")
         self._stop_streaming()
-        logger.info("[rosbridge] Phase2 preflight: ACTIVE (offboard engaged, armed)")
-        return True
+        return False
 
     def emergency_land(self):
         """应急降落: set_mode AUTO.LAND (design §5.3, abort/land 兜底)。"""
@@ -395,11 +445,38 @@ class Phase2Adapter(SetpointAdapter):
         except Exception as e:
             logger.error(f"[rosbridge] emergency_land failed: {e}")
 
+    def _is_grounded_still(self) -> bool:
+        """判断无人机是否已落地静止 (armed 且速度持续接近 0)。
+
+        PX4 landed 钳制: 落地后位置控制被锁, 必须 disarm→arm 触发 takeoff
+        状态机才能重新起飞 (2026-08-03 实测)。用 BState 速度 (mavros ENU)
+        连续采样 2s: 均 < 0.15m/s 视为静止。空中悬停 |v|≈0 也会命中 — 但
+        preflight 在 ACTIVE 前评估, 空中漂移悬停通常 |v|>0.15 不命中;
+        落地静止必命中 (v≈0)。
+        """
+        if self._state is None:
+            return False
+        try:
+            speeds = []
+            t0 = time.time()
+            while time.time() - t0 < 2.0:
+                with self._state.pose_lock:
+                    v = self._state._pose.vel
+                    speeds.append((v[0] ** 2 + v[1] ** 2 + v[2] ** 2) ** 0.5)
+                time.sleep(0.2)
+            return all(s < 0.15 for s in speeds) and len(speeds) >= 5
+        except Exception:
+            return False
+
     def _check_offboard_lost(self):
         """ACTIVE 下 mode 被切走 → 重切一次, 失败应急降落 (design §5.4)。"""
         s = self._snapshot()
         if s["phase"] != "ACTIVE" or s["mode"] == "OFFBOARD":
             return
+        with self._lock:
+            # S8.5: 应急降落 (AUTO.LAND) 进行中 — 不得被 offboard-lost 重切覆盖
+            if self._emergency:
+                return
         now = time.time()
         with self._lock:
             if self._offboard_lost_at is None:
