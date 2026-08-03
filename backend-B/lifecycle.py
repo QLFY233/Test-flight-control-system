@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 import sys
+import os
 import time
 import signal
 import logging
@@ -202,9 +203,22 @@ class Lifecycle:
             from rosbridge.adapter import make_adapter
             from rosbridge.publisher import GoalPublisher
             adapter = make_adapter(state=self.state)
+            # S8.6/S8.8: adapter alert (offboard_lost/preflight_refused) 上行 → dispatch
+            # (IPC 未连接时 dispatch.send_event 的容错在 adapter._send_alert 内部处理)
+            if self.dispatch is not None:
+                adapter.set_event_sender(self.dispatch.send_event)
             # S8.5: abort → AUTO.LAND 兜底 (design §5.3, 比悬停更保守)
             if self.dispatch is not None:
                 self.dispatch.set_abort_handler(adapter.emergency_land)
+            # S8.4 (并行任务): 阶段2 时 land 动作 → AUTO.LAND 兜底 (design §5.3),
+            # 由 component.set_land_handler 接线; 该方法由并行任务实现, getattr 防御
+            if os.environ.get("PHASE", "1") == "2":
+                set_land = getattr(self._small_model_component, "set_land_handler", None)
+                if set_land is not None:
+                    set_land(adapter.emergency_land)
+                else:
+                    logger.warning("[lifecycle] small_model.set_land_handler unavailable "
+                                   "(S8.4 land→AUTO.LAND 接线待并行任务合并)")
             # 阶段2: 等 offboard 就绪 (阻塞 ≤90s, 失败仅告警 — publisher 仍会持续发 setpoint)
             if not adapter.preflight(timeout=90.0):
                 logger.warning("[lifecycle] phase2 preflight failed — goal publisher runs without offboard")

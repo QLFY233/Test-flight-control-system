@@ -23,6 +23,13 @@ import rospy
 from geometry_msgs.msg import PoseStamped, Twist, Point, Quaternion, Vector3
 
 from .topics import get_topics, get_phase2_topics, PHASE1_PREFIX, PHASE2_PREFIX
+from bus.protocol import (
+    SCHEMA_VERSION,
+    EVENT_TOOL_ALERT,
+    TO_BETA,
+    ALERT_LEVEL_WARNING,
+    ALERT_LEVEL_CRITICAL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +179,9 @@ class Phase2Adapter(SetpointAdapter):
         self._mav_mode = ""
         self._stream_count = 0            # STREAMING 已发帧数
         self._offboard_lost_at = None     # 非主动切出 OFFBOARD 的时刻
+        self._offboard_retries = 0        # offboard 重切连续失败次数 (S8.6: 2 次后应急降落)
         self._emergency = False           # 已触发应急降落
+        self._send_event = None           # alert 事件上行回调 (dispatch.send_event)
 
         self._state_sub = rospy.Subscriber(
             topics["state"], State, self._on_mav_state
@@ -198,6 +207,44 @@ class Phase2Adapter(SetpointAdapter):
                 mode=self._mav_mode, phase=self._phase,
                 offboard_lost_at=self._offboard_lost_at,
             )
+
+    # ── alert 上行 (design §5.4/§7, S8.6/S8.8) ──
+    def set_event_sender(self, sender):
+        """注入 alert 事件上行回调 (fn: dict → None, 即 dispatch.send_event)。
+
+        IPC 未连接时 send_event 可能抛异常 — _send_alert 内部 try/except 容错。
+        """
+        self._send_event = sender
+
+    def _send_alert(self, level: str, code: str, detail: str = ""):
+        """上行 alert event — 帧格式与 monitor._send_alert 一致 (design §5.4)。
+
+        to 保持 "beta" — 接口冻结 §3 表格 alert → "beta" (作 β 对话流系统消息)。
+        """
+        if self._send_event is None:
+            logger.warning(f"[rosbridge] alert({code}) not sent — no event sender wired")
+            return
+        try:
+            self._send_event({
+                "schema_version": SCHEMA_VERSION,
+                "from": "B",
+                "to": TO_BETA,
+                "msg_type": "event",
+                "call_id": "",
+                "tool": EVENT_TOOL_ALERT,
+                "args": {},
+                "payload": {
+                    "level": level,
+                    "code": code,
+                    "detail": detail,
+                    "suggestion": None,  # B 侧不给建议, β 给
+                    "ts": time.time(),
+                    "action_index": None,
+                },
+                "ts": time.time(),
+            })
+        except Exception as e:
+            logger.error(f"[rosbridge] alert({code}) send failed: {e}")
 
     # ── setpoint 下发 ──
     def publish_position(self, pos: list, yaw: float):
@@ -336,6 +383,8 @@ class Phase2Adapter(SetpointAdapter):
             time.sleep(0.05)
         else:
             logger.error("[rosbridge] Phase2 preflight timeout: mavros not connected")
+            self._send_alert(ALERT_LEVEL_WARNING, "preflight_refused",
+                             "mavros not connected within timeout")
             return False
         logger.info("[rosbridge] Phase2 preflight: mavros connected")
 
@@ -352,6 +401,8 @@ class Phase2Adapter(SetpointAdapter):
                 time.sleep(0.1)
             else:
                 logger.error("[rosbridge] Phase2 preflight timeout: no pose from subscriber")
+                self._send_alert(ALERT_LEVEL_WARNING, "preflight_refused",
+                                 "no pose from subscriber within timeout")
                 return False
             logger.info("[rosbridge] Phase2 preflight: first real pose received")
 
@@ -372,6 +423,8 @@ class Phase2Adapter(SetpointAdapter):
                               + (pos[2] - self._home[2]) ** 2)
         if dist_home > 2.0:
             logger.error(f"[rosbridge] Phase2 preflight refused: dist to home {dist_home:.1f}m > 2m")
+            self._send_alert(ALERT_LEVEL_WARNING, "preflight_refused",
+                             f"dist to home {dist_home:.1f}m > 2m (ARM pre-check)")
             self._stop_streaming()
             return False
 
@@ -430,6 +483,8 @@ class Phase2Adapter(SetpointAdapter):
             logger.info(f"[rosbridge] Phase2 preflight: ACTIVE (offboard engaged, armed, attempt {attempt})")
             return True
         logger.error("[rosbridge] Phase2 preflight failed: OFFBOARD/ARM retry exhausted")
+        self._send_alert(ALERT_LEVEL_WARNING, "preflight_refused",
+                         "OFFBOARD/ARM retry exhausted")
         self._stop_streaming()
         return False
 
@@ -469,9 +524,20 @@ class Phase2Adapter(SetpointAdapter):
             return False
 
     def _check_offboard_lost(self):
-        """ACTIVE 下 mode 被切走 → 重切一次, 失败应急降落 (design §5.4)。"""
+        """ACTIVE 下 mode 被切走 → 重切 OFFBOARD; 连续失败 2 次 → 应急降落 (design §5.4)。
+
+        S8.6 时序: 容忍瞬时 (<1s) → 重切 OFFBOARD (mode_sent + mode 确认);
+        失败 → alert(critical, offboard_lost) + 计数; 连续失败 2 次 → emergency_land()
+        (AUTO.LAND)。应急降落进行中 (_emergency) 不得被 offboard-lost 重切覆盖 (S8.5)。
+        """
         s = self._snapshot()
-        if s["phase"] != "ACTIVE" or s["mode"] == "OFFBOARD":
+        if s["phase"] != "ACTIVE":
+            return
+        if s["mode"] == "OFFBOARD":
+            # mode 已恢复 — 复位丢失计时/重试计数 (防旧状态污染下次检测)
+            with self._lock:
+                self._offboard_lost_at = None
+                self._offboard_retries = 0
             return
         with self._lock:
             # S8.5: 应急降落 (AUTO.LAND) 进行中 — 不得被 offboard-lost 重切覆盖
@@ -483,13 +549,22 @@ class Phase2Adapter(SetpointAdapter):
                 self._offboard_lost_at = now
             lost_for = now - self._offboard_lost_at
         if lost_for < 1.0:
-            return  # 容忍瞬时
+            return  # 容忍瞬时 (mode 切换抖动)
         logger.warning(f"[rosbridge] offboard lost (mode={s['mode']}), re-engaging...")
-        if self._call_mode("OFFBOARD"):
+        if self._call_mode("OFFBOARD") and self._wait_mode("OFFBOARD", timeout=3.0):
             with self._lock:
                 self._offboard_lost_at = None
+                self._offboard_retries = 0
             logger.info("[rosbridge] offboard re-engaged")
-        else:
+            return
+        # 重切失败: alert + 计数, 连续 2 次 → 应急降落
+        with self._lock:
+            self._offboard_retries += 1
+            retries = self._offboard_retries
+        self._send_alert(ALERT_LEVEL_CRITICAL, "offboard_lost",
+                         f"offboard lost (mode={s['mode']}), re-engage failed {retries}/2")
+        if retries >= 2:
+            logger.error("[rosbridge] offboard lost: 2 consecutive re-engage failures — emergency land")
             self.emergency_land()
 
     # ── 服务调用 ──

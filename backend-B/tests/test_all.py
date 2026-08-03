@@ -292,6 +292,22 @@ except ImportError as e:
     # 无 rospy 环境下跳过 (venv-B --system-site-packages 通常可用)
     check(f"adapter 模块可导入 (跳过: {e})", True)
 
+# ── S8 子测试并入 (2026-08-03): S8.4 land→AUTO.LAND + S8.6/8.8 安全降级 ──
+# 独立模块 (test_s8_land.py / test_s8_safety.py), exec_module 执行并合并计数;
+# 子模块自带 summary + sys.exit(0/1), 此处捕获 SystemExit 并入主流程。
+import importlib.util as _ilu
+for _s8_mod in ("test_s8_land", "test_s8_safety"):
+    _s8_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), _s8_mod + ".py")
+    _s8_spec = _ilu.spec_from_file_location(_s8_mod, _s8_file)
+    _s8_m = _ilu.module_from_spec(_s8_spec)
+    try:
+        _s8_spec.loader.exec_module(_s8_m)
+    except SystemExit:
+        pass
+    passed += _s8_m.__dict__.get("passed", 0)
+    failed += _s8_m.__dict__.get("failed", 0)
+    print(f"  (S8 子测试 {_s8_mod} 已并入主计数)")
+
 # ── Summary ──
 print(f"\n{'='*50}")
 print(f"  B 侧测试结果: {passed} 通过 / {passed+failed} 总数")

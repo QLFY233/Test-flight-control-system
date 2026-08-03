@@ -8,7 +8,7 @@ import time
 import logging
 import threading
 
-from .action_codes import VALID_ACTION_CODES
+from .action_codes import VALID_ACTION_CODES, ACTION_CODE_LAND
 from .goal_gen import make_goal_generator, GoalGenError
 from bus.protocol import (
     SCHEMA_VERSION,
@@ -48,6 +48,12 @@ class SmallModelComponent:
         self._merged_safety: dict | None = None
         # 事件发送回调 (由 lifecycle 注入, 用于上行 reject/status)
         self._send_event = None
+        # S8.4: land 兜底回调 (phase2 由 lifecycle 注入 adapter.emergency_land →
+        # set_mode AUTO.LAND; phase1/未注入时 land 走 stub 下压 goal, 零回归)。
+        self._land_handler = None
+        # 待锁外触发的 land handler (B-6 锁纪律: handler 含 rospy service call,
+        # 最长阻塞 5s, 不得在持有 self._lock 时调用 — 由调用方释放锁后执行)
+        self._land_pending = None
         # B-6: 状态锁 — 保护 current_action_plan/current_action_index/small_model_status/
         # _merged_safety/_current_goal 的跨线程一致性 (IPC 线程 vs goal-publisher 线程)。
         # 所有修改路径 (generate/abort/hover/advance) 必须在同一临界区完成,
@@ -56,6 +62,20 @@ class SmallModelComponent:
     def set_event_sender(self, sender):
         """注入事件发送回调: send_event(msg: dict)。"""
         self._send_event = sender
+
+    def set_land_handler(self, fn):
+        """注入 land 兜底回调 (PX4-阶段2-design.md §5.3: phase2 land → AUTO.LAND)。
+
+        fn 无参, 由 lifecycle 在 phase2 注入 adapter.emergency_land。
+        未注入 (phase1) 时 land 动作保持 stub 下压 goal 行为 (零回归)。
+        """
+        self._land_handler = fn
+
+    def _take_land_pending(self):
+        """取走待锁外执行的 land handler。调用方须已持有 self._lock (B-6)。"""
+        fn = self._land_pending
+        self._land_pending = None
+        return fn
 
     def handle(self, tool: str, args: dict) -> dict:
         """B 内总线 handle 入口。"""
@@ -86,7 +106,12 @@ class SmallModelComponent:
             self._state.current_action_plan = actions
             self._state.current_action_index = 0
             self._state.small_model_status = "executing"
-            return self._generate_next_goal()
+            result = self._generate_next_goal()
+            pending_land = self._take_land_pending()
+        # S8.4: land handler 在锁外触发 (rospy service call 最长阻塞 5s, 不得持锁)
+        if pending_land is not None:
+            pending_land()
+        return result
 
     def _generate_next_goal(self) -> dict:
         """从 current_action_plan 取当前未执行的动作并翻译为目标点。
@@ -109,6 +134,21 @@ class SmallModelComponent:
             self._send_reject(REJECT_UNKNOWN_ACTION_CODE, idx, detail=f"unknown action code: {code}")
             self._current_goal = None
             return {"status": "rejected", "reason": REJECT_UNKNOWN_ACTION_CODE}
+
+        # S8.4: phase2 land → AUTO.LAND (design §5.3 语义表: 不用 offboard 下压,
+        # 避免触地检测干扰)。已注入 land handler (phase2) 时: 不生成 goal、不进入
+        # 目标缓存, 动作序列直接标记完成; handler 记录到 _land_pending 由调用方
+        # 释放锁后触发。未注入 (phase1) 时走下方 stub 下压 goal — 零回归。
+        if code == ACTION_CODE_LAND and self._land_handler is not None:
+            self._state.small_model_status = "idle"
+            self._current_goal = None
+            self._send_status(FLIGHT_STATUS_COMPLETED, idx + 1, len(actions))
+            self._land_pending = self._land_handler
+            logger.info(
+                f"[small_model] land → AUTO.LAND (handler injected), "
+                f"action {idx + 1}/{len(actions)} completed"
+            )
+            return {"status": "ok", "note": "land → AUTO.LAND"}
 
         safety = self._merged_safety or self._merge_safety({})
 
@@ -202,7 +242,12 @@ class SmallModelComponent:
                 # 悬停态不变
                 if self._state.small_model_status == FLIGHT_STATUS_HOVERING:
                     return True
-                return self._advance_action()
+                result = self._advance_action()
+                pending_land = self._take_land_pending()
+            # S8.4: 推进途中命中 land (phase2) → 锁外触发 AUTO.LAND 兜底
+            if pending_land is not None:
+                pending_land()
+            return result
         return False
 
     # ── helpers ──

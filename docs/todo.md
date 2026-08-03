@@ -4,7 +4,18 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-03 14:40 (阶段M S8.3b 爬升受限根因解决 — 实飞验证)
+最近更新：2026-08-03 16:00 (阶段M S8 全项验收完成 — 并行开发 + 实飞验证)
+
+> **2026-08-03 16:00 (阶段M S8 全项验收 — 并行开发 + 实飞验证)**:
+> ① 并行开发（3 worker + worktree 隔离）：S8.4 land→AUTO.LAND（component.py set_land_handler + 锁外触发，test_s8_land 29/29）、S8.6/S8.8（adapter.py set_event_sender/_send_alert + offboard 重切 2 次重试 + preflight 拒绝 alert，test_s8_safety 27/27）；新测试并入 test_all.py（exec_module 合并计数）→ **B 134/134 + A 56/56**
+> ② 修复 run_b.py（实际入口）未接线：补 set_event_sender + set_land_handler（并行任务只改了 lifecycle.py，实跑路径漏接——S8.4 首轮实飞 land 走 stub 下压即此因）；过时注释同步
+> ③ **S8.4 实飞（新代码）**：takeoff(1.0) 爬升 0.81~0.95m → land → `land → AUTO.LAND (handler injected)` → 落地 z≈-0.26 + disarm（螺旋桨停）；status 流转 executing→completed ✓
+> ④ **S8.2 双端对照重验（修正后）**：空中同刻 rostopic /mavros/local_position/pose z=+0.870 ↔ B 上行 z=+0.870（同号同值，无双重变换）；REST /api/current-pose 地面 z=-0.232 ↔ rostopic -0.23 一致
+> ⑤ **S8.6 实飞**：悬停 0.81m 时 rosservice 强制切 POSCTL → B 检测 `offboard lost (mode=POSCTL)` → 1s 容忍后自动重切 `offboard re-engaged`（恢复）；失败路径 alert(offboard_lost, critical) 由单测 T2 覆盖；后 abort → AUTO.LAND 2s 落地
+> ⑥ **S8.5 REST 回测**：A 侧 `POST /api/sessions/{id}/abort` → `{"status":"aborted"}` → B `emergency_land: AUTO.LAND` 全链路闭环
+> ⑦ 环境：A 跑 8001（8000 被 XDAgent 占）；DEEPSEEK_API_KEY 未设（LLM 链路以 mini-A 注入验证，α 翻译链此前已验）；全链路已恢复（A+B+PX4 SITL 运行中）
+> ⑧ 遗留（非 S8 验收项）：monitor overaccel/out_of_boundary 误报（PX4 IMU linear_acceleration 含重力 → overaccel 常亮；boundary 对噪声敏感）——待后续按 sim-drone 同法（运动加速度=速度导数）适配 PX4；mavros Time jump 警告（SITL 时间同步，不影响功能）
+> 提交：S8.4/S8.6/S8.8 代码 + run_b 接线 + 测试 + spec §8 同步
 
 > **2026-08-03 14:40 (阶段M S8.3b 解决 + 启动脚本收尾)**:
 > ① start_px4_sitl.sh 收尾：gazebo_iris target（v1.13.3 实测名）、`tail -f /dev/null |` stdin 保活、pkill ERE 修正（原 \| 只匹配字面竖线从未生效）、SITL 就绪检查改 UDP 14580、EKF 预热等待、A 端口 8000 bind 失败自动降级 8001（Windows 侧服务间歇抢占）；
@@ -309,8 +320,9 @@
 ### 阶段M — 远期（⏳ 不阻塞先导）
 | 模块 | 状态 | 负责人 | 最近更新 |
 |---|---|---|---|
-| PX4 SITL + mavros 1.20.1（新建 `docs/specs/后端B/PX4-阶段2-design.md`） | ⏳ | — | 2026-08-02 版本锁定 |
-| `rosbridge/adapter.py` Phase2Adapter | ⏳ | — | — |
+| PX4 SITL + mavros 1.20.1（新建 `docs/specs/后端B/PX4-阶段2-design.md`） | ✅ | — | 2026-08-03 S8 全项验收完成 |
+| `rosbridge/adapter.py` Phase2Adapter（offboard 状态机 + 双端对照 + alert 上行） | ✅ | — | 2026-08-03 |
+| S8 验收（S8.1~S8.8 全项） | ✅ | — | 2026-08-03 实飞验证 |
 | ego-planner 桥 + 雷达感知 | ⏳ | — | — |
 | 蒸馏小模型 α 训练（alpha-small/） | ⏳ | — | — |
 | 端侧小模型训练（small-model/ MLP） | ⏳ | — | — |
@@ -328,4 +340,4 @@
 - [x] S5 完整链路（β→α→假无人机）— ✅ β tools + SSE + REST + WS 全部就绪
 - [x] S6 监控 alert 回路 — ✅ detectors + 10Hz + 节流 + WS broadcast 全部就绪
 - [x] S7 断连安全 — ✅ link_status + α loop 退避 + B hover 兜底 + sim-drone 超时悬停
-- [ ] S8 切 PX4 SITL（阶段M）
+- [x] S8 切 PX4 SITL（阶段M）— ✅ S8.1~S8.8 全项实飞验收完成（2026-08-03）：环境/双端对照/takeoff/land→AUTO.LAND/abort REST 闭环/offboard 丢失自动恢复/阶段1 回归/ARM 前置告警

@@ -54,10 +54,9 @@ else:
     topics = get_topics()
 # 上行恒等变换 (两阶段同): MAVROS 发布的话题本身已是 ROS ENU/FLU 约定
 # (REP-103, frame_id=map/base_link, NED→ENU 在 mavros 插件内完成),
-# 再施加 ned_to_enu 会造成双重变换 — 2026-08-03 ulog 实证: GT.z 恒定
-# (无人机从未离地) 而 B 侧 z 骑行 EKF 噪声, 爬升受限根因 (S8.3b)。
-# 仅下行 /mavros/setpoint_raw/local 是裸传 mavlink (FRAME_LOCAL_NED),
-# 需 adapter 内 enu_to_ned 变换 (PX4-阶段2-design.md §4.3)。
+# 再施加 ned_to_enu 会造成双重变换 — 2026-08-03 ulog 实证 (S8.3b 根因)。
+# 下行 /mavros/setpoint_raw/local 由 mavros 插件负责 ENU→NED (design §4.3),
+# Phase2Adapter.publish_position 原样透传 ENU。
 _xf = lambda x, y, z: (x, y, z)
 _qxf = lambda q: q
 cb_count = [0]
@@ -93,6 +92,12 @@ from rosbridge.publisher import GoalPublisher
 gp_adapter = make_adapter(PHASE, state=st)
 # S8.5: abort → AUTO.LAND 兜底 (design §5.3, 比悬停更保守)
 dispatch.set_abort_handler(gp_adapter.emergency_land)
+# S8.6/S8.8: adapter alert (offboard_lost/preflight_refused) 上行 → dispatch
+# (IPC 未连接时 _send_alert 内部 try/except 容错)
+gp_adapter.set_event_sender(dispatch.send_event)
+# S8.4: phase2 land 动作 → AUTO.LAND 兜底 (design §5.3, 与 lifecycle.py 对齐)
+if PHASE == 2:
+    comp.set_land_handler(gp_adapter.emergency_land)
 if PHASE == 2 and not gp_adapter.preflight(timeout=90.0):
     print('[B] phase2 preflight failed — goal publisher runs without offboard', flush=True)
 gp = GoalPublisher(st, comp, gp_adapter, rate=20.0)

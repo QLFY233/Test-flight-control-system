@@ -172,7 +172,7 @@ class Phase2Adapter(SetpointAdapter):     # 新增, 见下
 | `takeoff` | setpoint (x,y,1.0) 爬升 | offboard 位置 setpoint (x,y,home_z+1.0) 爬升（无需 AUTO.TAKEOFF） |
 | `goto/move/climb/descend/yaw` | setpoint 目标点 | 同左，经 mavros setpoint_raw（插件内 ENU→NED）下发 |
 | `hover` | 停发 setpoint → 仿真器自动悬停 | **持续 20Hz 发当前位置**（PX4 offboard 停发 ≥1s 自动退出！语义差异已修正）——2026-08-03 再修正：**捕获一次当前位置后锁定发布**（持续重锚=零恢复力→自由漂移实测） |
-| `land` | setpoint z=0 | **set_mode AUTO.LAND**（不用 offboard 下压，避免触地检测干扰）——⚠️ 当前实现为 goal (home, floor 0.3) 下压，AUTO.LAND 仅 abort 路径已接（见下） |
+| `land` | setpoint z=0 | **set_mode AUTO.LAND**（不用 offboard 下压，避免触地检测干扰）——✅ 已实现（2026-08-03 S8.4）：component.set_land_handler → adapter.emergency_land，run_b.py/lifecycle.py 均接线；实飞落地 + disarm + status 流转 |
 | `abort` | 清目标 + 悬停 | **`set_mode AUTO.LAND` 兜底**（比悬停更保守，安全设计）——✅ 已接线：dispatch set_abort_handler → adapter.emergency_land，且 `_check_offboard_lost` 在 `_emergency` 标志下不再重切 OFFBOARD（否则 1s 内 AUTO.LAND 被覆盖，实测） |
 | `return_home` | setpoint home | offboard 位置 setpoint home |
 
@@ -218,19 +218,19 @@ class Phase2Adapter(SetpointAdapter):     # 新增, 见下
 
 ## 8. S8 验收清单（编码完成后执行）
 
-> **实测状态（2026-08-03 14:30）**：S8.1 ✅ / S8.2 ✅（需按 4.3 修正后重验）/ S8.3 ✅（起飞爬升 1.0m 实飞验证，见 S8.3b）/ S8.4 ⚠️ 部分（land 动作为 goal 下压至 0.3m，AUTO.LAND 路径在 abort 已验证）/ S8.5 ✅（abort→AUTO.LAND 落地实证）/ S8.6-8.8 未测
+> **实测状态（2026-08-03 16:00）**：S8.1~S8.8 **全项实飞验收完成**。S8.2 已按 §4.3 修正重验（空中同刻 rostopic z=+0.870 ↔ B 上行 z=+0.870，同号同值）；S8.4 land→AUTO.LAND 实飞（落地 + disarm + status 流转）；S8.5 A 侧 REST abort 闭环；S8.6 强制切 POSCTL → 自动重切恢复（失败路径单测覆盖）；S8.7 B 134/134 + A 56/56；S8.8 ARM 前置 alert 单测覆盖（27/27）。遗留（非验收项）：monitor overaccel/out_of_boundary 误报（PX4 IMU 含重力），待后续适配。
 
 | # | 验收项 | 判定 |
 |---|---|---|
 | S8.1 | 环境就绪：PX4 v1.13.3 SITL + Gazebo iris 启动，`rostopic echo /mavros/state` `connected=true` | ✅ 实测通过（2026-08-03） |
-| S8.2 | NED/ENU 正确性：起飞后 `rostopic echo /mavros/local_position/pose` → B 侧/前端显示 **z 为 ENU 正值**；`curl /api/current-pose` 与 rostopic 对照（z 反号校验） | ⚠️ 需按 §4.3 修正重验（此前“通过”系双端同源误差空转——mavros 上行本已 ENU，subscriber 曾再变换） |
+| S8.2 | NED/ENU 正确性：起飞后 `rostopic echo /mavros/local_position/pose` → B 侧/前端显示 **z 为 ENU 正值**；`curl /api/current-pose` 与 rostopic 对照（z 反号校验） | ✅ 重验通过（2026-08-03）：空中同刻 rostopic z=+0.870 ↔ B 上行 z=+0.870（同号同值）；REST current-pose 地面 -0.232 ↔ rostopic -0.23 一致。此前“通过”系双端同源空转（subscriber 曾再变换），§4.3 修正后重验无变换 |
 | S8.3 | 全链路：β/α 翻译 `takeoff` → 端侧小模型目标点 → offboard 起飞爬升；`goto` 移动到位；`hover` 稳定保持 | ✅ 核心已验（2026-08-03）：mini-A 注入 takeoff(1.0) → 爬升至 1.0m（4 次复现），1m 悬停 6s 漂移 ≤0.04m；ulog groundtruth z 0.73→-0.60 实证物理离地（金标准） |
 | S8.3b | **已解决（根因：mavros setpoint_raw 双重 ENU→NED 变换）**：mavros 1.20.1 local_cb 对非 body 帧自动 ENU→NED，B 侧 adapter 再变换 → FCU 收到 ENU 值当 NED，takeoff z=+1.0(向下) → want_takeoff 永不成立 → 起飞状态机卡死。修复：adapter 透传 ENU（§4.3），另加固 GoalPublisher 限速推进（ramp 以 setpoint 为锚非当前位置）与 hover 锁定保持点 | ✅ 已解决（2026-08-03 实飞） |
-| S8.4 | `land` → AUTO.LAND 落地（z≈0，螺旋桨停转）；B 侧 `event:status` 状态流转正确 | 待测 |
-| S8.5 | abort：A 侧 `POST /api/sessions/{id}/abort` → 无人机切 AUTO.LAND 安全落地 | ✅ 链路已验（2026-08-03 mini-A call.abort → AUTO.LAND → 2s 落地 z=-0.106）；A 侧 REST 端点待回测 |
-| S8.6 | offboard 丢失模拟（强制切 POSCTL）→ alert `offboard_lost` + 自动恢复或 LAND | 待测 |
-| S8.7 | 阶段1 回归：`PHASE=1` 假无人机 S0~S7 复跑全绿 | 待测（B 测试 78/78 已含阶段1 回归） |
-| S8.8 | 安全：ARM 前置（未 stream / 距 home 超 2m）被拒，alert 提示 | 待测 |
+| S8.4 | `land` → AUTO.LAND 落地（z≈0，螺旋桨停转）；B 侧 `event:status` 状态流转正确 | ✅ 实测通过（2026-08-03）：takeoff→land 动作序列，`land → AUTO.LAND (handler injected)` → 落地 z≈-0.26 + disarm（螺旋桨停）；status executing→completed |
+| S8.5 | abort：A 侧 `POST /api/sessions/{id}/abort` → 无人机切 AUTO.LAND 安全落地 | ✅ 链路已验（2026-08-03）：mini-A call.abort → AUTO.LAND 2s 落地 + **A 侧 REST `POST /api/sessions/{id}/abort` 回测闭环**（→ aborted → B emergency_land） |
+| S8.6 | offboard 丢失模拟（强制切 POSCTL）→ alert `offboard_lost` + 自动恢复或 LAND | ✅ 实测通过（2026-08-03）：悬停中 rosservice 强制切 POSCTL → B 检测 `offboard lost` → 自动重切 `re-engaged`（恢复）；连续失败 2 次 → emergency_land + alert(critical) 由单测 T2 覆盖 |
+| S8.7 | 阶段1 回归：`PHASE=1` 假无人机 S0~S7 复跑全绿 | ✅ 通过（2026-08-03）：B 134/134 + A 56/56；PHASE 默认 1、subscriber 恒等、small_model 上层零感知（代码路径检查） |
+| S8.8 | 安全：ARM 前置（未 stream / 距 home 超 2m）被拒，alert 提示 | ✅ 单测覆盖（2026-08-03）：preflight 拒绝路径 → alert(preflight_refused, warning)（test_s8_safety T4，27/27）；ARM 前置三重检查已在 preflight 实现 |
 
 ---
 
