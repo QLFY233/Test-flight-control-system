@@ -32,7 +32,7 @@
 | EGM96 重力数据 | — | `sudo /opt/ros/noetic/lib/mavros/install_geographiclib_datasets.sh`（**必跑**，否则 MAVROS 启动卡死） | ⬜ 待跑 |
 | pymavlink | pip | `pip install pymavlink`（apt 不提供 python3-mavlink） | ⬜ 待装 |
 
-> **PX4 v1.13.3 理由**：v1.14+ 弃用 ROS1 集成（mavros 官方支持线）；`gz_x500` 是 Ignition/Gz-Sim 模型，二进制不发 Ubuntu 20.04(focal) —— 唯一可行组合为 **Gazebo Classic 11 + `gazebo-classic_iris`**。
+> **PX4 v1.13.3 理由**：v1.14+ 弃用 ROS1 集成（mavros 官方支持线）；`gz_x500` 是 Ignition/Gz-Sim 模型，二进制不发 Ubuntu 20.04(focal) —— 唯一可行组合为 **Gazebo Classic 11 + `gazebo_iris`（v1.13.3 target 名）**。
 > **WSLg 已可用**（`/mnt/wslg` 存在），GUI 与 `HEADLESS=1` 无头模式均可。
 
 ### 2.1 已装包核实记录（2026-08-02 本机实测）
@@ -53,7 +53,7 @@ $ cat /opt/ros/noetic/share/mavros/launch/px4.launch | grep fcu_url
 ```
 [0] 清理旧进程 + rm /tmp/flight_control_AB.sock
 [1] roscore
-[2] PX4 SITL:   cd $HOME/PX4-Autopilot && HEADLESS=1 make px4_sitl gazebo-classic_iris
+[2] PX4 SITL:   cd $HOME/PX4-Autopilot && HEADLESS=1 make px4_sitl gazebo_iris
                  (首次编译 15~30min, 产物 cache 于 build/ 目录; iris 模型首次下载)
 [3] MAVROS:     roslaunch mavros px4.launch fcu_url:=udp://:14540@127.0.0.1:14557
                  (gcs_url 留空; 等 /mavros/state 的 connected=true)
@@ -144,17 +144,24 @@ class Phase2Adapter(SetpointAdapter):     # 新增, 见下
         ┌──────────┐   /mavros/cmd/arming     ┌────────────┐
         │  LANDED  │ ◀─────────────────────── │   ARMING   │  等 state.armed==true
         └──────────┘                          └────────────┘
-             ▲                                       │  /mavros/set_mode "OFFBOARD"
-             │  emergency_land()                     ▼
+             ▲                                       │
+             │  emergency_land()                     │
              └────────────────────────────── ┌────────────┐
                                              │ OFFBOARD   │  ACTIVE: 20Hz 位置 setpoint
                                              └────────────┘  监测 state.mode
-```
+
+> ⚠️ **实测修正（2026-08-03）**：状态机实际顺序为 **STREAMING → 切 OFFBOARD → ARM → ACTIVE**，
+> 即 **OFFBOARD 切换先于 ARM**（与官方 offboard 例程一致）。原因：OFFBOARD 模式下
+> `flag_control_manual_enabled=false`，preArm 的 manual control 检查被跳过——否则无 RC
+> 环境下 ARM 被拒 "Arming denied! manual control lost"。图中 LANDED→ARMING 路径仍用于
+> 应急复位（disarm 后重 arm）。```
 
 - **状态输入**：`/mavros/state`（`connected`/`armed`/`mode`，mavros 10Hz 默认），订阅回调写锁内状态
 - **STREAMING 前置**：ARM 前必须已连续 stream ≥1s（工程 20Hz/3s，开发规划风险 1）；且当前位置距 `home` < 2m（防远距离意外 ARM）
-- **顺序固定**：先 ARM（`/mavros/cmd/arming {value:true}`），等 `state.armed==true`，再 `set_mode {custom_mode:"OFFBOARD"}`，等 `state.mode=="OFFBOARD"`
+- **顺序（实测修正）**：STREAMING ≥3s → **set_mode OFFBOARD**（验证 `state.mode==OFFBOARD`，若当前为 AUTO.* 模式且直切失败先 POSCTL 再重试）→ **ARM**（验证 `state.armed==true`）→ ACTIVE。**OFFBOARD 先于 ARM**（避开 preArm 的 manual control 检查；OFFBOARD 切换本身不要求已 ARM，官方 offboard 例程同序）
+- **setpoint 流贯穿**：STREAMING→OFFBOARD→ARM 全程由独立流线程 20Hz 维持 setpoint（PX4 offboard 停发 ≥1s 自动退出），ACTIVE 后由 GoalPublisher 接管（无目标时持续发当前位置=悬停）
 - **首帧防跳变**：STREAMING 首帧即发当前位置（复用 publisher 既有逻辑）
+- **虚拟 RC（SITL 必需）**：无真遥控时 preArm 的 manual control 检查会拒 ARM（"manual control lost"）。方案：`COM_RC_IN_MODE=3`（first_valid）+ B 侧 `Phase2Adapter` 持续发中性 RC override（2Hz，ch1-3 中性 1500 / ch4 油门最低 1000 / **ch5-6 开关通道必须 1500**（0 会被解析为开关位置触发 RTL）/ 其余 0）。**三坑实测**：① `OverrideRCIn.channels` 必须 18 元素（8 元素序列化报错被静默吞）；② 通道值必须微抖（±1 PWM）——rc_update "limit processing if there's no update"，固定值永不发布 setpoint；③ `COM_RC_IN_MODE=1`（仅 MAVLINK 源）不匹配 rc_update 输出（恒 SOURCE_RC）→ RC 从未有效 → OFFBOARD 状态被 RC-lost failsafe 反复覆盖——**必须用 3**（first_valid）
 
 ### 5.3 动作语义映射（small_model 上层零感知）
 
@@ -209,16 +216,19 @@ class Phase2Adapter(SetpointAdapter):     # 新增, 见下
 
 ## 8. S8 验收清单（编码完成后执行）
 
+> **实测状态（2026-08-03）**：S8.1 ✅ / S8.2 ✅（z 变换正确，见下）/ S8.3 ⚠️ 部分（起飞✅、爬升至目标高度受限，见 S8.3b）/ S8.4-8.8 未测（待环境稳定后执行）
+
 | # | 验收项 | 判定 |
 |---|---|---|
-| S8.1 | 环境就绪：PX4 v1.13.3 SITL + Gazebo iris 启动，`rostopic echo /mavros/state` `connected=true` | PASS |
-| S8.2 | NED/ENU 正确性：起飞后 `rostopic echo /mavros/local_position/pose` → B 侧/前端显示 **z 为 ENU 正值**（≈1m）；`curl /api/current-pose` 数值与 rostopic 对照（z 反号校验） | PASS |
-| S8.3 | 全链路：β/α 翻译 `takeoff` → 端侧小模型目标点 → offboard 起飞爬升；`goto` 移动到位；`hover` 稳定保持（位置漂移 <0.2m/5s） | PASS |
-| S8.4 | `land` → AUTO.LAND 落地（z≈0，螺旋桨停转）；B 侧 `event:status` 状态流转正确 | PASS |
-| S8.5 | abort：A 侧 `POST /api/sessions/{id}/abort` → 无人机切 AUTO.LAND 安全落地 | PASS |
-| S8.6 | offboard 丢失模拟（`rostopic pub /mavros/set_mode` 强制切 POSCTL）→ alert `offboard_lost` + 自动恢复或 LAND | PASS |
-| S8.7 | 阶段1 回归：`PHASE=1` 假无人机 S0~S7 复跑全绿（A 56/56 + B 70/70 + 端到端冒烟） | PASS |
-| S8.8 | 安全：ARM 前置（未 stream / 距 home 超 2m）被拒，alert 提示 | PASS |
+| S8.1 | 环境就绪：PX4 v1.13.3 SITL + Gazebo iris 启动，`rostopic echo /mavros/state` `connected=true` | ✅ 实测通过（2026-08-03） |
+| S8.2 | NED/ENU 正确性：起飞后 `rostopic echo /mavros/local_position/pose` → B 侧/前端显示 **z 为 ENU 正值**；`curl /api/current-pose` 与 rostopic 对照（z 反号校验） | ✅ 实测通过：px4 NED z=-0.23 ↔ A 侧 ENU z=+0.23 |
+| S8.3 | 全链路：β/α 翻译 `takeoff` → 端侧小模型目标点 → offboard 起飞爬升；`goto` 移动到位；`hover` 稳定保持 | ⚠️ 部分：LLM→α→IPC→small_model→GoalPublisher→PX4 起飞 ✅（ENU z 0→0.4m）；**爬升至目标 1.0m 受限**（见 S8.3b） |
+| S8.3b | **遗留（调参项）**：无人机爬升受限 ~0.4m——证据：px4 内部 `vehicle_local_position_setpoint.z ≈ EKF.z + 0.075`（恒定，=B 限速插值步长），thrust 输出回落至 0.120（悬停油门，控制器认为"到位"）；绕过 B 直发 1.0m setpoint 同样只到 0.36m（pub_sp.py 实验）→ 问题在 PX4 高度控制层（MPC_Z_*/悬停油门估计/坐标系符号），非链路代码 | 待调参 |
+| S8.4 | `land` → AUTO.LAND 落地（z≈0，螺旋桨停转）；B 侧 `event:status` 状态流转正确 | 待测 |
+| S8.5 | abort：A 侧 `POST /api/sessions/{id}/abort` → 无人机切 AUTO.LAND 安全落地 | 待测（IPC call.abort 链路已单独验证 ✅） |
+| S8.6 | offboard 丢失模拟（强制切 POSCTL）→ alert `offboard_lost` + 自动恢复或 LAND | 待测 |
+| S8.7 | 阶段1 回归：`PHASE=1` 假无人机 S0~S7 复跑全绿 | 待测（B 测试 78/78 已含阶段1 回归） |
+| S8.8 | 安全：ARM 前置（未 stream / 距 home 超 2m）被拒，alert 提示 | 待测 |
 
 ---
 
@@ -226,10 +236,12 @@ class Phase2Adapter(SetpointAdapter):     # 新增, 见下
 
 | # | 风险 | 对策 |
 |---|---|---|
-| 0 | Ubuntu 20.04 用 `gz_x500`/Ignition → 二进制不存在、PX4 v1.14+ 弃 ROS1 | **锁定 v1.13.3 + Gazebo Classic 11**，`make px4_sitl gazebo-classic_iris` |
+| 0 | Ubuntu 20.04 用 `gz_x500`/Ignition → 二进制不存在、PX4 v1.14+ 弃 ROS1 | **锁定 v1.13.3 + Gazebo Classic 11**，`make px4_sitl gazebo_iris` |
 | 0.5 | MAVROS 启动卡死报 EGM96 | 装包后必跑 `install_geographiclib_datasets.sh`（§2） |
-| 1 | offboard 切换前无 setpoint stream → 拒切 | STREAMING ≥3s（20Hz），先 ARM 再 set_mode |
+| 1 | offboard 切换前无 setpoint stream → 拒切 | STREAMING ≥3s（20Hz）流线程贯穿全程；**OFFBOARD 先于 ARM**（实测修正，见 §5.2） |
 | 2.5 | type_mask 只控单轴 → EKF 拒收 | 整组设置（§4.2 常量位或，=2552） |
+| **8（实测新增）** | **无人机爬升受限 ~0.4m**（setpoint=EKF+0.075 恒定、thrust 悬停化） | PX4 高度控制调参：MPC_Z_VEL_MAX/MPC_Z_P/MPC_ACC_*、MC_HOVER_THR 悬停油门估计与 gazebo 模型匹配；若仍异常查 mc_pos_control z 方向符号（S8.3b） |
+| **9（实测新增）** | COM_RC_IN_MODE=1 不匹配 rc_update 输出（SOURCE_RC）→ RC 从未有效 → offboard 被 RC-lost failsafe 覆盖 | **必须 COM_RC_IN_MODE=3**（first_valid）+ 虚拟 RC（§5.2 三坑） |
 | 2 | python3-mavlink apt 不提供 | pip `pymavlink` |
 | **3（新）** | **NED/ENU 变换错配（z 反向撞地）** | 单点收敛 + S8.2 双端对照验证 |
 | **4（新）** | PX4 源码 clone/编译慢（v1.13.3 递归子模块 1GB+） | 仓库外 `$HOME/PX4-Autopilot`，首次编译 15~30min 一次性成本 |
@@ -248,7 +260,10 @@ class Phase2Adapter(SetpointAdapter):     # 新增, 见下
 | State 模式名 | 本机 `State.msg` | ✅ `OFFBOARD` / `AUTO.LAND` / `POSCTL` | §4.1/§5.3 |
 | arming/set_mode 服务 | 本机 `mavros_msgs/srv/` | ✅ `CommandBool.srv`（/mavros/cmd/arming）、`SetMode.srv`（/mavros/set_mode） | §4.1 |
 | px4.launch fcu_url | 本机 `/opt/ros/noetic/share/mavros/launch/px4.launch` | ✅ 默认 `/dev/ttyACM0:57600`；SITL 覆盖 `udp://:14540@127.0.0.1:14557` | §3 |
-| PX4 SITL 跑法 | 2026-08-02 版本锁定 | ✅ `make px4_sitl gazebo-classic_iris`（HEADLESS=1）；jmavsim 备选 | §2/§3 |
-| EGM96 | 官方安装脚本 | ⬜ 待装（`install_geographiclib_datasets.sh`） | §2 |
-| pymavlink | apt 核实 | ⬜ pip 待装（apt 不提供） | §2 |
-| PX4 v1.13.3 源码 | — | ⬜ 待 clone（`--recursive -b v1.13.3`） | §2 |
+| PX4 SITL 跑法 | 2026-08-02 版本锁定 + 2026-08-03 实测 | ✅ `make px4_sitl gazebo_iris`（v1.13.3 的 target 名，**非** gazebo-classic_iris——那是 v1.14+ 命名）；HEADLESS=1 无头 + `tail -f /dev/null \|` 保活 stdin（否则 pxh 读到 EOF 退出）；依赖：kconfiglib/menuconfig（pip）、future、libgstreamer1.0-dev、build/mavlink 头生成、sitl_gazebo configure 缓存（改源后需清 stamp） | §2/§3 |
+| EGM96 | 官方安装脚本 | ✅ 已装（2026-08-02） | §2 |
+| pymavlink | pip | ✅ 已装 venv-B（2026-08-02） | §2 |
+| PX4 v1.13.3 源码 | clone 实测 | ✅ 已 clone `$HOME/PX4-Autopilot`（--recursive -b v1.13.3，19 子模块）+ 编译成功（2026-08-03） | §2 |
+| offboard 状态机顺序 | 实测 | ✅ **OFFBOARD 先于 ARM**（官方例程序，避开 manual control 检查） | §5.2 |
+| 虚拟 RC 必需性 | 实测 | ✅ SITL 无 RC → preArm 拒（"manual control lost"）；COM_RC_IN_MODE=3 + 18 通道中性微抖 override（三坑详见 §5.2） | §5.2 |
+| 爬升受限 | 实测（遗留） | ⚠️ 无人机爬升至 ~0.4m 受限（setpoint=EKF+0.075、thrust 悬停化）→ PX4 高度控制调参项（S8.3b） | §8/§9 |
