@@ -6,6 +6,7 @@
 #===========================================================
 set -e
 PROJ=$(cd "$(dirname "$0")" && pwd)
+export PROJ   # 供 mavros_px4.launch 的 $(env PROJ) 展开 (config_yaml 指向项目内配置)
 PX4_DIR=${PX4_DIR:-$HOME/PX4-Autopilot}
 export ROS_MASTER_URI=http://localhost:11311
 export ROS_IP=127.0.0.1
@@ -52,8 +53,12 @@ done
 ss -uln 2>/dev/null | grep -q ":14580 " && echo "  ✅ PX4 SITL OK (PID=$PX4_PID)" || { echo "  ⚠️ SITL 未在 90s 内就绪, 查看: tail -50 /tmp/px4-sitl.log"; }
 
 # [3/5] MAVROS
-echo "[3/5] 启动 MAVROS (fcu_url=udp://:14540@127.0.0.1:14557)..."
-nohup roslaunch mavros px4.launch fcu_url:=udp://:14540@127.0.0.1:14557 &>/tmp/mavros.log &
+# _conn/timesync_rate:=0.0 + _time/timesync_mode:=NONE — 禁用 sys_time 插件的
+# TIMESYNC 收发 (2026-08-03 实测): mavros 主动 10Hz 发 TIMESYNC → PX4 必回 →
+# WSL2 时钟校正致 offset 突变 → "TM : Time jump detected" 每 ~45s 一次。
+# NONE 模式下消息时间戳回落 ROS 本地时间 (B 侧本就走 wall time, 无影响)。
+echo "[3/5] 启动 MAVROS (fcu_url=udp://:14540@127.0.0.1:14557, timesync disabled)..."
+nohup roslaunch "$PROJ/mavros_px4.launch" fcu_url:=udp://:14540@127.0.0.1:14557 &>/tmp/mavros.log &
 MAVROS_PID=$!
 for i in $(seq 1 20); do
     sleep 1
@@ -73,6 +78,11 @@ for i in $(seq 1 30); do
     sleep 1
 done
 grep -q "home set" /tmp/px4-sitl.log 2>/dev/null || sleep 5
+# 2026-08-03 实测补强: local_position 首条消息 ≠ EKF 已收敛 — SITL 刚启动 ~15s 即
+# preflight 时 EKF 估计漂移 → 无人机追踪漂移估计飞出 ~13m (gz 模型位置实证)。
+# 固定加 30s 收敛窗口 (S8 手动验证时 SITL 均运行 >2min, 从未漂移)。
+echo "  EKF 收敛窗口 30s..."
+sleep 30
 echo "  ✅ EKF OK"
 
 # [4/5] Backend B (PHASE=2)
@@ -86,6 +96,11 @@ grep -q "READY" /tmp/backend-b.log 2>/dev/null || { echo "  ⚠️ Backend B 未
 echo "  ✅ Backend B OK (PID=$B_PID)"
 
 # [5/5] Backend A
+# .env 有 DEEPSEEK_API_KEY 等 (gitignore 不入库); run_a.py 无 dotenv 加载,
+# 必须在此 source 进环境 (否则 α/β degraded, 2026-08-03 实测)
+if [ -f "$PROJ/.env" ]; then
+    set -a; source "$PROJ/.env"; set +a
+fi
 echo "[5/5] 启动 Backend A..."
 cd "$PROJ"   # run_a.py create_app('config') 用相对路径, 必须在项目根启动
 A_PORT=${BACKEND_A_PORT:-8000}

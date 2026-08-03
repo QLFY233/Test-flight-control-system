@@ -17,6 +17,15 @@
 > ⑧ 残留：mavros Time jump 警告（SITL 时间同步, 不影响功能）
 > 提交：S8 遗留闭环 commit
 
+> **2026-08-03 21:50 (mavros Time jump 修复 + 新遗留: SITL GPS fix=0 长悬停漂移)**:
+> ① **Time jump 根因（源码级定位）**：警告在 mavros 1.20.1 **sys_time 插件**（非 time_sync——1.20.1 无此插件，此前 blacklist 无效）；mavros 主动 10Hz 发 TIMESYNC → PX4 必回 → WSL2 时钟校正致 offset 偏差 >100ms → 连续 5 次高偏差 → reset filter + 警告（~45s 一次）
+> ② **修复**：项目内 `mavros_px4_config.yaml`（复制系统 px4_config.yaml）+ `mavros_px4.launch`（复制 px4.launch，config_yaml 指向项目）——`time/max_consecutive_high_deviation: 100`（单次校正偏差不重置 filter，警告消失，timesync 功能保留）；start_px4_sitl.sh 改用 `roslaunch mavros_px4.launch` + export PROJ（$(env PROJ) 展开）
+> ③ **对照实验**：timesync 完全禁用（rate=0+NONE）虽消除警告，但**实测致无人机漂移 9~13m**（SITL 刚启动 15s 即 preflight + EKF 未收敛；两次复现）→ 回退禁用方案，保留 timesync + 容忍参数
+> ④ **验证**：重启后 mavros 日志 **Time jump 0 次**（10+ 分钟，此前 ~45s/次）✓；无人机原点稳定（对照实验证明禁用是漂移变量）
+> ⑤ **新遗留（非本次修复引入，S8 期间即存在但短时飞行无感）**：SITL GPS fix=0（/mavros/global_position/raw/fix status=0，sensor_gps_sim 的 SIM_GPS_USED 参数 get/set 均失败）→ EKF 纯惯导 → 长时间 offboard 悬停位置估计慢漂（~14m/6min）。S8 短时飞行（起飞/悬停 6s/落地）不受影响。后续排查方向：sensor_gps_sim 模块启动/参数注册（v1.13.3 rcS 无 start 行）、eeprom 参数持久化。**使用建议：避免长时间 offboard 悬停，飞行任务短时执行**
+> ⑥ 顺手修复：start_px4_sitl.sh A 启动前 source .env（否则 LLM degraded）；EKF 收敛窗口 +30s（防 SITL 刚启动即 preflight）；patch_px4_rcs.sh v3（px4-rc.mavlink 注入 TIMESYNC 断流——保留，与 mavros 主动询问互补）
+> 提交：Time jump 修复 commit
+
 > **2026-08-03 16:00 (阶段M S8 全项验收 — 并行开发 + 实飞验证)**:
 > ① 并行开发（3 worker + worktree 隔离）：S8.4 land→AUTO.LAND（component.py set_land_handler + 锁外触发，test_s8_land 29/29）、S8.6/S8.8（adapter.py set_event_sender/_send_alert + offboard 重切 2 次重试 + preflight 拒绝 alert，test_s8_safety 27/27）；新测试并入 test_all.py（exec_module 合并计数）→ **B 134/134 + A 56/56**
 > ② 修复 run_b.py（实际入口）未接线：补 set_event_sender + set_land_handler（并行任务只改了 lifecycle.py，实跑路径漏接——S8.4 首轮实飞 land 走 stub 下压即此因）；过时注释同步
