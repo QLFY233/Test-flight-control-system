@@ -296,7 +296,7 @@ except ImportError as e:
 # 独立模块 (test_s8_land.py / test_s8_safety.py), exec_module 执行并合并计数;
 # 子模块自带 summary + sys.exit(0/1), 此处捕获 SystemExit 并入主流程。
 import importlib.util as _ilu
-for _s8_mod in ("test_s8_land", "test_s8_safety"):
+for _s8_mod in ("test_s8_land", "test_s8_safety", "test_s8_monitor_px4"):
     _s8_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), _s8_mod + ".py")
     _s8_spec = _ilu.spec_from_file_location(_s8_mod, _s8_file)
     _s8_m = _ilu.module_from_spec(_s8_spec)

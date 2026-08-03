@@ -15,7 +15,7 @@ class ThresholdDetector(Detector):
 
     name = "threshold"
 
-    def __init__(self, field: dict, constraints: dict):
+    def __init__(self, field: dict, constraints: dict, boundary_margin: float = 0.5):
         self._field = field
         g = constraints.get("global", {})
         self._speed_max = g.get("speed_max", 1.5)
@@ -28,6 +28,11 @@ class ThresholdDetector(Detector):
         self._bx = b.get("x", [0, 5])
         self._by = b.get("y", [0, 4])
         self._bz = b.get("z", [0, 3])
+        # 软告警边界容差 (PX4 适配 2026-08-03): PX4 home 位于 Gazebo 原点 =
+        # field boundary 角点, 悬停/噪声使坐标轻微负值 → out_of_boundary 常亮
+        # 误报。软告警 (不终止飞行) 容忍 margin 内越界, 硬夹紧仍由 small_model
+        # stub 按原 boundary 执行 (零改动)。
+        self._boundary_margin = boundary_margin
 
     def update(self, sample: dict) -> list[dict]:
         alerts = []
@@ -64,7 +69,8 @@ class ThresholdDetector(Detector):
                 "ts": ts, "action_index": action_idx,
             })
         # B-5: z≤1cm 视为停机坪常态 (起飞前/降落在地面), 不报 floor_breach
-        if z < self._floor and z > 0.01:
+        # PX4 适配 (2026-08-03): SITL 地面 z 噪声到 ~3cm, 豁免提到 5cm
+        if z < self._floor and z > 0.05:
             alerts.append({
                 "level": "warning",
                 "code": "floor_breach",
@@ -92,13 +98,15 @@ class ThresholdDetector(Detector):
                 "ts": ts, "action_index": action_idx,
             })
 
-        # 位置超 boundary (软告警 — 不终止飞行)
+        # 位置超 boundary (软告警 — 不终止飞行; margin 内容忍, 见 __init__ 注释)
         x, y = pos[0], pos[1]
-        if not (self._bx[0] <= x <= self._bx[1] and self._by[0] <= y <= self._by[1]):
+        m = self._boundary_margin
+        if not (self._bx[0] - m <= x <= self._bx[1] + m
+                and self._by[0] - m <= y <= self._by[1] + m):
             alerts.append({
                 "level": "warning",
                 "code": "out_of_boundary",
-                "detail": f"位置 ({x:.2f}, {y:.2f}) 超出场地边界",
+                "detail": f"位置 ({x:.2f}, {y:.2f}) 超出场地边界 (margin {m:.1f}m)",
                 "ts": ts, "action_index": action_idx,
             })
 

@@ -29,6 +29,13 @@ class MonitorComponent:
         # 节流: code → 上次上告时间
         self._throttle: dict[str, float] = {}
         self._throttle_interval = 2.0  # 同 code 2s 内只上告一次
+        # 运动加速度 (速度导数) 差分状态 — PX4 适配 (2026-08-03):
+        # mavros imu/data 的 linear_acceleration 是含重力的传感器原始值 (≈9.81),
+        # 直接检测会 overaccel 常亮误报。与 sim-drone 语义一致改为运动加速度
+        # = 速度导数 (悬停/匀速 = 0, 加速/机动 = 真实加速度)。
+        self._prev_vel: list | None = None
+        self._prev_vel_ts: float = 0.0
+        self._accel_smooth: list | None = None
 
     def set_event_sender(self, sender):
         self._send_event = sender
@@ -57,6 +64,38 @@ class MonitorComponent:
                 logger.error(f"[monitor] tick error: {e}")
             time.sleep(self._period)
 
+    def _motion_accel(self, vel: list) -> list:
+        """运动加速度 = 速度导数 (一阶差分 + 帧级死区 + 低通平滑)。
+
+        PX4 适配 (2026-08-03): mavros IMU linear_acceleration 含重力 (≈9.81 m/s²),
+        monitor 的 overaccel 检测应使用运动加速度 (悬停/匀速 = 0) — 与 sim-drone
+        (fake_drone_node.py 同款语义) 对齐, 消除含重力误报。
+        首帧返回 0; 全轴速度变化 < 0.05 m/s (悬停/匀速) 清零; 低通 alpha=0.5。
+        """
+        now = time.time()
+        if self._prev_vel is None or now <= self._prev_vel_ts:
+            self._prev_vel = list(vel)
+            self._prev_vel_ts = now
+            return [0.0, 0.0, 0.0]
+        dt = now - self._prev_vel_ts
+        if dt <= 0:
+            return [0.0, 0.0, 0.0]
+        # 帧级死区: 全部轴速度变化 < 0.05 m/s 视为静止/匀速 (SITL 悬停噪声
+        # ±0.03 m/s, tick 0.1s) — 直接清零且不残留平滑历史, 悬停/匀速恒 0
+        if all(abs(v - v0) < 0.05 for v, v0 in zip(vel, self._prev_vel)):
+            self._prev_vel = list(vel)
+            self._prev_vel_ts = now
+            self._accel_smooth = [0.0, 0.0, 0.0]
+            return [0.0, 0.0, 0.0]
+        acc = [(v - v0) / dt for v, v0 in zip(vel, self._prev_vel)]
+        self._prev_vel = list(vel)
+        self._prev_vel_ts = now
+        if self._accel_smooth is None:
+            self._accel_smooth = acc
+        else:
+            self._accel_smooth = [0.5 * a + 0.5 * s for a, s in zip(acc, self._accel_smooth)]
+        return self._accel_smooth
+
     def _tick(self):
         """单次 tick: 构建 sample → 跑所有检测器 → 聚合 alert → 上行。"""
         # 构建遥测样本
@@ -65,7 +104,8 @@ class MonitorComponent:
             sample = {
                 "pos": p.pos[:],
                 "vel": p.vel[:],
-                "accel": p.accel[:],
+                # PX4 适配: 运动加速度 = 速度导数 (IMU 原始值含重力, 见 _motion_accel)
+                "accel": self._motion_accel(p.vel[:]),
                 "angular_vel": p.angular_vel[:],
                 "ts": time.time(),
                 "last_data_ts": self._state.last_data_ts,

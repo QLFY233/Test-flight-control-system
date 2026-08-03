@@ -107,7 +107,12 @@ class StubGoalGenerator(GoalGenerator):
             out_yaw = math.radians(value) if action.get("units") == "deg" else value
 
         elif code == ACTION_CODE_HOVER:
-            goal = list(cur)
+            # PX4 适配 (2026-08-03): 原实现直接取当前位置不夹紧 — 终检 (B-15)
+            # 发现 cur 在界外 (PX4 home 贴 boundary 角点, 悬停 y 微负) 即 reject
+            # (LLM 翻译 [takeoff, hover] 实测 reject: out_of_boundary_after_clamp)。
+            # 与其他动作一致走夹紧: 界外悬停 → 回界内目标 (比 reject 安全)。
+            goal = list(_clamp_point(cur[0], cur[1], cur[2], b))
+            goal[2] = _clamp(goal[2], floor, ceiling)
             out_yaw = yaw
 
         elif code == ACTION_CODE_RETURN_HOME:

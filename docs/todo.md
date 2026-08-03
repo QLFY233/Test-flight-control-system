@@ -4,7 +4,18 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-03 16:00 (阶段M S8 全项验收完成 — 并行开发 + 实飞验证)
+最近更新：2026-08-03 17:10 (阶段M S8 遗留闭环 — monitor PX4 适配 + LLM 真 key 全链路)
+
+> **2026-08-03 17:10 (S8 遗留闭环 — monitor PX4 适配 + LLM 真 key)**:
+> ① DEEPSEEK_API_KEY 更新至 .env（本地保存, gitignore 不入库）；A 以 `set -a; source .env` 启动（代码无 dotenv 加载, key 走环境变量）
+> ② **overaccel 误报消除**：mavros IMU linear_acceleration 含重力 ≈9.81 → monitor 运动加速度 = 速度导数（帧级死区 0.05 m/s + 低通 0.5），与 sim-drone 语义一致（悬停/匀速=0，真实加速才报）
+> ③ **out_of_boundary 误报消除**：PX4 home 贴 boundary 角点 → ThresholdDetector 软告警加 margin（默认 0.5m，可配）；真实越界（落地漂移 y=-0.75）仍正确报警（margin 外）
+> ④ **floor_breach 地面噪声豁免**：SITL 地面 z 噪声 ~3cm → 豁免 1cm→5cm
+> ⑤ **hover 越界 reject 修复**：stub HOVER 分支原来不夹紧（其余动作都夹）→ 终检 reject（LLM 翻译 [takeoff,hover] 实测 out_of_boundary_after_clamp）；改为与其他动作一致走夹紧（界外悬停 → 回界内目标）
+> ⑥ **LLM 真实全链路实证（新 key）**：β 对话「起飞到1米」→ 真实 LLM 提议(pending) → approve → α 翻译 2 actions [takeoff,hover]（3s）→ 起飞 z=+0.87；「回到起飞点悬停」→ 免审直转 α → return_home 回 (0.12,-0.16,0.54) + hover 夹紧执行（不再 reject）
+> ⑦ 测试：新增 test_s8_monitor_px4.py（18 用例：margin/floor 豁免/导数/集成/hover 夹紧）并入 test_all → **B 152/152 + A 56/56**；实机验证 monitor 悬停静默（0 误报）
+> ⑧ 残留：mavros Time jump 警告（SITL 时间同步, 不影响功能）
+> 提交：S8 遗留闭环 commit
 
 > **2026-08-03 16:00 (阶段M S8 全项验收 — 并行开发 + 实飞验证)**:
 > ① 并行开发（3 worker + worktree 隔离）：S8.4 land→AUTO.LAND（component.py set_land_handler + 锁外触发，test_s8_land 29/29）、S8.6/S8.8（adapter.py set_event_sender/_send_alert + offboard 重切 2 次重试 + preflight 拒绝 alert，test_s8_safety 27/27）；新测试并入 test_all.py（exec_module 合并计数）→ **B 134/134 + A 56/56**
@@ -15,6 +26,7 @@
 > ⑥ **S8.5 REST 回测**：A 侧 `POST /api/sessions/{id}/abort` → `{"status":"aborted"}` → B `emergency_land: AUTO.LAND` 全链路闭环
 > ⑦ 环境：A 跑 8001（8000 被 XDAgent 占）；DEEPSEEK_API_KEY 未设（LLM 链路以 mini-A 注入验证，α 翻译链此前已验）；全链路已恢复（A+B+PX4 SITL 运行中）
 > ⑧ 遗留（非 S8 验收项）：monitor overaccel/out_of_boundary 误报（PX4 IMU linear_acceleration 含重力 → overaccel 常亮；boundary 对噪声敏感）——待后续按 sim-drone 同法（运动加速度=速度导数）适配 PX4；mavros Time jump 警告（SITL 时间同步，不影响功能）
+> ✅ 遗留已闭环（2026-08-03 17:10）：monitor 运动加速度=速度导数 + boundary margin 0.5m + floor 豁免 5cm；stub hover 夹紧修复；LLM 真 key 全链路实证。残留：mavros Time jump 警告（不影响功能）
 > 提交：S8.4/S8.6/S8.8 代码 + run_b 接线 + 测试 + spec §8 同步
 
 > **2026-08-03 14:40 (阶段M S8.3b 解决 + 启动脚本收尾)**:
