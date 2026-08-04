@@ -15,8 +15,6 @@ class Scene3D {
         this.controls = null;
         this.droneMesh = null;
         this.altLine = null;
-        this.homeMesh = null;
-        this.boundaryBox = null;
         this.floorMesh = null;
         this.trailLine = null;        // 绿色飞行轨迹线
         this._trailPts = [];          // 轨迹点缓冲
@@ -86,11 +84,9 @@ class Scene3D {
         // --- Build scene ---
         this._buildSky();
         this._buildFloor();
-        this._buildBoundary();
         this._buildHome();
         this._buildDrone();
         this._buildTrail();
-        this._buildAxes();
 
         // --- Subscribe to pose updates ---
         this._updateUnsub = store.subscribe('drone', () => this._updateDrone());
@@ -186,39 +182,10 @@ class Scene3D {
         this.scene.add(this.floorMesh);
     }
 
-    _buildBoundary() {
-        const b = this._boundary();
-
-        // Clear old
-        if (this.boundaryBox) { this.scene.remove(this.boundaryBox); this.boundaryBox = null; }
-
-        // ENU → Three.js: x→x(东), z→y(高), y→z(北)
-        const geo = new THREE.BoxGeometry(
-            b.xMax - b.xMin, b.zMax - b.zMin, b.yMax - b.yMin
-        );
-        const edges = new THREE.EdgesGeometry(geo);
-        const mat = new THREE.LineBasicMaterial({ color: 0x00BCD4, transparent: true, opacity: 0.4 });
-        this.boundaryBox = new THREE.LineSegments(edges, mat);
-        this.boundaryBox.position.set(
-            (b.xMin + b.xMax) / 2,
-            (b.zMin + b.zMax) / 2,
-            (b.yMin + b.yMax) / 2
-        );
-        this.scene.add(this.boundaryBox);
-    }
-
     _buildHome() {
         const home = this._home();
 
-        // Diamond shape (home marker) — ENU: x→x, z→y(高), y→z
-        const geo = new THREE.ConeGeometry(0.3, 0.6, 4);
-        const mat = new THREE.MeshBasicMaterial({ color: 0x4CAF50 });
-        this.homeMesh = new THREE.Mesh(geo, mat);
-        this.homeMesh.rotation.x = Math.PI;
-        this.homeMesh.position.set(home.x, home.z + 0.3, home.y);
-        this.scene.add(this.homeMesh);
-
-        // Label (simple sprite)
+        // HOME 文字标签 (sprite) — 无锥体箭头 (2026-08-04)
         const canvas = document.createElement('canvas');
         canvas.width = 128; canvas.height = 32;
         const ctx = canvas.getContext('2d');
@@ -277,11 +244,6 @@ class Scene3D {
         this.trailLine = new THREE.Line(geo, mat);
         this.trailLine.frustumCulled = false;
         this.scene.add(this.trailLine);
-    }
-
-    _buildAxes() {
-        const axes = new THREE.AxesHelper(3);
-        this.scene.add(axes);
     }
 
     _updateDrone() {
@@ -343,8 +305,6 @@ class Scene3D {
     _updateField() {
         if (this.floorMesh) { this.scene.remove(this.floorMesh); this.floorMesh = null; }
         this._buildFloor();
-        this._buildBoundary();
-        if (this.homeMesh) { this.scene.remove(this.homeMesh); this.homeMesh = null; }
         this._buildHome();
     }
 
