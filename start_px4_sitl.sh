@@ -85,6 +85,14 @@ echo "  EKF 收敛窗口 30s..."
 sleep 30
 echo "  ✅ EKF OK"
 
+	# PX4 SITL 重启后 COM_RC_IN_MODE 可能被旧持久化参数覆盖为 1，
+	# 导致 RC-lost failsafe 反复激活 → offboard 被拒。启动 B 前确保参数正确。
+	echo "  检查 PX4 RC/offboard 参数..."
+	rosrun mavros mavparam set COM_RC_IN_MODE 3 2>/dev/null || true
+	rosrun mavros mavparam set NAV_RCL_ACT 1 2>/dev/null || true
+	rosrun mavros mavparam set COM_OBL_ACT 0 2>/dev/null || true
+	echo "  ✅ RC/offboard 参数已确认"
+
 # [4/5] Backend B (PHASE=2)
 echo "[4/5] 启动 Backend B (PHASE=2)..."
 cd "$PROJ"   # run_b.py 虽自 chdir, 统一起始目录防日志/相对路径意外

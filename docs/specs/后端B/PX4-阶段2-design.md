@@ -269,3 +269,65 @@ class Phase2Adapter(SetpointAdapter):     # 新增, 见下
 | offboard 状态机顺序 | 实测 | ✅ **OFFBOARD 先于 ARM**（官方例程序，避开 manual control 检查） | §5.2 |
 | 虚拟 RC 必需性 | 实测 | ✅ SITL 无 RC → preArm 拒（"manual control lost"）；COM_RC_IN_MODE=3 + 18 通道中性微抖 override（三坑详见 §5.2） | §5.2 |
 | 爬升受限 | 实测（遗留→已解决） | ✅ 根因：mavros setpoint_raw 双重 ENU→NED（§4.3 修正 + S8.3b，实飞验证：takeoff 爬升 1.0m×4、悬停漂移 ≤0.04m、abort→AUTO.LAND 2s 落地） | §8/§9 |
+| **Gazebo GUI 渲染（WSL2）** | 实测（2026-08-04） | ❌ **不可用**：gzclient 黑屏/卡死（WSLg D3D12 翻译层）、VcXsrv Native OpenGL 依然卡死、`LIBGL_ALWAYS_INDIRECT=1` segfault。OGRE 1.9 需直接 OpenGL 上下文，WSL2 全间接。**物理仿真无头不受影响** → 3D 可视化改前端 Scene3D | §11 |
+
+---
+
+## 11. Gazebo GUI 在 WSL2 不可用 — 前端 3D 视图替代（2026-08-04）
+
+### 11.1 问题现象与根因
+
+| 尝试 | 结果 |
+|---|---|
+| WSLg（Mesa D3D12 翻译层）`gzclient` | 黑屏 / 卡死 / 无法交互 |
+| VcXsrv（X Server）`DISPLAY=localhost:0.0` | 窗口打开但无法渲染（卡死） |
+| VcXsrv + Native OpenGL | 依然无法正常渲染 |
+| `LIBGL_ALWAYS_INDIRECT=1` + VcXsrv | `Segmentation fault` |
+
+**根因**: Gazebo Classic 使用 OGRE 1.9 渲染引擎，需要**直接创建 OpenGL 上下文**。WSL2 下所有 OpenGL 均为间接形式（WSLg 的 Mesa D3D12 翻译层、X Server 的 GLX 转发），OGRE 无法获得所需像素格式与渲染上下文。
+
+**影响边界**: 仅 **GUI 可视化**（gzclient）失效。**物理仿真（gzserver 无头）完全正常** —— PX4 经 TCP 4560 读取仿真传感器数据，全链路（MAVROS → Backend B → IPC → Backend A → WS → 前端）不受影响。S8 实飞验证即全程在无头模式下完成。
+
+### 11.2 替代方案：前端 Scene3D（Three.js）
+
+3D 可视化改由**前端浏览器**承担，用 Three.js/WebGL 渲染，数据来自 Gazebo 物理引擎的实时位姿（经全链路透传）。渲染发生在 Windows 浏览器（原生 WebGL），完全绕开 WSL2 的 OpenGL 间接问题。
+
+**数据链路**:
+
+```
+Gazebo 物理引擎（无头）
+  → PX4 SITL (TCP 4560)
+    → MAVROS (/mavros/local_position/pose)
+      → Backend B (BState)
+        → A↔B IPC (pose event)
+          → Backend A (WS broadcast)
+            → 前端 drone.position → Scene3D (WebGL)
+```
+
+**前端 3D 视图内容**:
+- 地面网格 + 场地边界线框（boundary box）
+- HOME 标记 + 无人机模型 + 高度参考线
+- 鼠标拖拽旋转 / 滚轮缩放（OrbitControls）
+- 与场地俯视图（FieldMap2D）通过视图选择器切换（前端 spec §6.9）
+
+**坐标系**: BState/A/前端保持 ENU（x东 y北 z上）；Scene3D 内部映射 ENU → Three.js（x→x, z→y上, y→z北），见 [前端详细设计 §7](../前端/前端详细设计-组件接口定义.md)。
+
+### 11.3 与 Gazebo GUI 对比
+
+| | Gazebo GUI（gzclient） | 前端 Scene3D |
+|---|---|---|
+| WSL2 渲染 | ❌ OGRE 无法创建 GL 上下文 | ✅ 浏览器 WebGL 原生 |
+| 远程访问 | ❌ 需本地 X/WSLg | ✅ 内网 HTTP 即可 |
+| 数据叠加 | ❌ 原始世界 | ✅ 场地边界/HOME/高度线 |
+| 集成 | ❌ 独立窗口 | ✅ 与 β 对话/计划审批同页面 |
+| 物理仿真 | 无头 gzserver 正常工作 | 依赖 gzserver（数据源） |
+
+**结论**: 无头 gzserver 提供物理仿真，前端 Scene3D 提供 3D 可视化。两者配合完全替代 Gazebo GUI。
+
+### 11.4 环境恢复备注（2026-08-04 已解决）
+
+恢复 PX4 SITL + Gazebo 过程中修复的系统问题（均有留档，供后续排查参考）：
+- apt 源混入 jammy 导致 glibc/Qt5 版本错位 → 删除 jammy 源，Qt5 降回 focal 5.12
+- PX4 编译依赖：kconfiglib/future（pip）、GStreamer/Qt5 插件跳过（`BUILD_GSTREAMER_PLUGIN=OFF` + 相机插件条件编译）、Boost 1.71 + glibc 2.35 `PTHREAD_STACK_MIN` 兼容（`px4_boost_compat.h` `-include`）
+- COM_RC_IN_MODE 被持久化参数覆盖 → `start_px4_sitl.sh` 在 MAVROS 就绪后 `mavparam set` 强制 3/1/0
+- MAVROS/EGM96 重装，venv-A 重建

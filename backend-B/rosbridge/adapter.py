@@ -181,6 +181,8 @@ class Phase2Adapter(SetpointAdapter):
         self._offboard_lost_at = None     # 非主动切出 OFFBOARD 的时刻
         self._offboard_retries = 0        # offboard 重切连续失败次数 (S8.6: 2 次后应急降落)
         self._emergency = False           # 已触发应急降落
+        self._setpoint_z = 0.0            # 最近一次下发 setpoint 的 z (重新起飞判定用)
+        self._rearm_cooldown = 0.0        # 重新武装冷却 (防 20Hz 反复触发)
         self._send_event = None           # alert 事件上行回调 (dispatch.send_event)
 
         self._state_sub = rospy.Subscriber(
@@ -266,6 +268,7 @@ class Phase2Adapter(SetpointAdapter):
         msg.position = Point(x=pos[0], y=pos[1], z=pos[2])
         msg.yaw = yaw
         self._setpoint_pub.publish(msg)
+        self._setpoint_z = pos[2]
 
         # STREAMING 计数 (ARM 前置条件)
         with self._lock:
@@ -529,6 +532,11 @@ class Phase2Adapter(SetpointAdapter):
         S8.6 时序: 容忍瞬时 (<1s) → 重切 OFFBOARD (mode_sent + mode 确认);
         失败 → alert(critical, offboard_lost) + 计数; 连续失败 2 次 → emergency_land()
         (AUTO.LAND)。应急降落进行中 (_emergency) 不得被 offboard-lost 重切覆盖 (S8.5)。
+
+        2026-08-04 补充 (落地后重新起飞): 飞行计划以 land 结束 → AUTO.LAND → disarm,
+        _emergency 恒 True 会永久阻塞重新武装。现改为: 无人机已落地解锁 (armed=False) 即
+        视为安全, 清除 emergency 状态; 若当前目标 z 高于地面 (起飞类), 重切 OFFBOARD 同时
+        重新 ARM (冷却 5s 防 20Hz 反复触发)。
         """
         s = self._snapshot()
         if s["phase"] != "ACTIVE":
@@ -538,10 +546,16 @@ class Phase2Adapter(SetpointAdapter):
             with self._lock:
                 self._offboard_lost_at = None
                 self._offboard_retries = 0
+            # 落地解锁 + 当前 setpoint 是起飞目标 (z 高于地面) → 重新武装
+            self._maybe_rearm_if_needed(now=time.time())
             return
         with self._lock:
-            # S8.5: 应急降落 (AUTO.LAND) 进行中 — 不得被 offboard-lost 重切覆盖
-            if self._emergency:
+            if self._emergency and not s["armed"]:
+                # 应急降落已完成 (已落地解锁) — 允许重新起飞, 清除 emergency
+                logger.info("[rosbridge] landed & disarmed — clearing emergency, allow re-engage")
+                self._emergency = False
+            elif self._emergency:
+                # S8.5: 应急降落进行中 (仍在空中/仍武装) — 不得被覆盖
                 return
         now = time.time()
         with self._lock:
@@ -552,6 +566,7 @@ class Phase2Adapter(SetpointAdapter):
             return  # 容忍瞬时 (mode 切换抖动)
         logger.warning(f"[rosbridge] offboard lost (mode={s['mode']}), re-engaging...")
         if self._call_mode("OFFBOARD") and self._wait_mode("OFFBOARD", timeout=3.0):
+            self._maybe_rearm_if_needed(now=now)
             with self._lock:
                 self._offboard_lost_at = None
                 self._offboard_retries = 0
@@ -566,6 +581,57 @@ class Phase2Adapter(SetpointAdapter):
         if retries >= 2:
             logger.error("[rosbridge] offboard lost: 2 consecutive re-engage failures — emergency land")
             self.emergency_land()
+
+    def _maybe_rearm_if_needed(self, now):
+        """落地解锁 + 当前 setpoint 为起飞目标 → 重新武装 (冷却 5s)。
+
+        触发时机: 每次 publish_position 检测 (ACTIVE 且 mode=OFFBOARD) 时调用,
+        覆盖"落地后重新连上 OFFBOARD, 但 takeoff 目标稍后才到达"的窗口 (2026-08-04)。
+
+        判定收紧: ① 目标 z ≥ home 高度 (区分降落途中的地面 hold point, 其 z≈0.2);
+        ② 无人机实际位置在地面附近 (z < home 高度 - 0.3), 防止空中误触发。
+        """
+        if self._mav_armed:
+            return
+        # 目标 z 明显高于 home → 是起飞目标 (降落 hold point 在地面, z 低, 不满足)
+        if self._setpoint_z < self._home[2]:
+            return
+        # 无人机需确实在地面附近 (防空中 disarm 误触发)
+        try:
+            cur_z = self._current_pos_yaw()[0][2]
+        except Exception:
+            return
+        if cur_z > self._home[2] - 0.3:
+            return
+        rearm = False
+        with self._lock:
+            if now - self._rearm_cooldown >= 5.0:
+                self._rearm_cooldown = now
+                rearm = True
+        if rearm:
+            self._rearm_after_land()
+
+    def _rearm_after_land(self):
+        """落地解锁后重新武装 (起飞边沿: 先 disarm→arm, 触发 PX4 takeoff 状态机)。
+
+        preflight 中同样的"已武装但落地静止"处理 (S8 实测: 地面已武装无人机对
+        爬升 setpoint 无响应, 需 disarm→arm 边沿)。在后台线程执行, 避免阻塞
+        goal-publisher 的 20Hz setpoint 流 (OFFBOARD 停发可能退出)。
+        """
+        def worker():
+            logger.info("[rosbridge] re-arm after land (disarm→arm takeoff edge)")
+            try:
+                if self._mav_armed:
+                    self._call_arm(False)
+                    time.sleep(1.5)
+                if self._call_arm(True) and self._wait_armed(timeout=3.0):
+                    logger.info("[rosbridge] re-armed for takeoff")
+                else:
+                    logger.warning("[rosbridge] re-arm failed")
+            except Exception as e:
+                logger.error(f"[rosbridge] re-arm error: {e}")
+
+        threading.Thread(target=worker, name="rearm-after-land", daemon=True).start()
 
     # ── 服务调用 ──
     def _call_arm(self, value: bool) -> bool:

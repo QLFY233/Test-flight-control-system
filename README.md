@@ -129,9 +129,9 @@ roslaunch mavros px4.launch fcu_url:="udp://:14540@127.0.0.1:14557"
 - **setpoint 消息**: `mavros_msgs/PositionTarget` (不是 PoseStamped),发到 `/mavros/setpoint_raw/local`
 - **type_mask 位掩码**: 位 0-2=位置,3-5=速度,6-8=加速度,9=force,10=yaw,11=yaw_rate;置 1 = 忽略;**整组设置** (不能只给 x 不给 y/z)
 - **无 GPS 室内**: `param set EKF2_GPS_CTRL 0` + `COM_RCL_EXCEPT 4`,位置源喂 `mavros/vision_pose/pose`
-- **WSL2 Gazebo**: Classic 11 在 WSLg 可用 (OpenGL 3.x 够);Gz-Sim/Harmonic 不可用 (需 GL 4.2+)
+- **WSL2 Gazebo**: Classic 11 的 **GUI(gzclient)不可用**——OGRE 1.9 需直接 OpenGL 上下文,WSL2 全间接(WSLg/VcXsrv 均失败,黑屏/崩溃/segfault)。**物理仿真(gzserver 无头)正常**;3D 可视化用**前端 Three.js Scene3D**(浏览器 WebGL,实时渲染仿真位姿),见 [前端详细设计 §7](docs/specs/前端/前端详细设计-组件接口定义.md)。Gz-Sim/Harmonic 也不可用 (需 GL 4.2+)
 
-详见 `docs/specs/后端B/PX4-阶段2-design.md` (待建)。
+详见 `docs/specs/后端B/PX4-阶段2-design.md`（阶段2 完整设计，含 S8 验收与 Gazebo GUI 限制 §11）。
 
 ## 一键启动
 

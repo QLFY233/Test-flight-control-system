@@ -64,10 +64,18 @@ class FieldMap2D {
         if (!this.chart || this.chart.isDisposed()) return;
 
         const field = store.get('field');
-        const boundary = field?.boundary || { xMin: -50, xMax: 50, yMin: -50, yMax: 50 };
+        const rawB = field?.boundary;
+        // 兼容 {x:[min,max],y:[min,max],z:[min,max]} 与旧 {xMin,xMax,...} 两种格式
+        const boundary = (rawB && Array.isArray(rawB.x))
+            ? { xMin: rawB.x[0], xMax: rawB.x[1], yMin: rawB.y[0], yMax: rawB.y[1], zMin: rawB.z[0], zMax: rawB.z[1] }
+            : (rawB || { xMin: -50, xMax: 50, yMin: -50, yMax: 50 });
         // obstacles 预编已废弃 (schema_version=2, 阶段2/4 改雷达在线感知); 保留兼容但不作为主要渲染
         const obstacles = field?.obstacles || [];
-        const home = field?.home;
+        // HOME 兼容 {position:[x,y,z]} 与旧 {x,y,z} 两种格式
+        const rawHome = field?.home;
+        const home = (rawHome && Array.isArray(rawHome.position))
+            ? { x: rawHome.position[0], y: rawHome.position[1], z: rawHome.position[2], yaw: rawHome.yaw || 0 }
+            : (rawHome || null);
 
         // Build series for each obstacle (as scatter or custom)
         const obstacleSeries = obstacles.map((obs, i) => {

@@ -8,6 +8,7 @@ import { AltitudeChart } from '../charts/AltitudeChart.js';
 import { VelocityChart } from '../charts/VelocityChart.js';
 import { FieldMap2D } from '../charts/FieldMap2D.js';
 import { HistoryChart } from '../charts/HistoryChart.js';
+import { Scene3D } from '../charts/Scene3D.js';
 import store from '../state.js';
 
 class ViewPanel {
@@ -32,12 +33,13 @@ class ViewPanel {
         wrapper.className = 'view-panel';
         wrapper.style.width = '100%';
         wrapper.style.height = '100%';
-        wrapper.draggable = true;
 
-        // Drag handle / label
+        // Drag handle / label (仅标题栏可拖拽, 避免与 Scene3D OrbitControls 鼠标事件冲突)
         const label = document.createElement('div');
         label.className = 'view-panel__label';
         label.textContent = this._getLabel();
+        label.draggable = true;
+        label.title = '拖动交换视图';
         wrapper.appendChild(label);
 
         const innerContainer = document.createElement('div');
@@ -47,13 +49,13 @@ class ViewPanel {
 
         container.appendChild(wrapper);
 
-        // Drag events (P4: drag-and-drop swap)
-        wrapper.addEventListener('dragstart', (e) => {
+        // Drag events (P4: drag-and-drop swap) — 句柄在标题栏, 落点在整个面板
+        label.addEventListener('dragstart', (e) => {
             e.dataTransfer.setData('text/plain', String(this.slotIndex));
             wrapper.style.opacity = '0.4';
             wrapper.classList.add('view-panel--dragging');
         });
-        wrapper.addEventListener('dragend', () => {
+        label.addEventListener('dragend', () => {
             wrapper.style.opacity = '1';
             wrapper.classList.remove('view-panel--dragging');
             document.querySelectorAll('.view-panel--drop-target').forEach(el => el.classList.remove('view-panel--drop-target'));
@@ -101,6 +103,10 @@ class ViewPanel {
         switch (this.source) {
             case 'video':
                 this.innerComponent = new VideoPanel();
+                this.innerComponent.mount(innerContainer);
+                break;
+            case '3d':
+                this.innerComponent = new Scene3D();
                 this.innerComponent.mount(innerContainer);
                 break;
             case 'chart':
@@ -151,6 +157,7 @@ class ViewPanel {
     _getLabel() {
         switch (this.source) {
             case 'video': return '视频';
+            case '3d': return '3D 视图';
             case 'chart': {
                 const labels = { altitude: '高度图', velocity: '速度图', fieldmap: '场地俯视图', history: '历史回放' };
                 return labels[this.chartType] || '图表';

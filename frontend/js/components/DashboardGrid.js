@@ -73,15 +73,7 @@ class DashboardGrid {
         this.panels.forEach(p => p.unmount());
         this.panels.clear();
         this.panelOrder = [];
-        this.container =     _mountPanels() {
-        this.panels.forEach((panel, id) => {
-            // 与插入侧 escAttr(id) 对称: 查询侧用 CSS.escape, 避免特殊字符导致选择器失效
-            const contentEl = this.container?.querySelector(`#dash-panel-${CSS.escape(id)}`);
-            if (contentEl && contentEl.children.length === 0) {
-                panel.mount(contentEl);
-            }
-        });
-    };
+        this.container = null;
     }
 
     _render() {

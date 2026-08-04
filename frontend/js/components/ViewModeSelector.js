@@ -9,7 +9,7 @@ import bus from '../event-bus.js';
 class ViewModeSelector {
     constructor(container) {
         this.container = container;
-        this.availableSources = ['chart'];
+        this.availableSources = ['chart', '3d'];
         this.maxMode = 2;
     }
 
@@ -95,7 +95,7 @@ class ViewModeSelector {
     }
 
     _sourceLabel(source) {
-        const labels = { 'chart': '图表' };
+        const labels = { 'chart': '图表', '3d': '3D 视图' };
         return labels[source] || source;
     }
 }

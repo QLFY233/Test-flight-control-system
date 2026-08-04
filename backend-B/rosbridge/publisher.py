@@ -111,6 +111,16 @@ class GoalPublisher:
 
     def _publish_hover(self):
         """下发悬停: 捕获一次当前位置后锁定发布 (零恢复力→自由漂移修复)。"""
+        # 2026-08-04: 无人机显著下降到保持点以下 (如"降落"后 z 从 1m→地面) → 重置保持点,
+        # 避免 stale hold_point 让降落后的无人机立刻回飞 (配合 adapter 落地后重新武装)。
+        try:
+            with self._state.pose_lock:
+                cur_pos = self._state._pose.pos[:3]
+        except Exception:
+            cur_pos = None
+        if self._hold_point is not None and cur_pos is not None and cur_pos[2] < self._hold_point[2] - 0.7:
+            logger.info("[goal-publisher] drone descended below hold point — resetting hover hold point")
+            self._hold_point = None
         if self._hold_point is None:
             try:
                 with self._state.pose_lock:

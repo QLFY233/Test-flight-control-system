@@ -519,7 +519,13 @@
     background: rgba(10,10,10,0.75);
     padding: 1px var(--space-2);
     z-index: var(--z-panel);
-    pointer-events: none;
+    /* 2026-08-04: 作为拖拽句柄 (与 Scene3D OrbitControls 解冲突), 需可接收鼠标事件 */
+    pointer-events: auto;
+    cursor: grab;
+    user-select: none;
+}
+.view-panel__label:active {
+    cursor: grabbing;
 }
 
 /* ============================================================

@@ -4,7 +4,17 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-03 17:10 (阶段M S8 遗留闭环 — monitor PX4 适配 + LLM 真 key 全链路)
+最近更新：2026-08-04 (前端 3D 视图重引入 — Gazebo GUI 替代方案)
+
+> **2026-08-04 (前端 3D 视图重引入 — Gazebo GUI 替代)**:
+> ① **问题定位**: WSL2 下 Gazebo Classic GUI(gzclient)完全不可用——WSLg 黑屏/卡死、VcXsrv Native OpenGL 依然卡死、`LIBGL_ALWAYS_INDIRECT=1` segfault。根因: OGRE 1.9 需直接 OpenGL 上下文,WSL2 全间接。**物理仿真(gzserver 无头)不受影响**(S8 实飞全程无头验证)。
+> ② **解决方案**: 前端重新引入 Three.js **Scene3D** 组件(`js/charts/Scene3D.js`,Three.js 0.146.0 CDN),浏览器 WebGL 渲染无人机 3D 场景,数据来自 Gazebo 物理引擎实时位姿(经 PX4→MAVROS→B→IPC→A→WS)。渲染内容: 地面网格 + boundary 线框 + HOME 标记 + 无人机 + 高度参考线 + OrbitControls。
+> ③ **视图切换**: 恢复 ViewModeSelector(`availableSources=['chart','3d']`),β 页面可在**场地俯视图**(FieldMap2D)与 **3D 视图**(Scene3D)间切换;ViewPanel source 枚举 `'chart' | '3d'`;store `ui.viewSources` 同步更新。
+> ④ **坐标系**: ENU → Three.js(x→x东, z→y高, y→z北);yaw 从四元数 `[w,x,y,z]` 计算。
+> ⑤ **实测验证**: 全链路 β→α→small_model→PX4 起飞(z -0.18→0.92m),3D 视图实时跟随仿真数据。
+> ⑥ **环境恢复(顺带)**: 修 jammy 源混入(glibc/Qt5 错位)、PX4 编译依赖(kconfiglib/future/GStreamer/Qt5 跳过/Boost 兼容头)、COM_RC_IN_MODE 持久化覆盖、MAVROS/EGM96 重装、venv-A 重建。`start_px4_sitl.sh` 加 RC/offboard 参数强制确认。
+> ⑦ **文档同步**: 前端详细设计 §6.9/§6.10/§7 + 总体架构 §3.4 + PX4-阶段2-design §11。
+> 提交: 3D 视图重引入 + Gazebo GUI 替代方案 commit
 
 > **2026-08-03 17:10 (S8 遗留闭环 — monitor PX4 适配 + LLM 真 key)**:
 > ① DEEPSEEK_API_KEY 更新至 .env（本地保存, gitignore 不入库）；A 以 `set -a; source .env` 启动（代码无 dotenv 加载, key 走环境变量）
@@ -309,6 +319,7 @@
 | P7 其他页面（HistoryPage 双子 TAB + 发送到 β） | ✅ | — | 2026-07-24 |
 | P8/P9 响应式 + 异常处理 | ✅ | — | 2026-07-24 |
 | **✅ 后端联调完成**: WS/SSE/REST 真实数据接入（2026-08-02 端到端验证：sim-drone→B→IPC→A→WS→前端全链路实测通过，状态栏实时显示无人机位置/连接态，同源自适应 base_url 生效） | ✅ | — | 2026-08-02 |
+| **Scene3D 3D 视图重引入**（Gazebo GUI 替代, Three.js 0.146.0；boundary 线框/地面网格/HOME/无人机/高度线/OrbitControls；与 FieldMap2D 视图切换） | ✅ | — | 2026-08-04 |
 
 ### 阶段K — 安全兜底与 reject 回路
 | 模块 | 状态 | 负责人 | 最近更新 |
@@ -344,6 +355,7 @@
 | PX4 SITL + mavros 1.20.1（新建 `docs/specs/后端B/PX4-阶段2-design.md`） | ✅ | — | 2026-08-03 S8 全项验收完成 |
 | `rosbridge/adapter.py` Phase2Adapter（offboard 状态机 + 双端对照 + alert 上行） | ✅ | — | 2026-08-03 |
 | S8 验收（S8.1~S8.8 全项） | ✅ | — | 2026-08-03 实飞验证 |
+| Gazebo GUI 不可用（WSL2 OGRE/OpenGL）→ 前端 Scene3D 替代（§11） | ✅ | — | 2026-08-04 |
 | ego-planner 桥 + 雷达感知 | ⏳ | — | — |
 | 蒸馏小模型 α 训练（alpha-small/） | ⏳ | — | — |
 | 端侧小模型训练（small-model/ MLP） | ⏳ | — | — |
