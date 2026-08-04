@@ -4,7 +4,19 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-04 (前端 3D 视图重引入 — Gazebo GUI 替代方案)
+最近更新：2026-08-05 (代码审查修复 — 3D 视图键盘守卫/资源清理 + emergency 落地判定)
+
+> **2026-08-05 (代码审查修复 — medium effort, 6 项)**:
+> ① **WASD 键盘劫持修复**: `ui.keyboardInputFocused` 全前端从未写入(死代码) → 改为检查 `e.target.tagName` (INPUT/TEXTAREA/isContentEditable), 输入框聚焦时不再被全局 keydown 吞键 (对齐 SessionCard.js 既有模式)
+> ② **失焦按键锁死修复**: `_keys` Set 增加 `window.blur` 清空处理器, 防止按住松开时丢失 keyup 致相机持续漂移
+> ③ **emergency 落地判定收紧**: `_emergency` 仅在 `armed=False` **且** `_is_grounded()` (ENU z ≤ home-0.3) 时清除 — 空中 disarm 不再误清标志后重切 OFFBOARD (S8.5 保护保留)
+> ④ **spec §7.2 同步**: 移除已删元素 (GridHelper/边界盒/ConeGeometry/AxesHelper) 描述, 对齐实际渲染 (石头地板/HOME 文字/轨迹线/WASD)
+> ⑤ **轨迹缓冲预分配**: `_appendTrailPoint` 改预分配 Float32Array + 滚动窗口 + setDrawRange, 消除每 10Hz tick 重新分配
+> ⑥ **GPU 资源清理**: `_updateField`/`unmount` 调 `_disposeObject` 释放 geometry/material/CanvasTexture
+> 验证: B 152/152 + headless 浏览器无 JS 错误 + 输入框聚焦按 WASD 无异常
+> 提交: 代码审查修复 commit
+
+> **2026-08-04 (前端 3D 视图重引入 — Gazebo GUI 替代)**:
 
 > **2026-08-04 (前端 3D 视图重引入 — Gazebo GUI 替代)**:
 > ① **问题定位**: WSL2 下 Gazebo Classic GUI(gzclient)完全不可用——WSLg 黑屏/卡死、VcXsrv Native OpenGL 依然卡死、`LIBGL_ALWAYS_INDIRECT=1` segfault。根因: OGRE 1.9 需直接 OpenGL 上下文,WSL2 全间接。**物理仿真(gzserver 无头)不受影响**(S8 实飞全程无头验证)。

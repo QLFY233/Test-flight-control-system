@@ -550,12 +550,13 @@ class Phase2Adapter(SetpointAdapter):
             self._maybe_rearm_if_needed(now=time.time())
             return
         with self._lock:
-            if self._emergency and not s["armed"]:
+            if self._emergency and not s["armed"] and self._is_grounded():
                 # 应急降落已完成 (已落地解锁) — 允许重新起飞, 清除 emergency
                 logger.info("[rosbridge] landed & disarmed — clearing emergency, allow re-engage")
                 self._emergency = False
             elif self._emergency:
-                # S8.5: 应急降落进行中 (仍在空中/仍武装) — 不得被覆盖
+                # S8.5: 应急降落进行中 (仍在空中/仍武装) — 不得被覆盖;
+                # 空中解锁不视为落地 (防 emergency 标志被空中 disarm 误清后重切 OFFBOARD)
                 return
         now = time.time()
         with self._lock:
@@ -588,8 +589,7 @@ class Phase2Adapter(SetpointAdapter):
         触发时机: 每次 publish_position 检测 (ACTIVE 且 mode=OFFBOARD) 时调用,
         覆盖"落地后重新连上 OFFBOARD, 但 takeoff 目标稍后才到达"的窗口 (2026-08-04)。
 
-        判定收紧: ① 目标 z ≥ home 高度 (区分降落途中的地面 hold point, 其 z≈0.2);
-        ② 无人机实际位置在地面附近 (z < home 高度 - 0.3), 防止空中误触发。
+        判定: 目标 z ≥ home 高度 (起飞目标) + 无人机实际在地面附近, 防空中误触发。
         """
         if self._mav_armed:
             return
@@ -597,11 +597,7 @@ class Phase2Adapter(SetpointAdapter):
         if self._setpoint_z < self._home[2]:
             return
         # 无人机需确实在地面附近 (防空中 disarm 误触发)
-        try:
-            cur_z = self._current_pos_yaw()[0][2]
-        except Exception:
-            return
-        if cur_z > self._home[2] - 0.3:
+        if not self._is_grounded():
             return
         rearm = False
         with self._lock:
@@ -610,6 +606,14 @@ class Phase2Adapter(SetpointAdapter):
                 rearm = True
         if rearm:
             self._rearm_after_land()
+
+    def _is_grounded(self):
+        """判断无人机实际位置在地面附近 (ENU z < home 高度 - 0.3)。"""
+        try:
+            cur_z = self._current_pos_yaw()[0][2]
+        except Exception:
+            return False
+        return cur_z <= self._home[2] - 0.3
 
     def _rearm_after_land(self):
         """落地解锁后重新武装 (起飞边沿: 先 disarm→arm, 触发 PX4 takeoff 状态机)。

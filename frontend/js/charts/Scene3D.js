@@ -6,6 +6,9 @@
 
 import store from '../state.js';
 
+const MAX_TRAIL_POINTS = 3000;   // 轨迹点缓冲上限 (预分配)
+const MIN_TRAIL_STEP = 0.02;     // 移动超过此距离才记录 (悬停不堆积点)
+
 class Scene3D {
     constructor() {
         this.container = null;
@@ -17,7 +20,6 @@ class Scene3D {
         this.altLine = null;
         this.floorMesh = null;
         this.trailLine = null;        // 绿色飞行轨迹线
-        this._trailPts = [];          // 轨迹点缓冲
         this._trailLast = null;       // 上一次记录点 (去重)
         this._animationId = null;
         this._updateUnsub = null;
@@ -26,6 +28,7 @@ class Scene3D {
         this._lastFrame = null;       // 帧间隔计时
         this._keyDownHandler = null;
         this._keyUpHandler = null;
+        this._blurHandler = null;
     }
 
     mount(container) {
@@ -104,17 +107,21 @@ class Scene3D {
         };
         window.addEventListener('resize', this._resizeHandler);
 
-        // --- WASD 键盘移动 (不抢输入框/文本框焦点) ---
+        // --- WASD 键盘移动 (输入框/文本区/可编辑元素聚焦时不响应) ---
         this._keyDownHandler = (e) => {
-            if (store.get('ui.keyboardInputFocused')) return;  // 正在打字时不响应
+            const t = e.target;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
             if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
                 e.preventDefault();
                 this._keys.add(e.code);
             }
         };
         this._keyUpHandler = (e) => { this._keys.delete(e.code); };
+        // 窗口失焦清空按键, 防止按住松开时丢失 keyup 导致相机持续漂移
+        this._blurHandler = () => { this._keys.clear(); };
         window.addEventListener('keydown', this._keyDownHandler);
         window.addEventListener('keyup', this._keyUpHandler);
+        window.addEventListener('blur', this._blurHandler);
 
         // --- Animation loop ---
         this._animate();
@@ -237,9 +244,12 @@ class Scene3D {
     }
 
     _buildTrail() {
-        // 绿色飞行轨迹线 (动态缓冲, 无人机移动时追加点)
+        // 绿色飞行轨迹线 (预分配固定缓冲, 滚动窗口避免每 tick 重新分配)
+        this._trailPos = new Float32Array(MAX_TRAIL_POINTS * 3);
+        this._trailLen = 0;
         const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+        geo.setAttribute('position', new THREE.BufferAttribute(this._trailPos, 3));
+        geo.setDrawRange(0, 0);
         const mat = new THREE.LineBasicMaterial({ color: 0x00E676, linewidth: 2 });
         this.trailLine = new THREE.Line(geo, mat);
         this.trailLine.frustumCulled = false;
@@ -284,28 +294,42 @@ class Scene3D {
 
     _appendTrailPoint(x, y, z) {
         if (!this.trailLine) return;
-        const MIN_STEP = 0.02;        // 移动超过此距离才记录 (悬停不堆积点)
-        const MAX_POINTS = 3000;      // 轨迹点缓冲上限
-
-        if (this._trailLast && Math.abs(x - this._trailLast[0]) < MIN_STEP &&
-            Math.abs(y - this._trailLast[1]) < MIN_STEP && Math.abs(z - this._trailLast[2]) < MIN_STEP) {
+        if (this._trailLast && Math.abs(x - this._trailLast[0]) < MIN_TRAIL_STEP &&
+            Math.abs(y - this._trailLast[1]) < MIN_TRAIL_STEP && Math.abs(z - this._trailLast[2]) < MIN_TRAIL_STEP) {
             return;
         }
         this._trailLast = [x, y, z];
-        this._trailPts.push(x, y, z);
-        if (this._trailPts.length > MAX_POINTS * 3) {
-            this._trailPts.splice(0, this._trailPts.length - MAX_POINTS * 3);
+        // 预分配缓冲: 滚动窗口, 满则整体前移 (避免每 tick 新建 Float32Array)
+        if (this._trailLen >= MAX_TRAIL_POINTS) {
+            const keep = (MAX_TRAIL_POINTS - 1) * 3;
+            this._trailPos.copyWithin(0, 3, keep + 3);
+            this._trailLen = MAX_TRAIL_POINTS - 1;
         }
-        this.trailLine.geometry.setAttribute('position',
-            new THREE.BufferAttribute(new Float32Array(this._trailPts), 3));
-        this.trailLine.geometry.attributes.position.needsUpdate = true;
+        const o = this._trailLen * 3;
+        this._trailPos[o] = x; this._trailPos[o + 1] = y; this._trailPos[o + 2] = z;
+        this._trailLen++;
+        const attr = this.trailLine.geometry.attributes.position;
+        attr.needsUpdate = true;
+        this.trailLine.geometry.setDrawRange(0, this._trailLen);
         this.trailLine.geometry.computeBoundingSphere();
     }
 
     _updateField() {
-        if (this.floorMesh) { this.scene.remove(this.floorMesh); this.floorMesh = null; }
+        this._disposeObject(this.floorMesh);
+        this.floorMesh = null;
         this._buildFloor();
         this._buildHome();
+    }
+
+    _disposeObject(obj) {
+        if (!obj) return;
+        this.scene.remove(obj);
+        obj.geometry && obj.geometry.dispose();
+        if (obj.material) {
+            if (Array.isArray(obj.material)) obj.material.forEach(m => m.map && m.map.dispose());
+            else obj.material.map && obj.material.map.dispose();
+            obj.material.dispose();
+        }
     }
 
     _animate() {
@@ -358,6 +382,13 @@ class Scene3D {
         if (this._resizeHandler) { window.removeEventListener('resize', this._resizeHandler); this._resizeHandler = null; }
         if (this._keyDownHandler) { window.removeEventListener('keydown', this._keyDownHandler); this._keyDownHandler = null; }
         if (this._keyUpHandler) { window.removeEventListener('keyup', this._keyUpHandler); this._keyUpHandler = null; }
+        if (this._blurHandler) { window.removeEventListener('blur', this._blurHandler); this._blurHandler = null; }
+        this._keys.clear();
+        // 清理场景资源 (GPU 内存)
+        this._disposeObject(this.floorMesh);
+        this._disposeObject(this.trailLine);
+        this._disposeObject(this.altLine);
+        this.floorMesh = this.trailLine = this.altLine = null;
         if (this.controls) { this.controls.dispose(); this.controls = null; }
         if (this.renderer) { this.renderer.dispose(); this.renderer = null; }
         this.scene = null;
