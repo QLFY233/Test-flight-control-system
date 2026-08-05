@@ -9,6 +9,14 @@ import store from '../state.js';
 const MAX_TRAIL_POINTS = 3000;   // 轨迹点缓冲上限 (预分配)
 const MIN_TRAIL_STEP = 0.02;     // 移动超过此距离才记录 (悬停不堆积点)
 
+// 模块级共享轨迹缓冲 — 跨 Scene3D 实例保留 (切换视图/面板 unmount 重建不丢轨迹),
+// 仅页面刷新/关闭清空。与 droneMesh 等实例态不同, 轨迹是会话级累积数据。
+const trailStore = {
+    pos: new Float32Array(MAX_TRAIL_POINTS * 3),
+    len: 0,
+    last: null,
+};
+
 class Scene3D {
     constructor() {
         this.container = null;
@@ -21,7 +29,6 @@ class Scene3D {
         this.floorMesh = null;
         this.trailLine = null;        // 绿色飞行轨迹线
         this.planGroup = null;        // 飞行计划渲染组 (计划虚线 + 目标点标记 + 当前动作高亮)
-        this._trailLast = null;       // 上一次记录点 (去重)
         this._animationId = null;
         this._updateUnsub = null;
         this._planUnsub = null;       // trajectory 变更 → 重建计划
@@ -251,12 +258,10 @@ class Scene3D {
     }
 
     _buildTrail() {
-        // 绿色飞行轨迹线 (预分配固定缓冲, 滚动窗口避免每 tick 重新分配)
-        this._trailPos = new Float32Array(MAX_TRAIL_POINTS * 3);
-        this._trailLen = 0;
+        // 绿色飞行轨迹线 — 复用模块级共享缓冲 (trailStore), 跨实例保留轨迹
         const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(this._trailPos, 3));
-        geo.setDrawRange(0, 0);
+        geo.setAttribute('position', new THREE.BufferAttribute(trailStore.pos, 3));
+        geo.setDrawRange(0, trailStore.len);
         const mat = new THREE.LineBasicMaterial({ color: 0x00E676, linewidth: 2 });
         this.trailLine = new THREE.Line(geo, mat);
         this.trailLine.frustumCulled = false;
@@ -418,23 +423,23 @@ class Scene3D {
 
     _appendTrailPoint(x, y, z) {
         if (!this.trailLine) return;
-        if (this._trailLast && Math.abs(x - this._trailLast[0]) < MIN_TRAIL_STEP &&
-            Math.abs(y - this._trailLast[1]) < MIN_TRAIL_STEP && Math.abs(z - this._trailLast[2]) < MIN_TRAIL_STEP) {
+        if (trailStore.last && Math.abs(x - trailStore.last[0]) < MIN_TRAIL_STEP &&
+            Math.abs(y - trailStore.last[1]) < MIN_TRAIL_STEP && Math.abs(z - trailStore.last[2]) < MIN_TRAIL_STEP) {
             return;
         }
-        this._trailLast = [x, y, z];
-        // 预分配缓冲: 滚动窗口, 满则整体前移 (避免每 tick 新建 Float32Array)
-        if (this._trailLen >= MAX_TRAIL_POINTS) {
+        trailStore.last = [x, y, z];
+        // 共享缓冲 (模块级): 滚动窗口, 满则整体前移 (避免每 tick 新建 Float32Array)
+        if (trailStore.len >= MAX_TRAIL_POINTS) {
             const keep = (MAX_TRAIL_POINTS - 1) * 3;
-            this._trailPos.copyWithin(0, 3, keep + 3);
-            this._trailLen = MAX_TRAIL_POINTS - 1;
+            trailStore.pos.copyWithin(0, 3, keep + 3);
+            trailStore.len = MAX_TRAIL_POINTS - 1;
         }
-        const o = this._trailLen * 3;
-        this._trailPos[o] = x; this._trailPos[o + 1] = y; this._trailPos[o + 2] = z;
-        this._trailLen++;
+        const o = trailStore.len * 3;
+        trailStore.pos[o] = x; trailStore.pos[o + 1] = y; trailStore.pos[o + 2] = z;
+        trailStore.len++;
         const attr = this.trailLine.geometry.attributes.position;
         attr.needsUpdate = true;
-        this.trailLine.geometry.setDrawRange(0, this._trailLen);
+        this.trailLine.geometry.setDrawRange(0, trailStore.len);
         this.trailLine.geometry.computeBoundingSphere();
     }
 
