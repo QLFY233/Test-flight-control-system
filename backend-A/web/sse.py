@@ -1,6 +1,8 @@
 """
 SSE (Server-Sent Events) — β Chat 流式响应。
 POST /api/chat/beta → SSE text/tool_call_start/tool_call_result/plan/error 事件。
+
+2026-08-05 (#7): 改流式输出 — agent.run() → agent.run_stream(), text 事件逐 chunk 下发。
 """
 import json
 import logging
@@ -56,10 +58,19 @@ async def chat_beta(req: ChatRequest):
             _state_ref.last_human_message_to_beta = req.message
 
         try:
-            # 使用 Pydantic AI Agent.run() 非流式 (先导已验证)
-            result = await _beta_agent.run(req.message)
+            # 流式: run_stream → stream_text() 逐 token 产出 text 事件 (2026-08-05 #7)。
+            # 注: pydantic-ai 2.0 stream_text() 产出**累积文本** (每 chunk = 到当前为止的全部),
+            # 需与上一 chunk 求差得到增量, 否则前端逐 chunk 追加会重复。
+            # 工具调用 (propose_to_alpha 等) 在流内自动执行, 结果经 _state_ref 读取。
+            async with _beta_agent.run_stream(req.message) as result:
+                prev = ""
+                async for chunk in result.stream_text():
+                    delta = chunk[len(prev):] if chunk.startswith(prev) else chunk
+                    prev = chunk
+                    if delta:
+                        yield await _sse_event("text", {"content": delta})
 
-            # 检查是否有待审提议 (β 调用了 propose_to_alpha)
+            # 流结束后检查是否有待审提议 (β 调用了 propose_to_alpha)
             if _state_ref and _state_ref.pending_proposal:
                 proposal = _state_ref.pending_proposal
                 yield await _sse_event("plan", {
@@ -72,8 +83,6 @@ async def chat_beta(req: ChatRequest):
                     # 预翻译动作概要 (propose 时 α 预翻译; 失败兑底 [])
                     "actions": proposal.get("actions", []),
                 })
-
-            yield await _sse_event("text", {"content": result.output, "done": True})
 
         except Exception as e:
             logger.exception(f"[sse] β stream error: {e}")

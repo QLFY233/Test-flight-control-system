@@ -286,11 +286,22 @@
     padding: var(--space-2);
 }
 
+.history-page__detail-section {
+    /* 2026-08-05: min-width:0 防内容(chart 100%)在窄窗口溢出; 纵向堆叠间隔 */
+    min-width: 0;
+    padding: var(--space-2) var(--space-3);
+}
+
 .history-page__detail {
     flex: 1;
     display: flex;
-    align-items: center;
+    /* 2026-08-05: 行方向 flex 导致选中的详情区(任务/回放控制/轨迹)横向并排,
+       窄窗口下全部挤在一起。改列方向 + stretch: 详情区纵向堆叠且铺满宽度;
+       EmptyState 单子项时靠自身内部 flex 居中, 两状态兼容。 */
+    flex-direction: column;
+    align-items: stretch;
     justify-content: center;
+    overflow-y: auto;
     color: var(--color-text-disabled);
     font-family: var(--font-mono);
     font-size: var(--text-sm);
