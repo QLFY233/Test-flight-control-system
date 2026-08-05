@@ -6,6 +6,9 @@
 
 最近更新：2026-08-05 (代码审查修复 — 3D 视图键盘守卫/资源清理 + emergency 落地判定)
 
+> **2026-08-05 (前端联调检查修复 #2 — α 飞控页中间大面积黑屏)**:
+> 根因: `AlphaPage.js` leftHtml 模板 [ENV] 卡片缺 `</div>` 闭合（24 open / 23 close，2026-08-02 b46435e 引入）→ 浏览器解析 innerHTML 时把模板外的 `<div class="right-column">` 吞进 left-column → 右栏（高度图）被挤到左栏卡片下方，页面中间 60% 区域空黑（用户宽屏 2560x1564 截图确认）。修复: [TASK] 卡片前补 `</div>`，模板 depth 0 ✅。验证: 清缓存后 right-column 回 page-container（两列并列满高 1300，高度图占满右栏）。注意: 懒加载模块改动必须同步 bump sw.js BUILD_ID（否则 SW 缓存旧模块再次遮蔽修复）。BUILD_ID → `2026-08-05-fix-alpha-layout`
+
 > **2026-08-05 (前端联调检查修复 — 2 项 + SW 版本)**:
 > ① **总览页 [系统状态] 面板恒显 UNK 修复**: 根因 — `connection.backendA/B/llm` 仅由 WS `link_status` 推送驱动（后端只在状态变化时推送），页面加载/重连后无主动拉取；`connection.drone` 无写入源。修复 — `app.js` 新增 `refreshLinkStatus()`（init + WS 重连成功时各拉一次 `/api/link-status` 写 store，flight_status 仅在缺失时填充）；pose 到达时置 `connection.drone='connected'`。验证: 总览页 BACKEND A/B=UP、DRONE=ONLINE、LLM=OK（原 UNK×4）
 > ② **Dashboard 看板占位假数据修复**: 根因 — `DashboardGrid._defaultPanels()` 硬编码 PROGRESS 47.2/ALT 28.7/SPD 1.43 + `DashboardPanel` 时序图 `_mockData()` 随机数 + `Math.random()` 兑底。修复 — 时序面板（altitude/velocity）订阅 store.drone 环形缓冲 600 点（60s@10Hz）增量 setOption；value 卡片 source=altitude|speed|progress 读实时 store，无数据显示 '--'；accel_line 无数据源标注「无加速度数据源」；unmount 解绑订阅+dispose chart。验证: ALT=-0.29m/SPD=0.04m/s/PROGRESS=0%（实时值，对齐状态栏）
