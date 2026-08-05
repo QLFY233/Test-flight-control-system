@@ -30,6 +30,8 @@ class BetaPage {
         bus.on('plan-received', this._boundOnPlanReceived);
         bus.on('view-mode-changed', this._boundOnViewModeChanged);
         bus.on('view-source-changed', this._boundOnViewSourceChanged);
+        // 刷新/重开后恢复后端未处理的 pending 提议（store 为内存态，刷新即丢）
+        this._restorePendingProposal();
     }
 
     unmount() {
@@ -197,6 +199,30 @@ class BetaPage {
         const planArea = document.getElementById('beta-plan-area');
         if (planArea) {
             this._renderPlan(plan);
+        }
+    }
+
+    /**
+     * 刷新/重开后恢复后端未处理的 pending 提议：
+     * store 为内存态（刷新即丢），而后端 pending_proposal 仍在 → 拉取并恢复卡片显示。
+     * 若后端已无 pending（已批准/驳回），保持当前状态（不覆盖已显示的实时提议）。
+     */
+    async _restorePendingProposal() {
+        try {
+            const data = await apiManager.getProposals();
+            const list = Array.isArray(data) ? data : (data?.proposals || []);
+            const pending = list.find(p => p && p.status === 'pending');
+            if (!pending) return;
+            // 已有实时 currentPlan（同 id）则跳过，避免重复渲染
+            const cur = store.get('beta.currentPlan');
+            if (cur && (cur.id === pending.id || cur.proposalId === pending.id)) return;
+            store.set('beta.currentPlan', pending);
+            const planArea = document.getElementById('beta-plan-area');
+            if (planArea && this.container) {
+                this._renderPlan(pending);
+            }
+        } catch (e) {
+            // 拉取失败静默（实时 plan 事件仍是主路径）
         }
     }
 

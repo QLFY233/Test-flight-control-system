@@ -6,6 +6,13 @@
 
 最近更新：2026-08-05 (代码审查修复 — 3D 视图键盘守卫/资源清理 + emergency 落地判定)
 
+> **2026-08-05 (前端联调检查修复 #6 — 刷新后规划不显示)**:
+> 现象: 刷新/重开后后端仍有 pending 提议，但前端飞行计划卡片不显示
+> 根因: store.beta.currentPlan 仅由实时 plan 事件驱动（内存态，刷新即丢）；无恢复逻辑；且 shared.js apiManager 白名单缺少 getProposals 转发（调用 undefined 被 catch 静默吞掉）
+> 修复: ① BetaPage.mount 时 `_restorePendingProposal()`：拉取 GET /api/proposals，存在 pending → 恢复 currentPlan + 渲染卡片（同 id 跳过防重复）；② shared.js apiManager 补 getProposals 转发
+> 验证: 刷新后爱心航线 pending 提议自动恢复显示（卡片+批准按钮齐全）；无 JS 错误
+> BUILD_ID → `2026-08-05-fix-proposal-restore`
+
 > **2026-08-05 (前端联调检查修复 #5 — 批准后切页旧提议残留 404)**:
 > 现象: 批准提议后切总览再回规划，旧 FlightPlanCard 重新渲染，再点批准/驳回 → API 404 not found or already processed
 > 根因: `BetaPage._onPlanReceived` 把提议存 store.beta.currentPlan，approve/reject 成功**从不清理**；切页 mount 时 render() 读旧 currentPlan 重新渲染可操作卡片；后端 approve 原子认领后二次调用必然 404
