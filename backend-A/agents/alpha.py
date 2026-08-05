@@ -280,9 +280,14 @@ class AlphaLoop:
             async with _db_sess() as session:
                 # N8: 显式建 session 行 — 此前全仓无 create_session 调用,
                 # conversations/telemetry 全是孤儿行 (FK 悬空)
+                # #3: task_description 取最近提议自动生成的任务名 (pending_task_name)
                 existing = await _get_session(session, self._state.session_id)
                 if existing is None:
-                    await _create_session(session, self._state.session_id, task_desc=None)
+                    await _create_session(
+                        session,
+                        self._state.session_id,
+                        task_desc=getattr(self._state, "pending_task_name", None),
+                    )
 
                 await save_conversation(
                     session,

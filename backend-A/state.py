@@ -68,6 +68,7 @@ class AppState:
         self.alpha_input_queue: list[str] = []
         self.current_action_plan: ActionPlan | None = None
         self.pending_proposal: Any | None = None       # β propose 待审核
+        self.pending_task_name: str | None = None       # 最近提议自动生成的任务名 (#3, 建会话时写 task_description)
         self.last_human_message_to_beta: str | None = None
         self.last_intent: dict | None = None            # α 最近产出的 ActionCommand
 

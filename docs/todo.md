@@ -4,11 +4,19 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-05 (待办 #11 刷新恢复 — 对话持久化 + 会话详情端点 + 前端恢复)
+最近更新：2026-08-05 (待办 #3 AI 任务自动命名 + #11 刷新恢复)
 
 ## 待办事项与已知问题（2026-08-05 用户反馈）
 
 > 用户实测反馈的待办/缺陷清单，按需排期修复。状态图例同顶部：⬜ 未开始 / 🚧 进行中 / ✅ 已完成。
+
+> **2026-08-05 (待办 #3 — AI 自动给飞行任务取名完成)**:
+> ① 根因 — propose 流程无任务名: proposal 无 title/task_name 字段 (FlightPlanCard 恒显"飞行计划"), 会话 task_description 恒 null
+> ② 修复 `tools/beta_tools.py`: `_derive_task_name(intent, actions)` — 从**预翻译动作序列**生成结构化摘要 (如 `起飞1m→飞往(3,2)→悬停2s…`, 中文标签映射 9 类编码, 超 4 动作省略, 无动作时截断意图, 空兜底"试飞任务"); propose_to_alpha 存入 proposal.task_name/title + AppState.pending_task_name
+> ③ `web/sse.py` plan 事件: title 改取 proposal.title (兜底 task_name/"飞行计划"), 新增 task_name 字段 — FlightPlanCard 已读 plan.title 无需改前端
+> ④ `agents/alpha.py` _log_action: 建会话时 task_desc=pending_task_name (forward 路径无提议时保持 None 原行为)
+> ⑤ 验证: A 侧 71/71 (新增 Test 16 命名 6 用例); 真实 LLM propose → proposal.title=`起飞1m→飞往(3,2)→悬停2s` → Playwright β 页卡片标题正确显示 + 无 console 错误; 脚本验证 propose→approve→会话 task_description 一致
+> ⑥ code-review (medium): 0 发现 — 退化情形 (空 code → "→→" 分隔符) 被预翻译 schema 约束兜住, 不为此加校验
 
 > **2026-08-05 (待办 #11 — 刷新后历史任务与当前任务自动恢复完成)**:
 > ① **β 对话持久化**: 根因 — 全仓 `save_conversation` 仅 α `_log_action` 调用, β 对话 (human/agent) 从未入库 → 刷新即丢。修复 `web/sse.py`: `_ensure_session()` (session_id 为空则按 α 同规则生成 + 建 flight_sessions 行) + `_save_conv()`; chat_beta 流前存 human、流完存 agent 完整回复
@@ -24,7 +32,7 @@
 | 1 | 页面下方 PROGRESS 进度条不动 | 🐛 bug | ✅ | 根因: 后端 status payload 缺 progress 字段 (flight.progress 恒 0) + BottomBar 无订阅。修复: B 侧 _send_status 计算 progress (currentAction/totalActions) + A 侧 bridge 转发 + WS broadcast_status 加字段; BottomBar 由 app.js scheduleBottomBar 驱动重渲染 (已存在, 无需自订阅)。验证: 多动作计划 20%→40% 实时递增 |
 | 4 | 看板页面只有拖动模块时数据才更新 | 🐛 bug | ✅ | 已由 #2 实时化改造修复 (DashboardPanel 订阅 store.drone/flight + 环形缓冲 + _refreshValueCard)。验证: 飞行中 ALT -0.26→0.92 实时递增, SPD/PROGRESS 同步, 无需拖动 |
 | 2 | [ BETA AI ] 界面美化 | ✨ 需求 | ⬜ | ① 常用功能（飞行规划/历史分析/数据处理等）卡片化美化；② 异常信息（alert 系统消息）美化——当前在对话流中**容易刷屏**（节流/折叠/去重待优化） |
-| 3 | AI 自动给飞行任务取名 | ✨ 需求 | ⬜ | β 生成提议时自动产任务名（flight_sessions.task_description / FlightPlanCard 标题展示） |
+| 3 | AI 自动给飞行任务取名 | ✨ 需求 | ✅ | β 生成提议时自动产任务名（flight_sessions.task_description / FlightPlanCard 标题展示） |
 | 4 | 看板页面只有拖动模块时数据才更新 | 🐛 bug | ⬜ | DashboardPanel 数据刷新机制问题（拖动触发 resize/重渲染才更新；实时数据订阅未生效，与修复 #2 的实时化改造相关） |
 | 5 | 历史界面有 bug | 🐛 bug | ✅ | 根因: `.history-page__detail` 行方向 flex → 3 详情区(任务/回放控制/轨迹)横向并排, 窄窗口挤压。修复: 改列方向+stretch+overflow-y:auto, detail-section 加 min-width:0+padding; EmptyState 靠自身内部 flex 居中两态兼容。验证: 800px 视口 3 section 同 x 同宽 498px y 递增纵向堆叠 |
 | 6 | 数据驱动的分析工具与可视化，分析过程可视化 | ✨ 需求 | ⬜ | β analytics 工具结果可视化（FFT/统计/滤波图表展示）+ 分析过程可视化（工具调用过程展示） |

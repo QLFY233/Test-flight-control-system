@@ -118,7 +118,8 @@ async def chat_beta(req: ChatRequest):
                 yield await _sse_event("plan", {
                     "id": proposal.get("id", ""),
                     "proposalId": proposal.get("id", ""),
-                    "title": "飞行计划",
+                    "title": proposal.get("title") or proposal.get("task_name") or "飞行计划",
+                    "task_name": proposal.get("task_name") or "",
                     "intent": proposal.get("intent", ""),
                     "summary": proposal.get("intent", ""),
                     "status": "pending",

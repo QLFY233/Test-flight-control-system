@@ -54,6 +54,43 @@ async def _pre_translate(intent: str, state) -> list:
         return []
 
 
+# 动作编码 → 中文标签 (任务名摘要用, #3)
+_ACTION_LABELS = {
+    "takeoff": "起飞", "land": "降落", "goto": "飞往", "move": "移动",
+    "climb": "爬升", "descend": "下降", "yaw": "转向", "hover": "悬停",
+    "return_home": "返航",
+}
+
+
+def _derive_task_name(intent: str, actions: list) -> str:
+    """从预翻译动作序列生成简洁任务名 (AI 翻译产物的结构化摘要)。
+    有动作 → "起飞1m→飞往(3,2)→悬停2s…"; 无动作 → 截断意图; 空 → 兜底。
+    """
+    if actions:
+        parts = []
+        for a in actions[:4]:
+            code = a.get("code", "")
+            label = _ACTION_LABELS.get(code, code.upper())
+            val = a.get("value")
+            tgt = a.get("target")
+            units = a.get("units", "")
+            if code == "goto" and isinstance(tgt, (list, tuple)) and len(tgt) >= 2 and all(isinstance(v, (int, float)) for v in tgt[:2]):
+                parts.append(f"飞往({tgt[0]:g},{tgt[1]:g})")
+            elif isinstance(val, (int, float)):
+                parts.append(f"{label}{val:g}{units}")
+            else:
+                parts.append(label)
+        name = "→".join(parts)
+        if len(actions) > 4:
+            name += "…"
+        if name:
+            return name[:30]
+    cleaned = " ".join((intent or "").split())
+    if cleaned:
+        return cleaned[:24] + ("…" if len(cleaned) > 24 else "")
+    return "试飞任务"
+
+
 def set_tool_context(state, bus, db_session_factory):
     """注入工具依赖 (由 lifecycle 在启动时调用)。"""
     global _state_ref, _bus_ref, _db_ref
@@ -241,6 +278,11 @@ async def propose_to_alpha(intent: str) -> dict:
     }
     # 预翻译: intent → ActionCommand.actions (LLM 1~5s; 失败兑底 [] 不影响提议)
     proposal["actions"] = await _pre_translate(intent, s)
+    # #3: 自动生成任务名 (动作摘要; 无动作截断意图) — 供 FlightPlanCard 标题 + 会话 task_description
+    task_name = _derive_task_name(intent, proposal["actions"])
+    proposal["task_name"] = task_name
+    proposal["title"] = task_name
+    s.pending_task_name = task_name
     s.pending_proposal = proposal
 
     logger.info(f"[beta-tools] propose_to_alpha: {intent[:80]}... (pending approval, {len(proposal['actions'])} pre-translated actions)")

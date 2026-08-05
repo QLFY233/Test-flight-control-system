@@ -374,6 +374,33 @@ print("\n📋 Test 15: 会话 id 细粒度 (N8)")
 ids = {web_routes._new_session_id() for _ in range(100)}
 check("N8 100 次生成全部唯一", len(ids) == 100, f"got {len(ids)}")
 
+# ── Test 16: 任务名自动生成 (#3) ──
+print("\n📋 Test 16: 任务名自动生成 (#3)")
+from tools.beta_tools import _derive_task_name
+
+name1 = _derive_task_name("起飞到1米然后飞到3,2,1", [
+    {"code": "takeoff", "value": 1.0, "units": "m"},
+    {"code": "goto", "target": [3.0, 2.0, 1.0], "units": "m"},
+    {"code": "hover", "value": 2.0, "units": "s"},
+])
+check("#3 动作摘要含起飞", "起飞" in name1, f"got {name1}")
+check("#3 动作摘要含飞往(3,2)", "飞往(3,2)" in name1, f"got {name1}")
+check("#3 动作摘要含悬停", "悬停" in name1, f"got {name1}")
+
+name2 = _derive_task_name(" 从起点出发，执行长距离巡航航线测试  ", [])
+check("#3 无动作截断意图", "巡航" in name2 and len(name2) <= 25, f"got {name2}")
+
+name3 = _derive_task_name("", [])
+check("#3 空输入兜底", name3 == "试飞任务", f"got {name3}")
+
+# 超过 4 个动作 → 省略号
+name4 = _derive_task_name("x", [
+    {"code": "takeoff", "value": 1.0}, {"code": "goto", "target": [1.0, 2.0, 0.0]},
+    {"code": "hover", "value": 1.0}, {"code": "yaw", "value": 90.0},
+    {"code": "return_home"},
+])
+check("#3 超过4动作省略号", name4.endswith("…"), f"got {name4}")
+
 # ── Test 8: Lifecycle + IPC server 结构 ──
 print("\n📋 Test 8: Lifecycle 初始化")
 from lifecycle import Lifecycle
