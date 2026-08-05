@@ -185,6 +185,7 @@ async def _handle_status(payload: dict):
                 payload.get("mode", "manual"),
                 payload.get("currentAction", 0),
                 payload.get("totalActions", 0),
+                payload.get("progress", 0),
             )
         except Exception:
             pass

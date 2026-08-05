@@ -13,13 +13,20 @@ class BottomBar {
     }
 
     mount() {
-        const flight = store.get('flight');
+        // 注: 重渲染由 app.js scheduleBottomBar 驱动 (store.subscribe('flight'/'trajectory') → bb.mount())
+        // 不要在此处自订阅 — 每次 mount 累积订阅会泄漏/重复渲染
+        this._render();
+    }
+
+    _render() {
+        const flight = store.get('flight') || {};
         const progress = flight.progress || 0;
         const currentActionIdx = flight.currentAction || 0;
         const currentActionCode = flight.currentActionCode || '';
+        const totalActions = flight.totalActions || 0;
         const actionLabel = currentActionCode
-            ? `[${currentActionCode}] 动作 ${currentActionIdx}/${flight.totalActions || 0}`
-            : (currentActionIdx > 0 ? `动作 ${currentActionIdx}/${flight.totalActions || 0}` : '待命');
+            ? `[${currentActionCode}] 动作 ${currentActionIdx}/${totalActions}`
+            : (currentActionIdx > 0 ? `动作 ${currentActionIdx}/${totalActions}` : '待命');
         const status = flight.status || 'idle';
 
         // 冻结枚举（shared/protocol.py schema_version=2）：idle/hovering/planned/executing/completed/aborted

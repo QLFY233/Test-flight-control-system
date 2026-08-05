@@ -291,6 +291,10 @@ class SmallModelComponent:
             })
 
     def _send_status(self, flight_status: str, current_action: int, total_actions: int):
+        # 进度 = 当前动作索引 / 总动作数 (1-based: executing idx+1/total; completed N/N=100)
+        # 2026-08-05: 前端 PROGRESS 进度条数据源 (此前缺 progress 字段 → 恒 0%)
+        progress = int(round(current_action / total_actions * 100)) if total_actions > 0 else 0
+        progress = max(0, min(100, progress))
         if self._send_event:
             self._send_event({
                 "schema_version": SCHEMA_VERSION,
@@ -305,6 +309,7 @@ class SmallModelComponent:
                     "mode": "auto",
                     "currentAction": current_action,
                     "totalActions": total_actions,
+                    "progress": progress,
                     "taskId": "",
                 },
                 "ts": time.time(),

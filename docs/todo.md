@@ -12,7 +12,7 @@
 
 | # | 待办 | 类型 | 状态 | 备注 |
 |---|---|---|---|---|
-| 1 | 页面下方 PROGRESS 进度条不动 | 🐛 bug | ⬜ | 底部任务栏进度条不随任务推进更新（flight.progress 链路待查） |
+| 1 | 页面下方 PROGRESS 进度条不动 | 🐛 bug | ✅ | 根因: 后端 status payload 缺 progress 字段 (flight.progress 恒 0) + BottomBar 无订阅。修复: B 侧 _send_status 计算 progress (currentAction/totalActions) + A 侧 bridge 转发 + WS broadcast_status 加字段; BottomBar 由 app.js scheduleBottomBar 驱动重渲染 (已存在, 无需自订阅)。验证: 多动作计划 20%→40% 实时递增 |
 | 2 | [ BETA AI ] 界面美化 | ✨ 需求 | ⬜ | ① 常用功能（飞行规划/历史分析/数据处理等）卡片化美化；② 异常信息（alert 系统消息）美化——当前在对话流中**容易刷屏**（节流/折叠/去重待优化） |
 | 3 | AI 自动给飞行任务取名 | ✨ 需求 | ⬜ | β 生成提议时自动产任务名（flight_sessions.task_description / FlightPlanCard 标题展示） |
 | 4 | 看板页面只有拖动模块时数据才更新 | 🐛 bug | ⬜ | DashboardPanel 数据刷新机制问题（拖动触发 resize/重渲染才更新；实时数据订阅未生效，与修复 #2 的实时化改造相关） |
@@ -26,6 +26,13 @@
 | 12 | 历史回放横向宽度响应式 | 🐛 bug | ⬜ | 窗口横向宽度不足时回放区域全部挤在一起（见 #5 详情） |
 
 ---
+
+> **2026-08-05 (PROGRESS 进度条修复 — 待办 #1)**:
+> 现象: 底部 PROGRESS 进度条不动 (恒 0%)
+> 根因: ① 后端 `_send_status` payload 缺 `progress` 字段 (flight.progress 恒 store 默认 0); ② A 侧 bridge/WS 未转发 progress (字段被剥离); ③ BottomBar 无订阅 (仅 mount 渲染一次)
+> 修复: ① B `small_model/component.py` 计算 progress = round(currentAction/totalActions*100) (completed N/N=100, hovering 0/0=0); ② A `bridge._handle_status` 转发 progress; ③ A `ws.broadcast_status` 加 progress 参数+字段; ④ BottomBar 由 app.js 既有 `scheduleBottomBar` (store.subscribe('flight'/'trajectory')) 驱动重渲染 — 已存在无需改 (勿自订阅防泄漏)
+> 验证: 多动作计划「起飞2m→飞(4,3,1.5)→悬停3s→降落」→ 进度 20%→40%→... 实时递增 (headless 浏览器实测), ACTION 标签同步; B 152/152 + A 56/56
+> BUILD_ID → `2026-08-05-fix-progress`
 
 > **2026-08-05 (前端联调检查修复 #6 — 刷新后规划不显示)**:
 > 现象: 刷新/重开后后端仍有 pending 提议，但前端飞行计划卡片不显示

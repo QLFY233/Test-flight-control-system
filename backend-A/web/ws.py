@@ -108,8 +108,8 @@ async def broadcast_alert(level: str, code: str, detail: str, suggestion: str | 
     })
 
 
-async def broadcast_status(flight_status: str, mode: str, current_action: int, total_actions: int):
-    """推送任务状态。"""
+async def broadcast_status(flight_status: str, mode: str, current_action: int, total_actions: int, progress: int = 0):
+    """推送任务状态 (progress 2026-08-05 新增: 前端 PROGRESS 进度条数据源)。"""
     await broadcast({
         "type": "status",
         "schema_version": SCHEMA_VERSION,
@@ -117,6 +117,7 @@ async def broadcast_status(flight_status: str, mode: str, current_action: int, t
         "mode": mode,
         "currentAction": current_action,
         "totalActions": total_actions,
+        "progress": progress,
         "ts": time.time(),
     })
 
