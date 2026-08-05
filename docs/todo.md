@@ -6,6 +6,13 @@
 
 最近更新：2026-08-05 (代码审查修复 — 3D 视图键盘守卫/资源清理 + emergency 落地判定)
 
+> **2026-08-05 (前端联调检查修复 #5 — 批准后切页旧提议残留 404)**:
+> 现象: 批准提议后切总览再回规划，旧 FlightPlanCard 重新渲染，再点批准/驳回 → API 404 not found or already processed
+> 根因: `BetaPage._onPlanReceived` 把提议存 store.beta.currentPlan，approve/reject 成功**从不清理**；切页 mount 时 render() 读旧 currentPlan 重新渲染可操作卡片；后端 approve 原子认领后二次调用必然 404
+> 修复 (BetaPage.js): approve/reject 成功 → 清 beta.currentPlan + trajectory.pending（黄色预览同步清）；catch 404/not found/already processed → 清卡片 + 友好提示「该提议已被处理」而非误导性「批准失败」
+> 验证: 复现用户路径（发指令→卡片出现→批准✓→切总览→切回规划）→ 旧卡片不再出现（currentPlan=null、无 approve 按钮、planArea 恢复默认提示）
+> BUILD_ID → `2026-08-05-fix-stale-proposal`
+
 > **2026-08-05 (前端联调检查修复 #4 — 待批准航线预览)**:
 > 需求: β 提议 pending 时在场地俯视图/3D 视图自动显示待批准航线
 > 实现（并行 2 worker）:

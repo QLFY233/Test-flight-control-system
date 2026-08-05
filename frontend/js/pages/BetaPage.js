@@ -138,13 +138,25 @@ class BetaPage {
                 if (proposalId) {
                     try {
                         await apiManager.approveProposal(proposalId);
+                        // 批准成功 → 清 store 缓存（切页回来不再渲染旧卡片/旧预览）
+                        store.set('beta.currentPlan', null);
+                        store.set('trajectory.pending', null);
                         planArea.innerHTML = '<div style="padding: var(--space-lg); color: var(--color-success); text-align: center;">计划已批准 ✓</div>';
                     } catch (e) {
-                        planArea.innerHTML = `<div style="padding: var(--space-lg); color: var(--color-error); text-align: center;">批准失败: ${esc(e.message)}</div>`;
+                        // 已处理/不存在（如切页后旧卡片残留再次点击）→ 清卡片 + 友好提示，而非误导性"批准失败"
+                        const msg = (e?.message || '').toLowerCase();
+                        if (msg.includes('404') || msg.includes('not found') || msg.includes('already processed')) {
+                            store.set('beta.currentPlan', null);
+                            store.set('trajectory.pending', null);
+                            planArea.innerHTML = '<div style="padding: var(--space-lg); color: var(--color-text-secondary); text-align: center;">该提议已被处理</div>';
+                        } else {
+                            planArea.innerHTML = `<div style="padding: var(--space-lg); color: var(--color-error); text-align: center;">批准失败: ${esc(e.message)}</div>`;
+                        }
                     }
                 } else {
                     // Fallback: send via WS if no proposalId
                     wsManager.send('approve_plan', { plan: p });
+                    store.set('beta.currentPlan', null);
                     planArea.innerHTML = '<div style="padding: var(--space-lg); color: var(--color-success); text-align: center;">计划已批准 ✓</div>';
                 }
             },
@@ -156,12 +168,22 @@ class BetaPage {
                 if (proposalId) {
                     try {
                         await apiManager.rejectProposal(proposalId, 'user rejected');
+                        store.set('beta.currentPlan', null);
+                        store.set('trajectory.pending', null);
                         planArea.innerHTML = '<div style="padding: var(--space-lg); color: var(--color-error); text-align: center;">计划已驳回</div>';
                     } catch (e) {
-                        planArea.innerHTML = `<div style="padding: var(--space-lg); color: var(--color-error); text-align: center;">驳回失败: ${esc(e.message)}</div>`;
+                        const msg = (e?.message || '').toLowerCase();
+                        if (msg.includes('404') || msg.includes('not found') || msg.includes('already processed')) {
+                            store.set('beta.currentPlan', null);
+                            store.set('trajectory.pending', null);
+                            planArea.innerHTML = '<div style="padding: var(--space-lg); color: var(--color-text-secondary); text-align: center;">该提议已被处理</div>';
+                        } else {
+                            planArea.innerHTML = `<div style="padding: var(--space-lg); color: var(--color-error); text-align: center;">驳回失败: ${esc(e.message)}</div>`;
+                        }
                     }
                 } else {
                     wsManager.send('reject_plan', { plan: p });
+                    store.set('beta.currentPlan', null);
                     planArea.innerHTML = '<div style="padding: var(--space-lg); color: var(--color-error); text-align: center;">计划已驳回</div>';
                 }
             },
