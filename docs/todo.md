@@ -6,6 +6,14 @@
 
 最近更新：2026-08-05 (代码审查修复 — 3D 视图键盘守卫/资源清理 + emergency 落地判定)
 
+> **2026-08-05 (前端联调检查修复 #4 — 待批准航线预览)**:
+> 需求: β 提议 pending 时在场地俯视图/3D 视图自动显示待批准航线
+> 实现（并行 2 worker）:
+> ① 后端: `beta_tools.propose_to_alpha` 改 async + `_pre_translate()`（lazy 预翻译器 + asyncio.to_thread 调 LLMTranslator，失败兑底 []）→ pending_proposal.actions 携带预翻译动作；sse.py plan 事件 actions 改从 proposal 取
+> ② 前端: app.js `bus.on('plan-received')` → `_normalizePlan` 推导 → store.trajectory.pending；alpha_output 到达时清 pending（正式计划覆盖预览）；FieldMap2D 黄色虚线+黄色目标点（label 带 ?）；Scene3D 黄色虚线+黄色标记+编号（带 ?）
+> 验证: 页面内发「起飞到1米然后飞到(3,2,1)」→ plan 事件带 [takeoff,goto,hover]（预翻译成功）→ FieldMap2D 黄色像素 4369（虚线+目标点）→ 3D 视图黄色标记 → approve → pending 清除 + 青色正式计划接管 + currentActionCode=takeoff；无 JS 错误
+> 注意: 改后端后需重启 A（pkill 用 [r]un_a.py 防自杀）；BUILD_ID → `2026-08-05-fix-pending-preview`
+
 > **2026-08-05 (前端联调检查修复 #3 — 飞行计划不在 PLN 视图显示)**:
 > 根因: ① 后端 alpha_output 不广播 planned → trajectory.planned 恒空；② FieldMap2D 读 a.params?.target（对象）与 schema 权威格式 a.target（数组 [x,y,z]）不匹配 → 目标点不画；③ Scene3D 完全没有计划渲染逻辑；④ FieldMap2D 无无人机位置标记；⑤ flight.currentActionCode 读 p.action.code（ActionCommand 无此字段）恒空
 > 修复（并行 2 worker）:

@@ -4,6 +4,7 @@
 """
 import json
 import time
+import asyncio
 import logging
 from typing import Any
 
@@ -13,6 +14,44 @@ logger = logging.getLogger(__name__)
 _state_ref = None  # AppState
 _bus_ref = None    # bus.router.call
 _db_ref = None     # db.repos + session
+
+# 预翻译用 α 翻译器 (lazy 单例; 复用生命周期内, 不随每次提议重建)
+_pre_translator_ref = None
+
+
+def _get_pre_translator():
+    """懒创建预翻译用 α 翻译器 (对齐 lifecycle 的 make_translator 工厂)。
+    预翻译与正式翻译共用同一 LLM 链路, 但实例独立 (不影响 α loop)。
+    """
+    global _pre_translator_ref
+    if _pre_translator_ref is None:
+        from agents.alpha import make_translator
+        _pre_translator_ref = make_translator()
+    return _pre_translator_ref
+
+
+async def _pre_translate(intent: str, state) -> list:
+    """预翻译 intent → ActionCommand.actions (供前端渲染待批准航线预览)。
+    失败/超时/无 key → 兜底 [] (不影响 propose 主流程)。
+    """
+    try:
+        translator = _get_pre_translator()
+        pose = {
+            "pos": state.current_pose.pos,
+            "quat": state.current_pose.quat,
+            "vel": state.current_pose.vel,
+        }
+        env = {}  # 先导为空 (对齐 alpha loop)
+        # LLM 调用耗时 1~5s, to_thread 避免阻塞事件循环; translate 内部线程安全
+        action_cmd = await asyncio.to_thread(translator.translate, intent, pose, env)
+        actions = action_cmd.get("actions", []) if isinstance(action_cmd, dict) else []
+        if not isinstance(actions, list):
+            actions = []
+        logger.info(f"[beta-tools] pre-translate OK: {len(actions)} actions")
+        return actions
+    except Exception as e:
+        logger.warning(f"[beta-tools] pre-translate failed (fallback []): {e}")
+        return []
 
 
 def set_tool_context(state, bus, db_session_factory):
@@ -182,10 +221,11 @@ async def query_conversations(session_id: str) -> dict:
 #   forward_last_human_message — 免审直接进 α 队列 (人已发话)
 
 
-def propose_to_alpha(intent: str) -> dict:
+async def propose_to_alpha(intent: str) -> dict:
     """β 的自主飞行提议 — 必须人审核后才注入 α。
     总线层拦截: 存储到 pending_proposal，前端展示待审卡片。
     人点击[批准]后由 /api/proposals/*/approve 注入 α 队列。
+    预翻译 intent → actions (LLM, 1~5s) 供前端渲染待批准航线预览; 失败兑底 []。
     """
     s = _state_ref
     if not s:
@@ -197,10 +237,13 @@ def propose_to_alpha(intent: str) -> dict:
         "from": "beta",
         "status": "pending",
         "created_at": time.time(),
+        "actions": [],
     }
+    # 预翻译: intent → ActionCommand.actions (LLM 1~5s; 失败兑底 [] 不影响提议)
+    proposal["actions"] = await _pre_translate(intent, s)
     s.pending_proposal = proposal
 
-    logger.info(f"[beta-tools] propose_to_alpha: {intent[:80]}... (pending approval)")
+    logger.info(f"[beta-tools] propose_to_alpha: {intent[:80]}... (pending approval, {len(proposal['actions'])} pre-translated actions)")
     return {
         "status": "pending_approval",
         "proposal_id": proposal["id"],

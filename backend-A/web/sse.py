@@ -69,7 +69,8 @@ async def chat_beta(req: ChatRequest):
                     "intent": proposal.get("intent", ""),
                     "summary": proposal.get("intent", ""),
                     "status": "pending",
-                    "actions": [],  # α 尚未翻译, 批准后才有
+                    # 预翻译动作概要 (propose 时 α 预翻译; 失败兑底 [])
+                    "actions": proposal.get("actions", []),
                 })
 
             yield await _sse_event("text", {"content": result.output, "done": True})

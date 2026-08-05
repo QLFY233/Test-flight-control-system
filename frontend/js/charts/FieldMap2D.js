@@ -162,6 +162,49 @@ class FieldMap2D {
         // Planned trajectory
         const trajectory = store.get('trajectory');
         const plannedSeries = [];
+
+        // 待批准预览 (黄色): β 提议预翻译 (store.trajectory.pending), 批准后由 alpha_output 清空
+        const pending = trajectory?.pending || null;
+        if (pending?.planned && pending.planned.length > 1) {
+            plannedSeries.push({
+                name: 'PendingPlan',
+                type: 'line',
+                data: pending.planned.map(p => [p.x, p.y]),
+                lineStyle: {
+                    color: '#FFC107',
+                    type: 'dashed',
+                    width: 1.5,
+                },
+                showSymbol: false,
+            });
+        }
+        if (pending?.seq) {
+            const pWp = pending.seq
+                .filter(a => a.goal && a.goal.x != null && a.goal.y != null)
+                .map(a => ({ value: [a.goal.x, a.goal.y], label: (a.code || 'act') + '?' }));
+            if (pWp.length > 0) {
+                plannedSeries.push({
+                    name: 'PendingWaypoints',
+                    type: 'scatter',
+                    data: pWp,
+                    symbolSize: 7,
+                    symbol: 'circle',
+                    itemStyle: {
+                        color: '#FFB300',
+                        borderColor: '#FFD54F',
+                        borderWidth: 1.5,
+                    },
+                    label: {
+                        show: true,
+                        position: 'top',
+                        color: '#FFB300',
+                        fontSize: 9,
+                        formatter: (p) => p.data.label,
+                    },
+                });
+            }
+        }
+
         if (trajectory?.planned && trajectory.planned.length > 1) {
             plannedSeries.push({
                 name: 'Planned',

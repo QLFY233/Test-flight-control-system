@@ -165,6 +165,25 @@ async function init() {
     registerWsHandlers();
     // 页面加载即主动拉取一次链路状态（不等 WS 连接事件，apiManager 此时已可用）
     refreshLinkStatus();
+    // SSE plan 事件 (β 提议, 待批准) → 待批准航线预览 (黄色)
+    // 后端 plan 事件 actions = α 预翻译结果 (可能为空 → 无预览);
+    // 批准后 alpha_output 到达时自动清空 (正式计划覆盖预览)
+    bus.on('plan-received', (plan) => {
+        try {
+            const actions = plan?.actions;
+            if (Array.isArray(actions) && actions.length > 0) {
+                const pose = store.get('drone.position') || { x: 0, y: 0, z: 0 };
+                const home = _getHomePos(store.get('field'));
+                const { seq, planned } = _normalizePlan(actions, pose, home);
+                store.set('trajectory.pending', { seq, planned });
+            } else {
+                store.set('trajectory.pending', null);
+            }
+        } catch (e) {
+            console.warn('[App] plan-received preview failed:', e);
+            store.set('trajectory.pending', null);
+        }
+    });
     console.log('WS handlers registered');
 
     // Field config
@@ -363,6 +382,8 @@ function registerWsHandlers() {
     });
     w.on('alpha_output', p => {
         if (!p) return;
+        // 正式计划已下达 → 清除待批准预览 (黄色 → 青色覆盖)
+        store.set('trajectory.pending', null);
         // 动作源: WS remaining_actions 优先, 兼容 action.actions (后端广播格式) 兑底
         const rawActions = Array.isArray(p.remaining_actions) ? p.remaining_actions
             : (Array.isArray(p.action?.actions) ? p.action.actions : []);

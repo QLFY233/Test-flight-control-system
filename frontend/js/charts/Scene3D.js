@@ -275,6 +275,35 @@ class Scene3D {
         // ENU 点 → Three.js Vector3 (显示高度钳到地板, 防被不透明地板遮挡)
         const mapPt = (p) => new THREE.Vector3(p.x ?? 0, Math.max(p.z ?? 0, groundY), p.y ?? 0);
 
+        // ── 待批准预览 (黄色): β 提议预翻译 (store.trajectory.pending),
+        // 批准后由 alpha_output 清空 → 青色正式计划覆盖。先渲染 pending, 正式计划在其上 ──
+        const pending = trajectory.pending || null;
+        if (pending) {
+            const pPlanned = pending.planned || [];
+            if (pPlanned.length > 1) {
+                const pGeo = new THREE.BufferGeometry().setFromPoints(pPlanned.map(mapPt));
+                const pMat = new THREE.LineDashedMaterial({ color: 0xFFC107, dashSize: 0.15, gapSize: 0.15 });
+                const pLine = new THREE.Line(pGeo, pMat);
+                pLine.computeLineDistances();   // LineDashedMaterial 必需
+                this.planGroup.add(pLine);
+            }
+            (pending.seq || []).forEach((a, i) => {
+                const g = a.goal;
+                if (!g || g.x == null || g.y == null || g.z == null) return;   // hover/yaw 等无目标动作跳过
+                const geo = new THREE.BoxGeometry(0.15, 0.15, 0.15);
+                const mat = new THREE.MeshBasicMaterial({ color: 0xFFB300 });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.copy(mapPt(g));
+                this.planGroup.add(mesh);
+
+                const label = this._makePlanLabel(String(i + 1) + '?', '#FFB300');
+                if (label) {
+                    label.position.set(g.x ?? 0, (g.z ?? 0) + 0.45, g.y ?? 0);
+                    this.planGroup.add(label);
+                }
+            });
+        }
+
         // 计划折线 (青色虚线): planned 目标点序列
         const planned = trajectory.planned || [];
         if (planned.length > 1) {
