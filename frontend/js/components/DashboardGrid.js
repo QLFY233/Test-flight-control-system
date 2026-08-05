@@ -161,15 +161,18 @@ class DashboardGrid {
         });
     }
 
+    // 默认面板: value 卡片不再硬编码假数值, 由 DashboardPanel 内部订阅 store 实时渲染
+    // (source 标记数据源: altitude=drone.position.z / speed=速度模长 / progress=flight.progress);
+    // 无数据时显示 '--' (DashboardPanel._valueCardData)。
     _defaultPanels() {
         return [
             { id: 'altitude', spec: { type: 'altitude_line', title: 'ALTITUDE · 高度时序', window: '60s' } },
             { id: 'velocity', spec: { type: 'velocity_line', title: 'VELOCITY · 速度三维', window: '60s' } },
             { id: 'accel', spec: { type: 'accel_line', title: 'ACCEL · 加速度', window: '60s' } },
-            { id: 'progress', spec: { type: 'value', title: 'PROGRESS · 任务进度', value: 47.2, unit: '%' } },
+            { id: 'progress', spec: { type: 'value', title: 'PROGRESS · 任务进度', unit: '%', source: 'progress' } },
             { id: 'anomalies', spec: { type: 'bar', title: 'ANOMALIES · 异常统计', window: '24h' } },
-            { id: 'altitude_val', spec: { type: 'value', title: 'ALT · 当前高度', value: 28.7, unit: 'm' } },
-            { id: 'speed_val', spec: { type: 'value', title: 'SPD · 当前速度', value: 1.43, unit: 'm/s' } },
+            { id: 'altitude_val', spec: { type: 'value', title: 'ALT · 当前高度', unit: 'm', source: 'altitude' } },
+            { id: 'speed_val', spec: { type: 'value', title: 'SPD · 当前速度', unit: 'm/s', source: 'speed' } },
         ];
     }
 }

@@ -6,6 +6,12 @@
 
 最近更新：2026-08-05 (代码审查修复 — 3D 视图键盘守卫/资源清理 + emergency 落地判定)
 
+> **2026-08-05 (前端联调检查修复 — 2 项 + SW 版本)**:
+> ① **总览页 [系统状态] 面板恒显 UNK 修复**: 根因 — `connection.backendA/B/llm` 仅由 WS `link_status` 推送驱动（后端只在状态变化时推送），页面加载/重连后无主动拉取；`connection.drone` 无写入源。修复 — `app.js` 新增 `refreshLinkStatus()`（init + WS 重连成功时各拉一次 `/api/link-status` 写 store，flight_status 仅在缺失时填充）；pose 到达时置 `connection.drone='connected'`。验证: 总览页 BACKEND A/B=UP、DRONE=ONLINE、LLM=OK（原 UNK×4）
+> ② **Dashboard 看板占位假数据修复**: 根因 — `DashboardGrid._defaultPanels()` 硬编码 PROGRESS 47.2/ALT 28.7/SPD 1.43 + `DashboardPanel` 时序图 `_mockData()` 随机数 + `Math.random()` 兑底。修复 — 时序面板（altitude/velocity）订阅 store.drone 环形缓冲 600 点（60s@10Hz）增量 setOption；value 卡片 source=altitude|speed|progress 读实时 store，无数据显示 '--'；accel_line 无数据源标注「无加速度数据源」；unmount 解绑订阅+dispose chart。验证: ALT=-0.29m/SPD=0.04m/s/PROGRESS=0%（实时值，对齐状态栏）
+> ③ **sw.js BUILD_ID bump**: `2026-08-05-review-fixes → 2026-08-05-fix-unlink-dashboard`（Stale-While-Revalidate 策略下不 bump 版本则旧缓存持续生效，实测修复代码被旧缓存遮蔽）
+> 验证: 浏览器全新加载（清 SW/缓存）实测双修复生效 + node --check 全过
+
 > **2026-08-05 (代码审查修复 — medium effort, 6 项)**:
 > ① **WASD 键盘劫持修复**: `ui.keyboardInputFocused` 全前端从未写入(死代码) → 改为检查 `e.target.tagName` (INPUT/TEXTAREA/isContentEditable), 输入框聚焦时不再被全局 keydown 吞键 (对齐 SessionCard.js 既有模式)
 > ② **失焦按键锁死修复**: `_keys` Set 增加 `window.blur` 清空处理器, 防止按住松开时丢失 keyup 致相机持续漂移

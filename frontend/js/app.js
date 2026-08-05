@@ -163,6 +163,8 @@ async function init() {
     // WS
     a.wsManager.connect();
     registerWsHandlers();
+    // 页面加载即主动拉取一次链路状态（不等 WS 连接事件，apiManager 此时已可用）
+    refreshLinkStatus();
     console.log('WS handlers registered');
 
     // Field config
@@ -221,6 +223,8 @@ function registerWsHandlers() {
             // 后端广播 quat [w,x,y,z] (无 attitude 字段); 暂存原始四元数, 需要欧拉角时再转换
             if (Array.isArray(p.quat)) store.set('drone.attitude', { quat: p.quat });
             store.set('drone.timestamp', Date.now()); store.set('drone.connected', true);
+            // drone 在线状态由 pose 数据流推断（link_status 冻结枚举无 drone 链路）
+            store.set('connection.drone', 'connected');
         });
     });
     w.on('status', p => {
@@ -275,7 +279,36 @@ function registerWsHandlers() {
     });
     // 连接状态单一数据源：ws.js 内部 _dispatch({type:'connection', payload:{status}})，
     // 不再经 __event:open/close 重复写 connection.ws
-    w.on('connection', p => { if (p?.status) store.set('connection.ws', p.status); });
+    w.on('connection', p => {
+        if (!p?.status) return;
+        store.set('connection.ws', p.status);
+        // WS (重)连接成功后主动刷新链路状态（后端仅在状态变化时推送 link_status）
+        if (p.status === 'connected') refreshLinkStatus();
+    });
+}
+
+// 主动刷新链路状态：后端 /api/link-status 仅在状态变化时经 WS 推送 link_status，
+// 页面加载 / WS 重连后需主动拉取一次，避免总览 [系统状态] 面板恒显 UNK。
+function refreshLinkStatus() {
+    const a = window.__app;
+    if (!a?.apiManager) return;
+    a.apiManager.get('/api/link-status')
+        .then(d => {
+            if (!d) return;
+            store.batch(() => {
+                if (d.ipc != null) {
+                    store.set('connection.backendA', d.ipc);
+                    store.set('connection.backendB', d.ipc);
+                }
+                if (d.llm != null) store.set('connection.llm', d.llm);
+                // flight_status 仅在当前值缺失时顺带填充（status WS 消息优先，避免覆盖实时值）
+                const cur = store.get('flight.status');
+                if (d.flight_status != null && (!cur || cur === 'unknown')) {
+                    store.set('flight.status', d.flight_status);
+                }
+            });
+        })
+        .catch(() => { /* 拉取失败静默：WS link_status 推送仍是兜底更新源 */ });
 }
 
 // Boot: if DOM already ready, call init immediately; otherwise wait for DOMContentLoaded
