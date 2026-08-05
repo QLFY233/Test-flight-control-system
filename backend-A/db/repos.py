@@ -7,7 +7,7 @@ import logging
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, insert
+from sqlalchemy import select, insert, func
 
 from db.models import Environment, FlightSession, Telemetry, Conversation
 from db.session import async_session
@@ -44,6 +44,30 @@ async def create_session(session: AsyncSession, session_id: str, task_desc: str 
 
 async def get_session(session: AsyncSession, session_id: str) -> FlightSession | None:
     return await session.get(FlightSession, session_id)
+
+
+async def get_session_detail(session: AsyncSession, session_id: str) -> dict | None:
+    """会话详情: 基础字段 + 环境名 + 遥测条数 (#11 刷新恢复前端用)。"""
+    fs = await session.get(FlightSession, session_id)
+    if fs is None:
+        return None
+    env_name = None
+    if fs.environment_id is not None:
+        env = await session.get(Environment, fs.environment_id)
+        env_name = env.name if env else None
+    cnt = await session.execute(
+        select(func.count()).select_from(Telemetry).where(Telemetry.session_id == session_id)
+    )
+    return {
+        "id": fs.id,
+        "created_at": str(fs.created_at) if fs.created_at else None,
+        "task_description": fs.task_description,
+        "beta_plan": fs.beta_plan,
+        "alpha_actions": fs.alpha_actions,
+        "status": fs.status,
+        "environment_name": env_name,
+        "telemetry_count": cnt.scalar() or 0,
+    }
 
 
 async def update_session_status(session: AsyncSession, session_id: str, status: str):

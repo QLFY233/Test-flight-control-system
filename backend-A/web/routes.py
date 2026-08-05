@@ -194,6 +194,23 @@ async def create_session_endpoint(req: CreateSessionRequest):
         raise HTTPException(500, "Internal server error")
 
 
+@router.get("/sessions/{session_id}")
+async def get_session_detail_endpoint(session_id: str):
+    """会话详情 (#11 刷新恢复: 任务描述/beta_plan/alpha_actions/环境名/遥测条数)。"""
+    try:
+        async with _db_factory() as session:
+            from db.repos import get_session_detail
+            detail = await get_session_detail(session, session_id)
+            if detail is None:
+                raise HTTPException(404, f"session {session_id} not found")
+            return detail
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed: {e}")
+        raise HTTPException(500, "Internal server error")
+
+
 @router.patch("/sessions/{session_id}")
 async def update_session_endpoint(session_id: str, req: UpdateSessionRequest):
     """更新会话状态/描述 (前端 spec: PATCH /api/sessions/{id})。"""

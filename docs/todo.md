@@ -4,11 +4,20 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-05 (代码审查修复 — 3D 视图键盘守卫/资源清理 + emergency 落地判定)
+最近更新：2026-08-05 (待办 #11 刷新恢复 — 对话持久化 + 会话详情端点 + 前端恢复)
 
 ## 待办事项与已知问题（2026-08-05 用户反馈）
 
 > 用户实测反馈的待办/缺陷清单，按需排期修复。状态图例同顶部：⬜ 未开始 / 🚧 进行中 / ✅ 已完成。
+
+> **2026-08-05 (待办 #11 — 刷新后历史任务与当前任务自动恢复完成)**:
+> ① **β 对话持久化**: 根因 — 全仓 `save_conversation` 仅 α `_log_action` 调用, β 对话 (human/agent) 从未入库 → 刷新即丢。修复 `web/sse.py`: `_ensure_session()` (session_id 为空则按 α 同规则生成 + 建 flight_sessions 行) + `_save_conv()`; chat_beta 流前存 human、流完存 agent 完整回复
+> ② **会话详情端点**: `db/repos.get_session_detail()` (含 environment_name + telemetry_count) + `GET /api/sessions/{id}` (404 兜底) — 前端恢复任务描述/alpha_actions/status
+> ③ **sync_response 补 session_id**: `web/ws.py` sync 响应加 `session_id` 字段 (重连可获当前会话)
+> ④ **前端恢复**: `app.js` 新增 `restoreSessionState()` — init 末尾调用: overview→session_id/flight.status → session detail→taskDescription/alpha_actions(_restoreActionContext 复用 _normalizePlan 推导)→ conversations→chatHistory→ChatPanel.render(); 任一环节失败静默不阻塞启动
+> ⑤ **验证**: 后端 65/65 (新增 Test 6b: 会话详情 + β 对话持久化); 真实 LLM 对话流完成后 human+agent 均落库; Playwright headless 加载 → 对话恢复显示 (human+agent 2 条) + console 零错误
+> ⑥ **code-review (medium)**: 4 项 — 测试顺序断言 flaky 已修 (sorted 集合断言); `_ensure_session` 并发竞态 (与 α 既有模式一致, PLAUSIBLE 低危不修); 恢复轨迹起点用 {0,0,0} 近似 (实时 alpha_output 修正, PLAUSIBLE); 会话创建逻辑与 α 重复 (CONFIRMED 低危, 记录不重构)
+> 注意: 后端重启会重置 AppState.session_id (overview 返回 null) → 前端不自动恢复 (历史页仍可查); 浏览器刷新 (后端存活) 场景完整恢复
 
 | # | 待办 | 类型 | 状态 | 备注 |
 |---|---|---|---|---|
@@ -23,7 +32,7 @@
 | 8 | 去掉设置页「后端」部分 | ✨ 需求 | ⬜ | SettingsPage 移除「后端」Tab（后端地址/WS/SSE 端点配置，部署内网同源后无需暴露） |
 | 9 | 去掉显示设置里的「主题」 | ✨ 需求 | ⬜ | SettingsPage 显示 Tab 移除主题切换（保持暗色工业风单主题） |
 | 10 | 连接 TTS/STT 服务并调试 | ✨ 需求 | ⬜ | 讯飞语音链路（STT 签名/wpgs + TTS）联调：需 XF_APP_ID/API_KEY/API_SECRET 有效凭证，前端 AudioWorklet PCM 采集 + 音频播放验证 |
-| 11 | AI 历史记录与当前任务刷新自动恢复 | ✨ 需求 | ⬜ | 刷新后可恢复历史任务：AI 对话记录、飞行信息、规划信息、α 上下文（会话级快照/续接，对齐 conversations 表 + flight_sessions） |
+| 11 | AI 历史记录与当前任务刷新自动恢复 | ✨ 需求 | ✅ | 刷新后可恢复历史任务：AI 对话记录、飞行信息、规划信息、α 上下文（会话级快照/续接，对齐 conversations 表 + flight_sessions） |
 | 12 | 历史回放横向宽度响应式 | 🐛 bug | ✅ | 同 #5 修复: .history-page__detail 改列方向, 3 详情区纵向堆叠铺满宽度, 窄窗口不再横向挤压 |
 
 ---

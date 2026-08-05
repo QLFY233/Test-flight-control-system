@@ -185,12 +185,13 @@ async def ws_endpoint(ws: WebSocket):
             msg_type = msg.get("type", "")
 
             if msg_type == "sync":
-                # 状态同步: 补齐当前位姿 + 飞行状态
+                # 状态同步: 补齐当前位姿 + 飞行状态 + 当前会话 (#11: session_id 供前端恢复)
                 s = _state_ref
                 if s:
                     p = s.current_pose
                     await ws.send_text(json.dumps({
                         "type": "sync_response",
+                        "session_id": s.session_id,
                         "current_pose": {
                             "pos": p.pos, "quat": p.quat, "vel": p.vel,
                         },

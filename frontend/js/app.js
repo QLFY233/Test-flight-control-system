@@ -165,6 +165,8 @@ async function init() {
     registerWsHandlers();
     // 页面加载即主动拉取一次链路状态（不等 WS 连接事件，apiManager 此时已可用）
     refreshLinkStatus();
+    // #11: 刷新后恢复当前会话状态（对话记录/飞行信息/规划信息/α 上下文）
+    restoreSessionState();
     // SSE plan 事件 (β 提议, 待批准) → 待批准航线预览 (黄色)
     // 后端 plan 事件 actions = α 预翻译结果 (可能为空 → 无预览);
     // 批准后 alpha_output 到达时自动清空 (正式计划覆盖预览)
@@ -467,6 +469,87 @@ function refreshLinkStatus() {
             });
         })
         .catch(() => { /* 拉取失败静默：WS link_status 推送仍是兜底更新源 */ });
+}
+
+/**
+ * #11: 刷新/重开后恢复当前会话状态（会话级快照/续接）。
+ * store 为内存态（刷新即丢），后端 AppState + DB 仍在 → 拉取恢复：
+ *   - 会话 id / 飞行状态   → GET /api/overview
+ *   - 任务描述 / α 上下文   → GET /api/sessions/{id} (alpha_actions 是 ActionCommand JSON)
+ *   - β 对话记录           → GET /api/history/conversations/{id} → 重渲染 ChatPanel
+ * 任一环节失败静默（实时 WS 仍是主数据源），不阻塞启动。
+ */
+async function restoreSessionState() {
+    const a = window.__app;
+    if (!a?.apiManager) return;
+    try {
+        const ov = await a.apiManager.getOverview();
+        const sid = ov?.session_id;
+        if (!sid) return;
+        store.batch(() => {
+            store.set('flight.sessionId', sid);
+            if (ov.flight_status && ov.flight_status !== 'idle') store.set('flight.status', ov.flight_status);
+        });
+
+        try {
+            const detail = await a.apiManager.getSessionDetail(sid);
+            if (detail) {
+                store.batch(() => {
+                    if (detail.task_description) store.set('flight.taskDescription', detail.task_description);
+                    if (detail.status && detail.status !== 'idle') store.set('flight.status', detail.status);
+                    const aa = detail.alpha_actions;
+                    if (typeof aa === 'string' && aa.trim()) {
+                        try {
+                            _restoreActionContext(JSON.parse(aa));
+                        } catch (e) {
+                            console.warn('[App] parse alpha_actions failed:', e);
+                        }
+                    }
+                });
+            }
+        } catch (e) {
+            // 会话详情拉取失败静默（会话行可能尚未建立）
+        }
+
+        try {
+            const conv = await a.apiManager.getConversations(sid);
+            const list = Array.isArray(conv) ? conv : (conv?.data || []);
+            const history = list
+                .filter(c => c && c.agent === 'beta' && (c.role === 'human' || c.role === 'agent'))
+                .map(c => ({
+                    role: c.role === 'human' ? 'human' : 'agent',
+                    content: c.content || '',
+                    timestamp: c.created_at ? new Date(c.created_at).getTime() : Date.now(),
+                }));
+            if (history.length) {
+                store.set('chatHistory', history);
+                if (a.chatPanel && typeof a.chatPanel.render === 'function') a.chatPanel.render();
+            }
+        } catch (e) {
+            // 对话拉取失败静默
+        }
+    } catch (e) {
+        console.warn('[App] restore session state failed:', e);
+    }
+}
+
+/**
+ * #11: 从会话的 alpha_actions (ActionCommand JSON) 恢复 α 上下文。
+ * 复用 _normalizePlan 链式推导 → trajectory.actionSequence / planned / totalActions / taskTitle。
+ */
+function _restoreActionContext(actionCmd) {
+    const actions = Array.isArray(actionCmd?.actions) ? actionCmd.actions : [];
+    if (!actions.length) return;
+    const pose = store.get('drone.position') || { x: 0, y: 0, z: 0 };
+    const home = _getHomePos(store.get('field'));
+    const { seq, planned } = _normalizePlan(actions, pose, home);
+    store.batch(() => {
+        store.set('trajectory.actionSequence', seq);
+        store.set('trajectory.planned', planned);
+        store.set('flight.totalActions', actions.length);
+        store.set('flight.currentAction', 0);
+        if (actionCmd.task_id) store.set('flight.taskTitle', `#${actionCmd.task_id}`);
+    });
 }
 
 // Boot: if DOM already ready, call init immediately; otherwise wait for DOMContentLoaded

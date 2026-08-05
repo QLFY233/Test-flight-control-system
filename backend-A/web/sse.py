@@ -35,6 +35,39 @@ async def _sse_event(event_type: str, data: dict) -> str:
     return f"event: {event_type}\ndata: {payload}\n\n"
 
 
+async def _ensure_session() -> str | None:
+    """确保存在当前会话: AppState.session_id 为空则新建 (对齐 alpha._log_action 规则, #11 对话续接)。"""
+    from tools.beta_tools import _state_ref
+    if not _state_ref:
+        return None
+    if not _state_ref.session_id:
+        import time as _time
+        _state_ref.session_id = (
+            _time.strftime("%Y%m%d%H%M%S") + f"{_time.time_ns() % 100_000:05d}"
+        )
+        try:
+            from db.repos import get_session as _get, create_session as _create
+            from db.session import async_session as _db_sess
+            async with _db_sess() as db:
+                existing = await _get(db, _state_ref.session_id)
+                if existing is None:
+                    await _create(db, _state_ref.session_id, task_desc=None)
+        except Exception as e:
+            logger.warning(f"[sse] ensure_session create failed: {e}")
+    return _state_ref.session_id
+
+
+async def _save_conv(session_id: str, agent: str, role: str, content: str):
+    """写入一条对话记录 (#11 对话持久化, 刷新后可恢复)。"""
+    try:
+        from db.repos import save_conversation
+        from db.session import async_session as _db_sess
+        async with _db_sess() as db:
+            await save_conversation(db, session_id, agent, role, content)
+    except Exception as e:
+        logger.warning(f"[sse] save conversation failed: {e}")
+
+
 @router.post("/beta")
 async def chat_beta(req: ChatRequest):
     """β Chat SSE 端点 — 接收人类消息, 返回 β 流式回复。
@@ -57,6 +90,11 @@ async def chat_beta(req: ChatRequest):
         if _state_ref:
             _state_ref.last_human_message_to_beta = req.message
 
+        # #11 对话持久化: 确保会话存在 + 存人类消息 (刷新后恢复 β 对话)
+        session_id = await _ensure_session()
+        if session_id:
+            await _save_conv(session_id, "beta", "human", req.message)
+
         try:
             # 流式: run_stream → stream_text() 逐 token 产出 text 事件 (2026-08-05 #7)。
             # 注: pydantic-ai 2.0 stream_text() 产出**累积文本** (每 chunk = 到当前为止的全部),
@@ -69,6 +107,10 @@ async def chat_beta(req: ChatRequest):
                     prev = chunk
                     if delta:
                         yield await _sse_event("text", {"content": delta})
+
+            # #11: 流结束后存 β 完整回复
+            if session_id and prev:
+                await _save_conv(session_id, "beta", "agent", prev)
 
             # 流结束后检查是否有待审提议 (β 调用了 propose_to_alpha)
             if _state_ref and _state_ref.pending_proposal:

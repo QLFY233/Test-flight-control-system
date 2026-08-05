@@ -100,6 +100,11 @@ class ApiManager {
         return this.post('/api/sessions', config);
     }
 
+    /** GET /api/sessions/{id} — 会话详情 (含 task_description/beta_plan/alpha_actions, #11 刷新恢复) */
+    async getSessionDetail(sessionId) {
+        return this.get(`/api/sessions/${encodeURIComponent(sessionId)}`);
+    }
+
     /** POST /api/sessions/{id}/abort — abort a session */
     async abortSession(sessionId) {
         return this.post(`/api/sessions/${sessionId}/abort`);

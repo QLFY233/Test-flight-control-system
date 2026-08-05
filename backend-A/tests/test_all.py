@@ -210,6 +210,43 @@ async def test_db():
 
 asyncio.run(test_db())
 
+# ── Test 6b: 会话详情 + β 对话持久化 (#11 刷新恢复) ──
+print("\n📋 Test 6b: 会话详情 + β 对话持久化")
+
+async def test_session_detail():
+    from db.repos import get_session_detail
+    async with async_session() as s:
+        # 未设置 alpha_actions/beta_plan 时详情兜底字段
+        detail = await get_session_detail(s, "20260727120000")
+        check("detail 存在", detail is not None)
+        if detail:
+            check("detail.status executing", detail["status"] == "executing")
+            check("detail.telemetry_count == 2", detail["telemetry_count"] == 2, f"got {detail['telemetry_count']}")
+            check("detail.alpha_actions 空兜底", detail["alpha_actions"] is None)
+        # 不存在的会话 → None
+        check("detail 不存在 → None", await get_session_detail(s, "nonexistent") is None)
+
+        # 写入 alpha_actions 后详情可读
+        from db.repos import get_session as _get
+        fs = await _get(s, "20260727120000")
+        fs.alpha_actions = '[{"code":"takeoff","value":1.0}]'
+        fs.beta_plan = "起飞到 1 米"
+        await s.commit()
+        detail2 = await get_session_detail(s, "20260727120000")
+        check("detail2.alpha_actions 已回读", detail2["alpha_actions"] == '[{"code":"takeoff","value":1.0}]')
+        check("detail2.beta_plan 已回读", detail2["beta_plan"] == "起飞到 1 米")
+
+        # β 对话持久化往返 (human + agent)
+        await save_conversation(s, "20260727120000", "beta", "human", "起飞到 1 米")
+        await save_conversation(s, "20260727120000", "beta", "agent", "好的，计划已生成")
+        convs = await get_conversations(s, "20260727120000")
+        check("β 对话 3 条", len(convs) == 3, f"got {len(convs)}")
+        # get_conversations 仅按 created_at 排序 (微秒精度), 连续插入可能并列 → 断言集合而非顺序
+        roles = sorted(c.role for c in convs)
+        check("β human+agent 角色集合", roles == ["agent", "human", "human"], f"got {roles}")
+
+asyncio.run(test_session_detail())
+
 # ── Test 7: TelemetryBuffer ──
 print("\n📋 Test 7: TelemetryBuffer 批量写入")
 
