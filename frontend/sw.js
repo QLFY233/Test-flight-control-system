@@ -3,7 +3,7 @@
 // 避免 Cache First 导致的「代码更新后永不清缓存」。
 // 版本号变更（发布新版本时更新 BUILD_ID）会自动废弃旧缓存。
 
-const BUILD_ID = '2026-08-05-fix-stale-proposal';
+const BUILD_ID = '2026-08-05-fix-hard-reload';
 const CACHE_NAME = 'flight-control-v1-' + BUILD_ID;
 const STATIC_ASSETS = [
   '/',
@@ -61,8 +61,22 @@ self.addEventListener('fetch', (event) => {
   }
 
   // 静态资源 — Stale-While-Revalidate: 先用缓存即时响应，后台回源更新缓存
+  // 硬刷新 (Ctrl+Shift+R / request.cache=reload) 绕过缓存直接回源 — 保证拿到最新代码
   event.respondWith(
     caches.match(event.request).then((cached) => {
+      const bypass = event.request.cache === 'reload'
+        || (event.request.headers.get('cache-control') || '').includes('no-cache');
+      if (bypass) {
+        return fetch(event.request).then((response) => {
+          if (response.ok && response.type === 'basic') {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, clone);
+            });
+          }
+          return response;
+        }).catch(() => cached);
+      }
       const networkFetch = fetch(event.request).then((response) => {
         if (response.ok && response.type === 'basic') {
           const clone = response.clone();
