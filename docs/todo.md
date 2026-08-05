@@ -4,11 +4,19 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-05 (待办 #8 设置页移除后端 Tab + #3 AI 任务命名 + #11 刷新恢复)
+最近更新：2026-08-05 (新需求 — 规划界面左右分栏可拖动调整占比)
 
 ## 待办事项与已知问题（2026-08-05 用户反馈）
 
 > 用户实测反馈的待办/缺陷清单，按需排期修复。状态图例同顶部：⬜ 未开始 / 🚧 进行中 / ✅ 已完成。
+
+> **2026-08-05 (新需求 — 左栏↔右栏可拖动分界条)**:
+> 需求 (用户确认): 规划界面各部分分界可自由拖动调占比 — 范围=仅左栏↔右栏视图一条竖向分界; 持久化=仅本次会话有效 (刷新恢复默认); 应用=所有页面通用
+> 实现: `shared.js renderTwoColumn` 插入 `.layout-splitter` + `bindLayoutSplitter` (mousedown/touchstart 拖动, 实时改左栏宽 px, 钳制容器 15%~75%, 模块级 `_leftWidth` 导航保留/刷新重置, `window.blur` 兜底防光标卡死); `layout.css` 分界条样式 + 移动端 `<768px` display:none
+> 生效页面: BetaPage (规划) + AlphaPage (飞控) — 两者共用 renderTwoColumn 左右分栏
+> 验证: Playwright 1400px — 拖动 +200px 生效、钳制 75%/15%、hash 导航保留、`page.reload()` 重置 42%、AlphaPage 同样生效、移动端 480px splitter display:none; 零 console 错误
+> code-review (medium): 0 发现
+> 已知限制: 拖动后用 px 定宽, 会话内窗口缩小不再重钳制 (右栏 flex 自动收缩, 属本次会话临时布局, 可接受)
 
 > **2026-08-05 (待办 #8 — 去掉设置页「后端」部分完成)**:
 > ① SettingsPage.js: 移除「后端」Tab (后端地址/WS/SSE 端点配置, 部署内网同源后无需暴露); activeTab 默认改 'environment'; 清理死代码 (config/apiManager/deepMerge 导入, bc/ec 变量, _saveSettings 后端读取 + setBaseUrl + backend-url-changed 事件)
