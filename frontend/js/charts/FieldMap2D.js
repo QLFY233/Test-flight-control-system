@@ -13,6 +13,8 @@ class FieldMap2D {
         this.container = null;
         this._resizeHandler = null;
         this._updateUnsub = null;
+        this._trajUnsub = null;   // trajectory 变更 → 重建 (计划/轨迹线)
+        this._droneUnsub = null;  // drone 变更 → 无人机标记增量更新 (10Hz)
     }
 
     mount(container) {
@@ -51,13 +53,39 @@ class FieldMap2D {
         this._updateUnsub = store.subscribe('field', () => {
             this._buildOption();
         });
+        // 计划/已飞轨迹更新 → 整图重建 (低频, 对齐 field 模式)
+        this._trajUnsub = store.subscribe('trajectory', () => {
+            this._buildOption();
+        });
+        // 无人机位置 10Hz → 仅增量更新标记 series, 不重建整图
+        this._droneUnsub = store.subscribe('drone', () => {
+            this._updateDroneMarker();
+        });
     }
 
     unmount() {
         if (this._resizeHandler) { window.removeEventListener('resize', this._resizeHandler); this._resizeHandler = null; }
         if (this._updateUnsub) { this._updateUnsub(); this._updateUnsub = null; }
+        if (this._trajUnsub) { this._trajUnsub(); this._trajUnsub = null; }
+        if (this._droneUnsub) { this._droneUnsub(); this._droneUnsub = null; }
         if (this.chart) { this.chart.dispose(); this.chart = null; }
         if (this.container) { this.container.innerHTML = ''; this.container = null; }
+    }
+
+    // 无人机位置标记: 10Hz 增量更新 (series 固定 id, ECharts 按 id 合并)
+    _updateDroneMarker() {
+        if (!this.chart || this.chart.isDisposed()) return;
+        const p = store.get('drone')?.position;
+        const data = (p && p.x != null && p.y != null) ? [[p.x, p.y]] : [];
+        this.chart.setOption({ series: [{ id: 'fieldmap-drone', data }] });
+    }
+
+    // 目标点统一解析: 优先归一化 goal ({x,y,z}), 兜底 a.target (数组) / a.params.target (对象)
+    _toXYZ(t) {
+        if (!t) return null;
+        if (Array.isArray(t) && t.length >= 3) return { x: t[0], y: t[1], z: t[2] };
+        if (typeof t === 'object') return { x: t.x ?? 0, y: t.y ?? 0, z: t.z ?? 0 };
+        return null;
     }
 
     _buildOption() {
@@ -163,35 +191,36 @@ class FieldMap2D {
         }
 
         // ActionSequence waypoints (schema_version=2: 使用 actionSequence 替代旧 waypoints)
+        // 目标点优先取归一化 a.goal; 兼容旧格式 a.target(数组 [x,y,z]) / a.params.target(对象)
         const actionSeq = trajectory?.actionSequence || [];
+        const wpData = [];
         if (actionSeq.length > 0) {
-            const wpData = actionSeq
-                .filter(a => a.params?.target)
-                .map((a, i) => ({
-                    value: [a.params.target.x ?? 0, a.params.target.y ?? 0],
-                    label: a.code || String(i + 1),
-                }));
-            if (wpData.length > 0) {
-                plannedSeries.push({
-                    name: 'Waypoints',
-                    type: 'scatter',
-                    data: wpData,
-                    symbolSize: 8,
-                    symbol: 'circle',
-                    itemStyle: {
-                        color: '#00BCD4',
-                        borderColor: '#4DD0E1',
-                        borderWidth: 2,
-                    },
-                    label: {
-                        show: true,
-                        position: 'top',
-                        color: '#9E9E9E',
-                        fontSize: 10,
-                        formatter: (p) => p.data.label,
-                    },
-                });
-            }
+            actionSeq.forEach((a, i) => {
+                const g = a.goal ?? this._toXYZ(a.target) ?? this._toXYZ(a.params && a.params.target);
+                if (!g) return;   // hover/yaw 等无目标动作跳过
+                wpData.push({ value: [g.x, g.y], label: a.code || String(i + 1) });
+            });
+        }
+        if (wpData.length > 0) {
+            plannedSeries.push({
+                name: 'Waypoints',
+                type: 'scatter',
+                data: wpData,
+                symbolSize: 8,
+                symbol: 'circle',
+                itemStyle: {
+                    color: '#00BCD4',
+                    borderColor: '#4DD0E1',
+                    borderWidth: 2,
+                },
+                label: {
+                    show: true,
+                    position: 'top',
+                    color: '#9E9E9E',
+                    fontSize: 10,
+                    formatter: (p) => p.data.label,
+                },
+            });
         }
 
         this.chart.setOption({
@@ -241,6 +270,24 @@ class FieldMap2D {
                 ...homeSeries,
                 ...obstacleSeries,
                 ...plannedSeries,
+                // 无人机当前位置标记 (青色圆点; id 固定供 _updateDroneMarker 增量更新)
+                {
+                    id: 'fieldmap-drone',
+                    name: 'Drone',
+                    type: 'scatter',
+                    data: (() => {
+                        const p = store.get('drone')?.position;
+                        return (p && p.x != null && p.y != null) ? [[p.x, p.y]] : [];
+                    })(),
+                    symbolSize: 10,
+                    symbol: 'circle',
+                    itemStyle: {
+                        color: '#00BCD4',
+                        borderColor: '#4DD0E1',
+                        borderWidth: 1,
+                    },
+                    z: 10,
+                },
             ],
             animation: true,
             animationDuration: 400,

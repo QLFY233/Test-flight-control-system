@@ -20,9 +20,12 @@ class Scene3D {
         this.altLine = null;
         this.floorMesh = null;
         this.trailLine = null;        // 绿色飞行轨迹线
+        this.planGroup = null;        // 飞行计划渲染组 (计划虚线 + 目标点标记 + 当前动作高亮)
         this._trailLast = null;       // 上一次记录点 (去重)
         this._animationId = null;
         this._updateUnsub = null;
+        this._planUnsub = null;       // trajectory 变更 → 重建计划
+        this._flightUnsub = null;     // flight.currentAction 变更 → 重建高亮
         this._resizeHandler = null;
         this._keys = new Set();       // WASD 移动按键
         this._lastFrame = null;       // 帧间隔计时
@@ -90,10 +93,14 @@ class Scene3D {
         this._buildHome();
         this._buildDrone();
         this._buildTrail();
+        this._buildPlan();
 
         // --- Subscribe to pose updates ---
         this._updateUnsub = store.subscribe('drone', () => this._updateDrone());
         this._updateUnsubField = store.subscribe('field', () => this._updateField());
+        // 飞行计划更新 (alpha_output → trajectory) / 当前动作切换 (status → flight) → 重建计划渲染
+        this._planUnsub = store.subscribe('trajectory', () => this._updatePlan());
+        this._flightUnsub = store.subscribe('flight', () => this._updatePlan());
 
         // --- Resize ---
         this._resizeHandler = () => {
@@ -256,6 +263,94 @@ class Scene3D {
         this.scene.add(this.trailLine);
     }
 
+    // ── 飞行计划渲染 ──
+    // 数据源: store.trajectory (app.js 归一化: planned=[{x,y,z}],
+    // actionSequence=[{code,target,value,units,comment,goal:{x,y,z}|null}])
+    // 坐标映射 ENU → Three.js: x→x(东), z→y(高), y→z(北), 对齐 _updateDrone
+    _buildPlan() {
+        this.planGroup = new THREE.Group();
+        const trajectory = store.get('trajectory') || {};
+        const flight = store.get('flight') || {};
+        const groundY = this._boundary().zMin || 0;
+        // ENU 点 → Three.js Vector3 (显示高度钳到地板, 防被不透明地板遮挡)
+        const mapPt = (p) => new THREE.Vector3(p.x ?? 0, Math.max(p.z ?? 0, groundY), p.y ?? 0);
+
+        // 计划折线 (青色虚线): planned 目标点序列
+        const planned = trajectory.planned || [];
+        if (planned.length > 1) {
+            const geo = new THREE.BufferGeometry().setFromPoints(planned.map(mapPt));
+            const mat = new THREE.LineDashedMaterial({ color: 0x00BCD4, dashSize: 0.15, gapSize: 0.15 });
+            const line = new THREE.Line(geo, mat);
+            line.computeLineDistances();   // LineDashedMaterial 必需
+            this.planGroup.add(line);
+        }
+
+        // 目标点标记: 每个带 goal 的动作一个小方块 + 编号 sprite;
+        // 当前动作 (flight.currentAction, 1-based) 用橙色高亮
+        const actions = trajectory.actionSequence || [];
+        const curIdx = (flight.currentAction || 0) > 0 ? (flight.currentAction - 1) : -1;
+        actions.forEach((a, i) => {
+            const g = a.goal;
+            if (!g || g.x == null || g.y == null || g.z == null) return;   // hover/yaw 等无目标动作跳过
+            const isCur = i === curIdx;
+            const geo = new THREE.BoxGeometry(0.18, 0.18, 0.18);
+            const mat = new THREE.MeshBasicMaterial({ color: isCur ? 0xFF5722 : 0x00BCD4 });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.copy(mapPt(g));
+            this.planGroup.add(mesh);
+
+            // 编号 sprite (简单实现)
+            const label = this._makePlanLabel(String(i + 1), isCur ? '#FF5722' : '#00BCD4');
+            if (label) {
+                label.position.set(g.x ?? 0, (g.z ?? 0) + 0.45, g.y ?? 0);
+                this.planGroup.add(label);
+            }
+        });
+
+        this.scene.add(this.planGroup);
+    }
+
+    // 计划编号标签 (CanvasTexture sprite)
+    _makePlanLabel(text, color) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64; canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+        ctx.font = 'bold 22px monospace';
+        ctx.fillStyle = color;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, 32, 16);
+        const tex = new THREE.CanvasTexture(canvas);
+        const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+        const sprite = new THREE.Sprite(mat);
+        sprite.scale.set(0.8, 0.4, 1);
+        return sprite;
+    }
+
+    // 计划变更 → 整体重建 (低频: alpha_output / status, 对象数少)
+    _updatePlan() {
+        this._disposePlan();
+        this._buildPlan();
+    }
+
+    // 清理计划组: 遍历子对象释放 geometry/material/纹理
+    _disposePlan() {
+        if (!this.planGroup) return;
+        this.scene.remove(this.planGroup);
+        this.planGroup.traverse((obj) => {
+            if (obj.geometry) obj.geometry.dispose();
+            if (obj.material) {
+                if (Array.isArray(obj.material)) {
+                    obj.material.forEach(m => { m.map && m.map.dispose(); m.dispose(); });
+                } else {
+                    obj.material.map && obj.material.map.dispose();
+                    obj.material.dispose();
+                }
+            }
+        });
+        this.planGroup = null;
+    }
+
     _updateDrone() {
         if (!this.droneMesh) return;
         const drone = store.get('drone');
@@ -384,6 +479,9 @@ class Scene3D {
         if (this._keyUpHandler) { window.removeEventListener('keyup', this._keyUpHandler); this._keyUpHandler = null; }
         if (this._blurHandler) { window.removeEventListener('blur', this._blurHandler); this._blurHandler = null; }
         this._keys.clear();
+        if (this._planUnsub) { this._planUnsub(); this._planUnsub = null; }
+        if (this._flightUnsub) { this._flightUnsub(); this._flightUnsub = null; }
+        this._disposePlan();
         // 清理场景资源 (GPU 内存)
         this._disposeObject(this.floorMesh);
         this._disposeObject(this.trailLine);

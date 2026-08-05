@@ -6,6 +6,14 @@
 
 最近更新：2026-08-05 (代码审查修复 — 3D 视图键盘守卫/资源清理 + emergency 落地判定)
 
+> **2026-08-05 (前端联调检查修复 #3 — 飞行计划不在 PLN 视图显示)**:
+> 根因: ① 后端 alpha_output 不广播 planned → trajectory.planned 恒空；② FieldMap2D 读 a.params?.target（对象）与 schema 权威格式 a.target（数组 [x,y,z]）不匹配 → 目标点不画；③ Scene3D 完全没有计划渲染逻辑；④ FieldMap2D 无无人机位置标记；⑤ flight.currentActionCode 读 p.action.code（ActionCommand 无此字段）恒空
+> 修复（并行 2 worker）:
+> ① app.js 数据层: _normalizePlan() 归一化 actionSequence（target 数组→对象）+ 链式推导 goal（对齐 B 侧 stub.py 语义：takeoff→home 上方/goto→target/move→沿方向/climb/descend→相对高度/return_home→home）；planned = [起点+目标点序列]；pose 10Hz 记录 flown（上限 600）；currentActionCode 改按索引从序列取；currentTarget 后端 goal 优先否则推导
+> ② FieldMap2D: 订阅 trajectory（重建）+ drone（无人机标记 10Hz 增量更新，series id 合并）；目标点兼容 a.goal/a.target 数组/a.params.target 对象三格式
+> ③ Scene3D: 新增 _buildPlan() — planned 青色虚线 + 目标点标记（BoxGeometry + 编号 sprite）+ 当前动作目标橙色高亮；订阅 trajectory/flight；unmount 清理
+> 验证: 实测「飞到场地中心 2.5,2.0 高度1米」→ approve → α 翻译 [takeoff,goto,hover] → store 链式推导正确（takeoff→(0,0,1)、goto→(2.5,2,1)、planned 3 点、flown 202 点）；FieldMap2D 青色目标点+虚线+无人机标记渲染；Scene3D 青色虚线+橙/青双目标点+编号渲染；无 JS 错误；α/dashboard 回归正常。BUILD_ID → `2026-08-05-fix-plan-visualization`
+
 > **2026-08-05 (前端联调检查修复 #2 — α 飞控页中间大面积黑屏)**:
 > 根因: `AlphaPage.js` leftHtml 模板 [ENV] 卡片缺 `</div>` 闭合（24 open / 23 close，2026-08-02 b46435e 引入）→ 浏览器解析 innerHTML 时把模板外的 `<div class="right-column">` 吞进 left-column → 右栏（高度图）被挤到左栏卡片下方，页面中间 60% 区域空黑（用户宽屏 2560x1564 截图确认）。修复: [TASK] 卡片前补 `</div>`，模板 depth 0 ✅。验证: 清缓存后 right-column 回 page-container（两列并列满高 1300，高度图占满右栏）。注意: 懒加载模块改动必须同步 bump sw.js BUILD_ID（否则 SW 缓存旧模块再次遮蔽修复）。BUILD_ID → `2026-08-05-fix-alpha-layout`
 

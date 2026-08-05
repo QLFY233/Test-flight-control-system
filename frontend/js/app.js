@@ -209,6 +209,106 @@ async function init() {
     }
 }
 
+// ============================================================
+// trajectory 数据归一化 — 飞行计划 → 前端展示数据
+// (ActionCommand schema_version=2: target 为顶层数组 [x,y,z],
+//  视图组件按 {x,y,z} 对象读取; goal 链式推导对齐 B 侧 stub.py 语义)
+// ============================================================
+
+function _toXYZ(v) {
+    if (Array.isArray(v) && v.length >= 3 && v.slice(0, 3).every(n => typeof n === 'number' && Number.isFinite(n))) {
+        return { x: v[0], y: v[1], z: v[2] };
+    }
+    if (v && typeof v === 'object' && typeof v.x === 'number' && typeof v.y === 'number' && typeof v.z === 'number') {
+        return { x: v.x, y: v.y, z: v.z };
+    }
+    return null;
+}
+
+// home 兼容解析: field.home.position (数组/对象) 或 field.home 直接为 {x,y,z}
+function _getHomePos(field) {
+    const raw = field?.home;
+    if (!raw) return { x: 0, y: 0, z: 0.5 };
+    return _toXYZ(raw.position) || _toXYZ(raw) || { x: 0, y: 0, z: 0.5 };
+}
+
+/**
+ * 归一化动作序列 + 链式推导每个动作的目标点 (goal)。
+ * 推导语义对齐 backend-B/small_model/stub.py (40-135 行)。
+ * @param {Array} actions 原始 ActionCommand.actions
+ * @param {{x,y,z}} pose 当前无人机位置
+ * @param {{x,y,z}} home 返航点
+ * @returns {{seq: Array, planned: Array}}
+ */
+function _normalizePlan(actions, pose, home) {
+    const seq = [];
+    const planned = [];
+    let cursor = { x: pose?.x ?? 0, y: pose?.y ?? 0, z: pose?.z ?? 0 };
+    planned.push({ ...cursor }); // 起点 = 当前无人机位置
+
+    for (const a of (Array.isArray(actions) ? actions : [])) {
+        const code = a?.code || '';
+        let goal = null;
+
+        switch (code) {
+            case 'takeoff':
+                goal = { x: home.x, y: home.y, z: typeof a.value === 'number' ? a.value : 1 };
+                break;
+            case 'goto':
+                goal = _toXYZ(a.target) || { ...cursor };
+                break;
+            case 'move': {
+                const value = typeof a.value === 'number' ? a.value : 1;
+                const dir = _toXYZ(a.target) || { x: 1, y: 0, z: 0 }; // 无方向时简化 +x (前端无 yaw 数据)
+                const mag = Math.hypot(dir.x, dir.y, dir.z) || 1;
+                goal = {
+                    x: cursor.x + (dir.x / mag) * value,
+                    y: cursor.y + (dir.y / mag) * value,
+                    z: cursor.z + (dir.z / mag) * value,
+                };
+                break;
+            }
+            case 'climb':
+                goal = { x: cursor.x, y: cursor.y, z: cursor.z + (typeof a.value === 'number' ? a.value : 0.5) };
+                break;
+            case 'descend':
+                goal = { x: cursor.x, y: cursor.y, z: cursor.z - (typeof a.value === 'number' ? a.value : 0.5) };
+                break;
+            case 'yaw':
+            case 'hover':
+                goal = null; // 位置不动
+                break;
+            case 'return_home':
+                goal = { ...home };
+                break;
+            case 'land':
+                goal = { ...home }; // 前端简化 (stub 用 floor 高度, 前端无 floor 数据)
+                break;
+            default:
+                goal = null; // 未知编码不抛错
+        }
+
+        if (goal) {
+            cursor = { ...goal };
+            const last = planned[planned.length - 1];
+            if (!last || Math.abs(goal.x - last.x) > 0.001 || Math.abs(goal.y - last.y) > 0.001 || Math.abs(goal.z - last.z) > 0.001) {
+                planned.push({ ...goal });
+            }
+        }
+
+        seq.push({
+            code,
+            target: _toXYZ(a.target),   // 归一化: 数组 [x,y,z] → {x,y,z}
+            value: a.value,
+            units: a.units,
+            comment: a.comment,
+            goal,                        // 链式推导目标点 (可能 null)
+        });
+    }
+
+    return { seq, planned };
+}
+
 function registerWsHandlers() {
     const w = window.__app.wsManager;
     // 后端广播为顶层字段：{type, pos, quat, vel, ...}（无 payload 键），
@@ -216,8 +316,20 @@ function registerWsHandlers() {
     w.on('pose', p => {
         if (!p) return;
         store.batch(() => {
-            if (Array.isArray(p.pos)) store.set('drone.position', { x: p.pos[0], y: p.pos[1], z: p.pos[2] });
-            else if (p.pos) store.set('drone.position', p.pos);
+            let pos = null;
+            if (Array.isArray(p.pos) && p.pos.length >= 3) pos = { x: p.pos[0], y: p.pos[1], z: p.pos[2] };
+            else if (p.pos) pos = p.pos;
+            if (pos) {
+                store.set('drone.position', pos);
+                // 已飞轨迹追加 (10Hz; 连续同点跳过, 上限 600)
+                const flown = store.get('trajectory.flown') || [];
+                const last = flown[flown.length - 1];
+                if (!last || Math.hypot(pos.x - last.x, pos.y - last.y, pos.z - last.z) >= 0.01) {
+                    const next = flown.length >= 600 ? flown.slice(flown.length - 599) : flown.slice();
+                    next.push({ x: pos.x, y: pos.y, z: pos.z });
+                    store.set('trajectory.flown', next);
+                }
+            }
             if (Array.isArray(p.vel)) store.set('drone.velocity', { vx: p.vel[0], vy: p.vel[1], vz: p.vel[2] });
             else if (p.vel) store.set('drone.velocity', p.vel);
             // 后端广播 quat [w,x,y,z] (无 attitude 字段); 暂存原始四元数, 需要欧拉角时再转换
@@ -251,13 +363,38 @@ function registerWsHandlers() {
     });
     w.on('alpha_output', p => {
         if (!p) return;
+        // 动作源: WS remaining_actions 优先, 兼容 action.actions (后端广播格式) 兑底
+        const rawActions = Array.isArray(p.remaining_actions) ? p.remaining_actions
+            : (Array.isArray(p.action?.actions) ? p.action.actions : []);
+        const pose = store.get('drone.position') || { x: 0, y: 0, z: 0 };
+        const home = _getHomePos(store.get('field'));
+        const { seq, planned } = _normalizePlan(rawActions, pose, home);
+
         store.batch(() => {
-            if (p.action?.code != null) store.set('flight.currentActionCode', p.action.code);
-            if (p.action?.params) store.set('flight.currentActionParams', p.action.params);
-            if (Array.isArray(p.goal)) store.set('trajectory.currentTarget', { x: p.goal[0], y: p.goal[1], z: p.goal[2] });
+            // currentActionCode: 从归一化序列按当前动作索引取 (ActionCommand 无顶层 code 字段)
+            const curIdx = (store.get('flight.currentAction') || 1) - 1;
+            const curAct = seq[curIdx] || seq[0] || null;
+            store.set('flight.currentActionCode', curAct?.code ?? '');
+            if (curAct) {
+                const params = {};
+                if (curAct.value != null) params.value = curAct.value;
+                if (curAct.units != null) params.units = curAct.units;
+                if (curAct.target) params.target = curAct.target;
+                store.set('flight.currentActionParams', Object.keys(params).length ? params : null);
+            } else {
+                store.set('flight.currentActionParams', null);
+            }
+            // 目标点: 后端广播的 goal (带 target 的动作) 优先, 否则用推导的第一个 goal
+            if (Array.isArray(p.goal) && p.goal.length >= 3) store.set('trajectory.currentTarget', { x: p.goal[0], y: p.goal[1], z: p.goal[2] });
             else if (p.goal) store.set('trajectory.currentTarget', p.goal);
-            if (Array.isArray(p.remaining_actions)) store.set('trajectory.actionSequence', p.remaining_actions);
-            if (Array.isArray(p.planned)) store.set('trajectory.planned', p.planned);
+            else store.set('trajectory.currentTarget', seq.find(a => a.goal)?.goal ?? null);
+            store.set('trajectory.actionSequence', seq);
+            // planned: 后端权威 planned (若将来广播) 优先, 否则用链式推导 [起点 + 各目标点]
+            if (Array.isArray(p.planned) && p.planned.length > 1) {
+                store.set('trajectory.planned', p.planned);
+            } else {
+                store.set('trajectory.planned', planned);
+            }
         });
         bus.emit('alpha-output', p);
     });
