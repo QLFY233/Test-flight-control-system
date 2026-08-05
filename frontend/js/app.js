@@ -203,19 +203,6 @@ async function init() {
         }
     });
 
-    // 设置页修改后端地址后重建 WS 连接（REST 与 WS 保持同一目标）
-    bus.on('backend-url-changed', ({ baseUrl, wsEndpoint }) => {
-        if (!baseUrl) return;
-        a.config.backend = { ...(a.config.backend || {}), base_url: baseUrl, ws_endpoint: wsEndpoint || '/ws' };
-        a.apiManager.setBaseUrl(baseUrl);
-        const wsUrl = baseUrl.replace(/^http/, 'ws') + (a.config.backend.ws_endpoint || '/ws');
-        a.wsManager.disconnect();
-        a.wsManager = new WsManager(wsUrl);
-        registerWsHandlers();
-        a.wsManager.connect();
-        bus.emit('toast', { message: '后端地址已更新，连接已重建', level: 'success' });
-    });
-
     // Tab bar + Nav strip (skip button elements)
     const syncTabs = () => { const h = window.location.hash || '#/overview'; document.querySelectorAll('.tab-bar__item[href], .nav-strip__item[href]').forEach(x => { const match = x.getAttribute('href') === h; x.classList.toggle('tab-bar__item--active', match); x.classList.toggle('nav-strip__item--active', match); }); };
     window.addEventListener('hashchange', syncTabs);

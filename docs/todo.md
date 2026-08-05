@@ -4,11 +4,18 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-05 (待办 #3 AI 任务自动命名 + #11 刷新恢复)
+最近更新：2026-08-05 (待办 #8 设置页移除后端 Tab + #3 AI 任务命名 + #11 刷新恢复)
 
 ## 待办事项与已知问题（2026-08-05 用户反馈）
 
 > 用户实测反馈的待办/缺陷清单，按需排期修复。状态图例同顶部：⬜ 未开始 / 🚧 进行中 / ✅ 已完成。
+
+> **2026-08-05 (待办 #8 — 去掉设置页「后端」部分完成)**:
+> ① SettingsPage.js: 移除「后端」Tab (后端地址/WS/SSE 端点配置, 部署内网同源后无需暴露); activeTab 默认改 'environment'; 清理死代码 (config/apiManager/deepMerge 导入, bc/ec 变量, _saveSettings 后端读取 + setBaseUrl + backend-url-changed 事件)
+> ② app.js: 移除 backend-url-changed 处理器 (无触发源死代码) — 同源自适应 base_url 逻辑保留 (config-default.json + location.origin)
+> ③ 注: 设置页后端 Tab 本就不在 前端 spec §9.4 (5 项功能), 删除后对齐 spec
+> ④ 验证: Playwright #/settings — Tabs=[显示,语音,环境] 无后端, 环境 Tab 默认渲染, Tab 切换/保存/应用按钮点击零 console 错误
+> ⑤ code-review (medium): 0 发现 — 纯删除改动
 
 > **2026-08-05 (待办 #3 — AI 自动给飞行任务取名完成)**:
 > ① 根因 — propose 流程无任务名: proposal 无 title/task_name 字段 (FlightPlanCard 恒显"飞行计划"), 会话 task_description 恒 null
@@ -37,7 +44,7 @@
 | 5 | 历史界面有 bug | 🐛 bug | ✅ | 根因: `.history-page__detail` 行方向 flex → 3 详情区(任务/回放控制/轨迹)横向并排, 窄窗口挤压。修复: 改列方向+stretch+overflow-y:auto, detail-section 加 min-width:0+padding; EmptyState 靠自身内部 flex 居中两态兼容。验证: 800px 视口 3 section 同 x 同宽 498px y 递增纵向堆叠 |
 | 6 | 数据驱动的分析工具与可视化，分析过程可视化 | ✨ 需求 | ⬜ | β analytics 工具结果可视化（FFT/统计/滤波图表展示）+ 分析过程可视化（工具调用过程展示） |
 | 7 | 没有流式输出 | 🐛 bug | ✅ | 根因: sse.py 用非流式 agent.run() 一次返回。修复: 改 agent.run_stream() + stream_text(), 累积文本求差取增量逐 chunk 发 text 事件; 移除无用导入。验证: 10+ text 事件增量不重复; 前端"你好"→β 完整回复无重复无错误 |
-| 8 | 去掉设置页「后端」部分 | ✨ 需求 | ⬜ | SettingsPage 移除「后端」Tab（后端地址/WS/SSE 端点配置，部署内网同源后无需暴露） |
+| 8 | 去掉设置页「后端」部分 | ✨ 需求 | ✅ | SettingsPage 移除「后端」Tab（后端地址/WS/SSE 端点配置，部署内网同源后无需暴露） |
 | 9 | 去掉显示设置里的「主题」 | ✨ 需求 | ⬜ | SettingsPage 显示 Tab 移除主题切换（保持暗色工业风单主题） |
 | 10 | 连接 TTS/STT 服务并调试 | ✨ 需求 | ⬜ | 讯飞语音链路（STT 签名/wpgs + TTS）联调：需 XF_APP_ID/API_KEY/API_SECRET 有效凭证，前端 AudioWorklet PCM 采集 + 音频播放验证 |
 | 11 | AI 历史记录与当前任务刷新自动恢复 | ✨ 需求 | ✅ | 刷新后可恢复历史任务：AI 对话记录、飞行信息、规划信息、α 上下文（会话级快照/续接，对齐 conversations 表 + flight_sessions） |

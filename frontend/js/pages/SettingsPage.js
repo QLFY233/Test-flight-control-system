@@ -6,15 +6,13 @@
 
 import store from '../state.js';
 import bus from '../event-bus.js';
-import { config, apiManager } from '../shared.js';
-import { deepMerge } from '../config.js';
 import { escAttr } from '../escape.js';
 
 class SettingsPage {
     constructor() {
         this.container = null;
         this.title = '设置';
-        this.activeTab = 'backend';
+        this.activeTab = 'environment';
         this.localConfig = {};
     }
 
@@ -37,34 +35,14 @@ class SettingsPage {
     }
 
     render() {
-        const tabs = ['backend', 'display', 'voice', 'environment'];
-        const tabLabels = { backend: '后端', display: '显示', voice: '语音', environment: '环境' };
+        const tabs = ['display', 'voice', 'environment'];
+        const tabLabels = { display: '显示', voice: '语音', environment: '环境' };
 
-        const bc = this.localConfig.backend || {};
         const dc = this.localConfig.display || {};
         const vc = this.localConfig.voice || {};
-        const ec = this.localConfig.environment || {};
 
         let bodyHtml = '';
         switch (this.activeTab) {
-            case 'backend':
-                bodyHtml = `
-                    <div class="settings-page__section-title">后端连接</div>
-                    <div class="settings-page__field">
-                        <label class="input-group__label">Base URL</label>
-                        <input type="text" class="input" id="cfg-backend-url" value="${escAttr(bc.base_url || 'http://localhost:8000')}" placeholder="http://localhost:8000">
-                    </div>
-                    <div class="settings-page__field">
-                        <label class="input-group__label">WebSocket Endpoint</label>
-                        <input type="text" class="input" id="cfg-backend-ws" value="${escAttr(bc.ws_endpoint || '/ws')}" placeholder="/ws">
-                    </div>
-                    <div class="settings-page__field">
-                        <label class="input-group__label">SSE Beta Endpoint</label>
-                        <input type="text" class="input" id="cfg-backend-sse" value="${escAttr(bc.sse_beta || '/api/chat/beta')}" placeholder="/api/chat/beta">
-                    </div>
-                `;
-                break;
-
             case 'display':
                 bodyHtml = `
                     <div class="settings-page__section-title">显示设置</div>
@@ -219,14 +197,6 @@ class SettingsPage {
     }
 
     _saveSettings() {
-        // Read backend fields
-        const backend = {
-            base_url: this._getInputVal('cfg-backend-url'),
-            ws_endpoint: this._getInputVal('cfg-backend-ws'),
-            sse_beta: this._getInputVal('cfg-backend-sse'),
-        };
-        if (backend.base_url) this.localConfig.backend = { ...(this.localConfig.backend || {}), ...backend };
-
         // Read display
         const theme = this._getSelectVal('cfg-display-theme');
         if (theme) this.localConfig.display = { ...(this.localConfig.display || {}), theme };
@@ -250,19 +220,7 @@ class SettingsPage {
         };
 
         localStorage.setItem('flight-control-config', JSON.stringify(this.localConfig));
-
-        const oldBase = window.__app?.config?.backend?.base_url;
-        // Update API base URL if changed
-        if (backend.base_url) {
-            window.__app.apiManager?.setBaseUrl?.(backend.base_url);
-        }
-
-        // 后端地址变更：通知 app.js 重建 WS 连接，避免 REST 走新地址、WS 走旧地址
-        if (backend.base_url && oldBase && backend.base_url.replace(/\/+$/, '') !== oldBase.replace(/\/+$/, '')) {
-            bus.emit('backend-url-changed', { baseUrl: backend.base_url, wsEndpoint: backend.ws_endpoint || '/ws' });
-        } else {
-            bus.emit('toast', { message: '设置已保存', level: 'success' });
-        }
+        bus.emit('toast', { message: '设置已保存', level: 'success' });
     }
 
     _resetSettings() {
