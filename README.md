@@ -144,7 +144,7 @@ bash start_all.sh
 停止:
 
 ```bash
-pkill -f 'run_a.py\|run_b.py\|fake_drone\|roscore'
+pkill -f 'run_a.py|run_b.py|fake_drone|roscore'
 ```
 
 ## 测试
