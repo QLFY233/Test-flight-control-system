@@ -21,8 +21,9 @@ if [ -f .env ]; then
 fi
 
 # 清理旧进程 (包括 roscore 重启来清除 ROS 死节点)
+# ⚠️ pkill -f 用 ERE: 交替须写 | 而非 \| (原 \| 只匹配字面竖线, 清理从未生效 → 残留节点名冲突)
 echo "[0/4] 清理旧进程..."
-pkill -9 -f "roscore\|rosmaster\|fake_drone\|run_a.py\|run_b.py" 2>/dev/null || true
+pkill -9 -f "roscore|rosmaster|fake_drone|run_a.py|run_b.py" 2>/dev/null || true
 sleep 2
 
 #===========================================================

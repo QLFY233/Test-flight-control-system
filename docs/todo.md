@@ -4,11 +4,15 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-05 (新需求 — 规划界面左右分栏可拖动调整占比)
+最近更新：2026-08-05 (启动修复 — backend-B 阶段1回归 + start_all.sh pkill ERE)
 
 ## 待办事项与已知问题（2026-08-05 用户反馈）
 
 > 用户实测反馈的待办/缺陷清单，按需排期修复。状态图例同顶部：⬜ 未开始 / 🚧 进行中 / ✅ 已完成。
+
+> **2026-08-05 (启动全链路修复 — start_all.sh 首跑暴露 2 处)**:
+> ① **backend-B 阶段1回归**: `run_b.py:97` 无条件调 `gp_adapter.set_event_sender(...)`, 但该方法仅 `Phase2Adapter` 有 (ef50299 引入, S8 只测 Phase2 未暴露) → Phase1 (sim-drone) 启动必崩 AttributeError。修复: `if PHASE == 2:` 守卫 (对齐 set_land_handler 模式)。验证: 全链路 sim-drone→B→A→REST 起
+> ② **start_all.sh pkill ERE bug**: `pkill -9 -f "roscore\|rosmaster\|..."` 中 `\|` 在 ERE 是字面竖线 → 清理从不生效, 残留节点名冲突致重启失败。修复: `\|`→`|` (与 2026-08-03 start_px4_sitl.sh 的修正同因)。验证: 二次 start_all.sh 清理+重启全绿
 
 > **2026-08-05 (新需求 — 左栏↔右栏可拖动分界条)**:
 > 需求 (用户确认): 规划界面各部分分界可自由拖动调占比 — 范围=仅左栏↔右栏视图一条竖向分界; 持久化=仅本次会话有效 (刷新恢复默认); 应用=所有页面通用

@@ -93,8 +93,9 @@ gp_adapter = make_adapter(PHASE, state=st)
 # S8.5: abort → AUTO.LAND 兜底 (design §5.3, 比悬停更保守)
 dispatch.set_abort_handler(gp_adapter.emergency_land)
 # S8.6/S8.8: adapter alert (offboard_lost/preflight_refused) 上行 → dispatch
-# (IPC 未连接时 _send_alert 内部 try/except 容错)
-gp_adapter.set_event_sender(dispatch.send_event)
+# (仅 Phase2 有 offboard 状态机/告警; Phase1 无此方法, 需守卫 — ef50299 引入回归)
+if PHASE == 2:
+    gp_adapter.set_event_sender(dispatch.send_event)
 # S8.4: phase2 land 动作 → AUTO.LAND 兜底 (design §5.3, 与 lifecycle.py 对齐)
 if PHASE == 2:
     comp.set_land_handler(gp_adapter.emergency_land)
