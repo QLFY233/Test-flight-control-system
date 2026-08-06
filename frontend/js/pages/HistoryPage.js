@@ -180,9 +180,86 @@ class HistoryPage {
         }
     }
 
+    /**
+     * C1: 加载选中会话的回放数据集 → store.history.playback.dataset。
+     * 数据源: GET /api/history/telemetry/{sid} (t/pos/vel/accel/angular_vel/quat) +
+     *         GET /api/sessions/{sid} (task_description/alpha_actions/status)。
+     * 独立存储路径, 与实时 trajectory.flown 隔离; 失败静默 (面板显示空态)。
+     */
+    async _loadPlaybackDataset(session) {
+        const sid = session?.id;
+        if (!sid) return 0;
+        let raw = [];
+        let detail = null;
+        try {
+            const res = await apiManager.getTelemetry(sid, { limit: 10000 });
+            raw = (res && Array.isArray(res.data)) ? res.data : [];
+        } catch (e) {
+            console.warn('[HistoryPage] telemetry load failed:', e);
+        }
+        try {
+            detail = await apiManager.getSessionDetail(sid);
+        } catch (e) { /* 详情失败静默, 面板仍可用遥测数据 */ }
+
+        // 遥测 → 回放点 (定长数值, 兼容端点已做 NULL→0)
+        const points = raw.map(r => ({
+            t: r.t ?? 0,
+            x: r.pos?.[0] ?? 0, y: r.pos?.[1] ?? 0, z: r.pos?.[2] ?? 0,
+            vx: r.vel?.[0] ?? 0, vy: r.vel?.[1] ?? 0, vz: r.vel?.[2] ?? 0,
+            ax: r.accel?.[0] ?? 0, ay: r.accel?.[1] ?? 0, az: r.accel?.[2] ?? 0,
+            wx: r.angular_vel?.[0] ?? 0, wy: r.angular_vel?.[1] ?? 0, wz: r.angular_vel?.[2] ?? 0,
+        }));
+
+        // alpha_actions (ActionCommand JSON) → 目标点序列 + 动作数 (任务进度面板用)
+        let planned = [];
+        let totalActions = 0;
+        if (detail && typeof detail.alpha_actions === 'string' && detail.alpha_actions.trim()) {
+            try {
+                const cmd = JSON.parse(detail.alpha_actions);
+                totalActions = Array.isArray(cmd?.actions) ? cmd.actions.length : 0;
+                planned = (cmd.actions || []).map(a => {
+                    const tgt = a?.target;
+                    if (Array.isArray(tgt) && tgt.length >= 3) {
+                        return { x: tgt[0], y: tgt[1], z: tgt[2] };
+                    }
+                    return null;
+                }).filter(Boolean);
+            } catch (e) { /* 解析失败忽略 */ }
+        }
+
+        const tStart = points.length ? points[0].t : 0;
+        const tEnd = points.length ? points[points.length - 1].t : 0;
+
+        // 提交前守卫: 期间用户已切到别的会话 → 丢弃本次结果 (防慢响应竞态覆盖新选择)
+        if (store.get('history.selectedSession')?.id !== sid) return 0;
+
+        store.set('history.playback.dataset', {
+            sessionId: sid,
+            points,
+            tStart,
+            tEnd,
+            duration: Math.max(tEnd - tStart, 0),
+            taskInfo: {
+                name: taskDisplayName(session),
+                status: session.status || (detail?.status ?? 'idle'),
+                totalActions,
+                convCount: session.conv_count ?? 0,
+                telemetryCount: points.length,
+            },
+            planned,
+        });
+        store.set('history.playback.index', 0);
+        store.set('history.playbackTime', 0);
+        store.set('history.playbackState', 'stopped');
+        return points.length;
+    }
+
     _renderDetail(session) {
         const detailArea = this.container?.querySelector('#history-detail');
         if (!detailArea) return;
+
+        // C1: 异步加载选中会话的回放数据集 (独立路径 store.history.playback.dataset, 不污染实时轨迹)
+        this._loadPlaybackDataset(session);
 
         // 统一任务语义 (与 AI 任务面板/总览一致)
         const name = taskDisplayName(session);

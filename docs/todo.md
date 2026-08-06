@@ -551,7 +551,7 @@
 | B3 看板去假数据 + 真告警 — bar 面板不再硬编码，订阅 bus 'alert' 实时累计（同 code 计数），无告警空态 | ✅ 已完成 | — | 2026-08-06 |
 | B4 看板 β 工具驱动联调 — 依赖 A2，实测 β「看高度趋势」→ 面板真实切换 | ✅ 已完成 | — | 2026-08-06 |
 | B5 看板空态兜底 — 无实时数据显示引导提示，不再一片 `--`/空图 | ✅ 已完成 | — | 2026-08-06 |
-| C1 会话数据集加载器 — HistoryPage 选中会话拉全量遥测+详情，组装 points/duration/taskInfo/planned，存 `store.history.playback.dataset`（不污染实时轨迹） | ⬜ 未开始 | — | — |
+| C1 会话数据集加载器 — HistoryPage 选中会话拉全量遥测+详情，组装 points/duration/taskInfo/planned，存 `store.history.playback.dataset`（不污染实时轨迹） | ✅ 已完成 | — | 2026-08-06 |
 | C2 回放引擎 — 新 js/history/playback.js：rAF 按倍速推进 time→索引/位姿，发 playback-* 总线事件 | ⬜ 未开始 | — | — |
 | C3 看板式历史数据面板 — 新 js/history/HistoryPanels.js：高度/速度三维/加速度/角速度折线 + 飞行统计卡片 + 任务进度（从数据集真实计算） | ⬜ 未开始 | — | — |
 | C4 2D 轨迹面板 — FieldMap2D 参数化：会话完整 XY 轨迹 + home + 边界 + 回放游标 | ⬜ 未开始 | — | — |

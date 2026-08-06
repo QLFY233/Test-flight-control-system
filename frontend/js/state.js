@@ -239,6 +239,11 @@ const initial = {
         playbackState: 'stopped', // 'playing' | 'paused' | 'stopped'
         playbackSpeed: 1,
         playbackTime: 0,
+        // 2026-08-06: 会话回放数据集 (独立路径, 不污染实时 trajectory.flown)
+        playback: {
+            dataset: null,   // {sessionId, points:[{t,x,y,z,vx,vy,vz,ax,ay,az,wx,wy,wz}], tStart, tEnd, duration, taskInfo, planned}
+            index: 0,        // 当前回放帧索引
+        },
     },
 
     // Field (schema_version=2: obstacles 预编废弃, 阶段2/4 由雷达在线感知替代)
