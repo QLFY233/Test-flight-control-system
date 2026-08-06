@@ -4,7 +4,7 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-06 (三处任务视图统一 — AI 任务面板/总览/历史共用 TaskCard)
+最近更新：2026-08-06 (飞控页 [ α OUT ] Alpha 实时输出卡片)
 
 > **2026-08-05 (β 工具调用卡死修复 — #7 流式改造回归)**:
 > 现象: β 回复「我来帮你规划…让我同步查询」后无输出（工具调用后 agent 卡死）；curl 复现：get_field_map 等工具调用后流永不继续
@@ -28,6 +28,12 @@
 > ④ **清理**: 删除死代码 SessionCard.js + 旧 session-card/task-panel__row CSS, 新增 TASK CARD 样式区块
 > ⑤ **修复**: TaskCard._rerender 的 `render()` 会先覆盖 this._el 再 replaceChild → 抛 "node is not a child" 异常 → _doActivate 在 fetch 前中断、_busy 永久卡死 (按钮全失效)。修复: 先保存旧元素引用再 render; _doActivate 的 finally 恢复渲染
 > ⑥ **验证**: Playwright — 三处同一任务渲染逐字一致 (名称/状态/时间/计数/当前徽标); 历史页恢复→后端 session 切换+聊天载入; 历史页重命名→AI 面板同步; 历史页删除→两处列表同步; console 零错误
+
+> **2026-08-06 (飞控页 [ TASK ] 下方新增 [ α OUT ] Alpha 实时输出卡片)**:
+> ① **需求**: 飞控面板 [ TASK ] 下方新增卡片, 展示 alpha AI 实时输出, 支持滚动
+> ② **实现**: AlphaPage 左栏第三卡片 [ α OUT ] — 监听 bus 'alpha-output' (WS alpha_output 广播, remaining_actions→action.actions→actions 三级提取), 每条记录 = 时间戳 + 动作编码链 (takeoff → goto(3.0,2.0,1.5) → hover 2s); 去重 (与末条相同跳过, 防 2s 心跳重复刷屏); 上限 60 条滚动淘汰; 智能跟随滚动 (用户上滚查看时不打扰); CLEAR 清空按钮; 刷新/恢复任务后 actionSequence 异步载入时自动补首条 (订阅 trajectory.actionSequence 路径变更, 忽略 10Hz 遥测)
+> ③ **验证**: Playwright — 卡片位于 [ TASK ] 之后; 模拟 3 序列广播正确追加+重复去重; 70 条批量→上限 60; max-height 260px overflow-y auto 滚动生效; CLEAR 清空恢复等待提示; 真实广播路径 (WS→app.js→bus) 确认
+> ④ **注意**: SW 缓存旧版 components.css 导致新样式不生效 — 需清缓存重载 (硬刷新) 或等待 SW 后台更新
 
 ## 待办事项与已知问题（2026-08-05 用户反馈）
 
