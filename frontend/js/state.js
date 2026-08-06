@@ -188,6 +188,8 @@ const initial = {
         connected: false,
         position: { x: 0, y: 0, z: 0 },
         velocity: { vx: 0, vy: 0, vz: 0 },
+        accel: { ax: 0, ay: 0, az: 0 },
+        angularVelocity: { wx: 0, wy: 0, wz: 0 },
         attitude: { roll: 0, pitch: 0, yaw: 0 },
         battery: 100,
         gps: { lat: 0, lon: 0, alt: 0, fix: 0 },

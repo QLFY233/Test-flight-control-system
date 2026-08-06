@@ -355,6 +355,11 @@ function registerWsHandlers() {
             }
             if (Array.isArray(p.vel)) store.set('drone.velocity', { vx: p.vel[0], vy: p.vel[1], vz: p.vel[2] });
             else if (p.vel) store.set('drone.velocity', p.vel);
+            // 加速度/角速度 (B 侧 pose 广播带 accel/angularVel, 看板/历史面板数据源)
+            if (Array.isArray(p.accel)) store.set('drone.accel', { ax: p.accel[0], ay: p.accel[1], az: p.accel[2] });
+            else if (p.accel) store.set('drone.accel', p.accel);
+            if (Array.isArray(p.angularVel)) store.set('drone.angularVelocity', { wx: p.angularVel[0], wy: p.angularVel[1], wz: p.angularVel[2] });
+            else if (p.angularVel) store.set('drone.angularVelocity', p.angularVel);
             // 后端广播 quat [w,x,y,z] (无 attitude 字段); 暂存原始四元数, 需要欧拉角时再转换
             if (Array.isArray(p.quat)) store.set('drone.attitude', { quat: p.quat });
             store.set('drone.timestamp', Date.now()); store.set('drone.connected', true);
