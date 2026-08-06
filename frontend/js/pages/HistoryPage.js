@@ -11,6 +11,7 @@ import { TaskCard, taskDisplayName, taskStatusInfo, taskMetaStr } from '../compo
 import { TimelineControl } from '../components/TimelineControl.js';
 import { ViewPanel } from '../components/ViewPanel.js';
 import { EmptyState } from '../components/EmptyState.js';
+import { HistoryPanels } from '../history/HistoryPanels.js';
 import { playbackEngine } from '../history/playback.js';
 import { esc } from '../escape.js';
 
@@ -23,6 +24,7 @@ class HistoryPage {
         this.activeSubTab = 'flight'; // 'flight' | 'data'
         this.timelineControl = null;
         this.historyChartPanel = null;
+        this.historyPanels = null;
         this._boundOnTaskRestored = null;
     }
 
@@ -40,9 +42,15 @@ class HistoryPage {
     unmount() {
         if (this._boundOnTaskRestored) { bus.off('task-restored', this._boundOnTaskRestored); this._boundOnTaskRestored = null; }
         playbackEngine.unmount();
-        if (this.timelineControl) this.timelineControl = null;
-        if (this.historyChartPanel) { this.historyChartPanel.unmount(); this.historyChartPanel = null; }
+        this._disposeDetailInstances();
         this.container = null;
+    }
+
+    /** 清理详情区实例 (页面卸载 + 会话切换时复用, 防订阅/echarts 泄漏)。 */
+    _disposeDetailInstances() {
+        if (this.timelineControl) { this.timelineControl.unmount?.(); this.timelineControl = null; }
+        if (this.historyPanels) { this.historyPanels.unmount(); this.historyPanels = null; }
+        if (this.historyChartPanel) { this.historyChartPanel.unmount(); this.historyChartPanel = null; }
     }
 
     render() {
@@ -193,6 +201,8 @@ class HistoryPage {
     async _loadPlaybackDataset(session) {
         const sid = session?.id;
         if (!sid) return 0;
+        // 先清空旧会话数据, 防加载期间面板闪现上一会话内容
+        store.set('history.playback.dataset', null);
         let raw = [];
         let detail = null;
         try {
@@ -262,6 +272,9 @@ class HistoryPage {
         const detailArea = this.container?.querySelector('#history-detail');
         if (!detailArea) return;
 
+        // 清理上一会话的详情实例 (防重复 select 泄漏订阅/echarts)
+        this._disposeDetailInstances();
+
         // C1: 异步加载选中会话的回放数据集 (独立路径 store.history.playback.dataset, 不污染实时轨迹)
         this._loadPlaybackDataset(session);
 
@@ -290,8 +303,13 @@ class HistoryPage {
                     <div id="timeline-control-container"></div>
                 </div>
 
-                <div class="history-page__detail-section" style="flex: 1; min-height: 250px;">
-                    <div class="history-page__detail-title">轨迹回放</div>
+                <div class="history-page__detail-section">
+                    <div class="history-page__detail-title">数据面板</div>
+                    <div id="history-panels-container"></div>
+                </div>
+
+                <div class="history-page__detail-section" style="min-height: 250px;">
+                    <div class="history-page__detail-title">轨迹俯视回放</div>
                     <div id="history-chart-container" style="width: 100%; height: 300px; border: 1px solid var(--color-border); border-radius: var(--radius-md);"></div>
                 </div>
             </div>
@@ -304,7 +322,14 @@ class HistoryPage {
             this.timelineControl.mount();
         }
 
-        // History chart
+        // 数据面板 (C3: 高度/速度/加速度/角速度 + 统计 + 任务摘要)
+        const panelsContainer = detailArea.querySelector('#history-panels-container');
+        if (panelsContainer) {
+            this.historyPanels = new HistoryPanels();
+            this.historyPanels.mount(panelsContainer);
+        }
+
+        // History chart (2D 俯视 + 高度 + 速度)
         const chartContainer = detailArea.querySelector('#history-chart-container');
         if (chartContainer) {
             this.historyChartPanel = new ViewPanel(0, 'chart', 'history');

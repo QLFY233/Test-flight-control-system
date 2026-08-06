@@ -308,6 +308,33 @@
     letter-spacing: var(--track-wide);
 }
 
+/* 2026-08-06 (C7): 历史数据面板网格 */
+.history-panels {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.history-panels__row {
+    flex-shrink: 0;
+}
+
+.history-panels__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--space-3);
+}
+
+.history-panels__grid .history-panel {
+    min-height: 180px;
+}
+
+@media (max-width: 767px) {
+    .history-panels__grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* ============================================================
    SETTINGS PAGE
    ============================================================ */

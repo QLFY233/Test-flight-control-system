@@ -1,7 +1,10 @@
 /**
  * HistoryChart — Multi-panel history playback.
- * 3 panels: trajectory top-down projection + altitude vs time + velocity vs time.
+ * 3 panels: trajectory top-down projection + altitude vs time + speed vs time.
  * Panels linked by time cursor.
+ *
+ * 2026-08-06 (C7): 数据源改读 store.history.playback.dataset (C1) — 原读实时
+ * trajectory.flown 导致选中会话看不到本会话轨迹; 速度直接用遥测 vel 字段 (非位置差分)。
  */
 
 import store from '../state.js';
@@ -13,7 +16,7 @@ class HistoryChart {
         this.container = null;
         this._resizeHandler = null;
         this._onSeek = null;
-        this._trajectoryUnsub = null;
+        this._datasetUnsub = null;
     }
 
     mount(container) {
@@ -41,37 +44,36 @@ class HistoryChart {
         // 具名回调引用：unmount 时能真正 off 掉，避免泄漏（bus.on 不返回 unsubscribe）
         this._onSeek = (t) => this._updateTimeCursor(t);
         bus.on('playback-seek', this._onSeek);
-        this._trajectoryUnsub = store.subscribe('trajectory', () => this._buildChart());
+        // 数据集变更 (选中新会话) → 重建; 播放推进 → 时间游标
+        this._datasetUnsub = store.subscribe('history.playback.dataset', () => this._buildChart());
+        this._onTick = () => this._updateTimeCursor(store.get('history.playbackTime') || 0);
+        bus.on('playback-tick', this._onTick);
     }
 
     unmount() {
         if (this._resizeHandler) { window.removeEventListener('resize', this._resizeHandler); this._resizeHandler = null; }
         if (this._onSeek) { bus.off('playback-seek', this._onSeek); this._onSeek = null; }
-        if (this._trajectoryUnsub) { this._trajectoryUnsub(); this._trajectoryUnsub = null; }
+        if (this._onTick) { bus.off('playback-tick', this._onTick); this._onTick = null; }
+        if (this._datasetUnsub) { this._datasetUnsub(); this._datasetUnsub = null; }
         if (this.chart) { this.chart.dispose(); this.chart = null; }
         if (this.container) { this.container.innerHTML = ''; this.container = null; }
+    }
+
+    _dataset() {
+        return store.get('history.playback.dataset') || { points: [], tStart: 0, tEnd: 0, duration: 0 };
     }
 
     _buildChart() {
         if (!this.chart || this.chart.isDisposed()) return;
 
-        const trajectory = store.get('trajectory');
-        const flown = trajectory?.flown || [];
+        const ds = this._dataset();
+        const points = ds.points || [];
+        const tStart = ds.tStart || 0;
 
-        const times = flown.map(p => p.t != null ? p.t : 0);
-        const altitudes = flown.map(p => (p.z != null ? p.z : p.y));
-        const trajXY = flown.map(p => [p.x, p.y]);
-
-        // Compute velocity from position deltas
-        const velocities = [];
-        for (let i = 1; i < flown.length; i++) {
-            const dx = flown[i].x - flown[i - 1].x;
-            const dy = flown[i].y - flown[i - 1].y;
-            const dz = (flown[i].z || flown[i].y) - (flown[i - 1].z || flown[i - 1].y);
-            const dt = (flown[i].t || i) - (flown[i - 1].t || (i - 1));
-            const speed = dt > 0 ? Math.sqrt(dx * dx + dy * dy + dz * dz) / dt : 0;
-            velocities.push([times[i] || i, speed]);
-        }
+        const times = points.map(p => p.t - tStart);
+        const altitudes = points.map(p => p.z);
+        const trajXY = points.map(p => [p.x, p.y]);
+        const speeds = points.map(p => Math.hypot(p.vx, p.vy, p.vz));
 
         this.chart.setOption({
             darkMode: true,
@@ -120,13 +122,13 @@ class HistoryChart {
                     lineStyle: { color: '#00BCD4', width: 1.5 },
                     showSymbol: false,
                 },
-                // Panel 3: Velocity vs time
+                // Panel 3: Speed vs time (遥测 vel 模长)
                 {
                     name: '速度',
                     type: 'line',
                     xAxisIndex: 2,
                     yAxisIndex: 2,
-                    data: velocities,
+                    data: times.map((t, i) => [t, speeds[i]]),
                     lineStyle: { color: '#FFC107', width: 1.5 },
                     showSymbol: false,
                 },
@@ -146,12 +148,13 @@ class HistoryChart {
     }
 
     _findIndex(t) {
-        const trajectory = store.get('trajectory');
-        const flown = trajectory?.flown || [];
-        for (let i = 0; i < flown.length; i++) {
-            if ((flown[i].t || i) >= t) return i;
+        const ds = this._dataset();
+        const points = ds.points || [];
+        const tStart = ds.tStart || 0;
+        for (let i = 0; i < points.length; i++) {
+            if ((points[i].t - tStart) >= t) return i;
         }
-        return flown.length - 1;
+        return points.length - 1;
     }
 }
 
