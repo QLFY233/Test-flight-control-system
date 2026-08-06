@@ -300,7 +300,8 @@
        EmptyState 单子项时靠自身内部 flex 居中, 两状态兼容。 */
     flex-direction: column;
     align-items: stretch;
-    justify-content: center;
+    /* 2026-08-06: center 在内容超高时顶部被裁 (flex 居中溢出), 改 flex-start 顶部对齐自然滚动 */
+    justify-content: flex-start;
     overflow-y: auto;
     color: var(--color-text-disabled);
     font-family: var(--font-mono);

@@ -206,17 +206,15 @@ class HistoryPage {
         if (!sid) return 0;
         // 先清空旧会话数据, 防加载期间面板闪现上一会话内容
         store.set('history.playback.dataset', null);
-        let raw = [];
-        let detail = null;
-        try {
-            const res = await apiManager.getTelemetry(sid, { limit: 10000 });
-            raw = (res && Array.isArray(res.data)) ? res.data : [];
-        } catch (e) {
-            console.warn('[HistoryPage] telemetry load failed:', e);
-        }
-        try {
-            detail = await apiManager.getSessionDetail(sid);
-        } catch (e) { /* 详情失败静默, 面板仍可用遥测数据 */ }
+        // 遥测 + 会话详情并行拉取 (缩短选中→渲染延迟)
+        const [res, detail] = await Promise.all([
+            apiManager.getTelemetry(sid, { limit: 10000 }).catch((e) => {
+                console.warn('[HistoryPage] telemetry load failed:', e);
+                return { data: [] };
+            }),
+            apiManager.getSessionDetail(sid).catch(() => null),
+        ]);
+        let raw = (res && Array.isArray(res.data)) ? res.data : [];
 
         // 遥测 → 回放点 (定长数值, 兼容端点已做 NULL→0)
         const points = raw.map(r => ({
@@ -306,16 +304,21 @@ class HistoryPage {
                     <div id="timeline-control-container"></div>
                 </div>
 
-                <div class="history-page__detail-section">
-                    <div class="history-page__detail-title">数据面板</div>
-                    <div id="history-panels-container"></div>
-                </div>
-
-                <div class="history-page__detail-section" style="min-height: 320px;">
-                    <div class="history-page__detail-title">轨迹回放 · 场地俯视 + 3D</div>
-                    <div class="history-page__traj" style="display:flex;gap:var(--space-3);min-height:300px;flex-wrap:wrap;">
-                        <div id="history-map-2d" style="flex:1;min-width:280px;height:300px;border:1px solid var(--color-border);border-radius:var(--radius-md);"></div>
-                        <div id="history-scene-3d" style="flex:1;min-width:280px;height:300px;border:1px solid var(--color-border);border-radius:var(--radius-md);"></div>
+                <div class="history-page__detail-section" style="flex:1;min-height:420px;min-width:0;">
+                    <div style="display:flex;gap:var(--space-3);height:100%;min-height:0;flex-wrap:wrap;">
+                        <!-- 左: 看板数据 (统计 + 任务摘要, 值型非坐标图) -->
+                        <div style="flex:0 0 340px;min-width:280px;display:flex;flex-direction:column;gap:var(--space-3);min-height:0;">
+                            <div class="history-page__detail-title">看板数据</div>
+                            <div id="history-panels-container" style="flex:1;overflow-y:auto;"></div>
+                        </div>
+                        <!-- 右: 轨迹 (2D 场地俯视 + 3D) -->
+                        <div style="flex:1;min-width:420px;display:flex;flex-direction:column;gap:var(--space-3);min-height:0;">
+                            <div class="history-page__detail-title">轨迹回放 · 场地俯视 + 3D</div>
+                            <div style="flex:1;min-height:0;display:flex;gap:var(--space-3);flex-wrap:wrap;">
+                                <div id="history-map-2d" style="flex:1;min-width:240px;height:320px;border:1px solid var(--color-border);border-radius:var(--radius-md);"></div>
+                                <div id="history-scene-3d" style="flex:1;min-width:240px;height:320px;border:1px solid var(--color-border);border-radius:var(--radius-md);"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

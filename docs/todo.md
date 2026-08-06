@@ -4,7 +4,15 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-06 (历史页重设计 + 看板修复 — 规划已确认，写入 todo)
+最近更新：2026-08-06 (历史详情 2D/3D + 看板数据 + 进度条修复)
+
+> **2026-08-06 (历史页 2D/3D 接入 + 进度条根因修复)**:
+> ① **需求**（用户）: 历史界面只显示看板的数据（值型，不要坐标折线图）; 场地俯视图 + 3D 放右侧; 进度条修好; 数据匹配历史任务
+> ② **进度条根因**: `shared.js` 的 `apiManager.getTelemetry` 委托箭头函数**不转发参数** (`() => window.__app.apiManager?.getTelemetry()`) → HistoryPage 拉遥测请求 `/api/history/telemetry/undefined` 失败 → 空数据集 → 进度条无数据可播。修复为 `(...a) => ...getTelemetry(...a)`
+> ③ **布局**: 任务详情 + 回放控制(全宽) → 左「看板数据」/ 右「2D 场地俯视 + 3D」; `.history-page__detail` justify-content center→flex-start (防超高顶部裁剪)
+> ④ **坐标图移除**: HistoryPanels 删高度/速度/加速度/角速度时序折线图, 只留统计卡 + 任务摘要; HistoryChart.js 删除
+> ⑤ **数据加载**: `_loadPlaybackDataset` 遥测+详情改 Promise.all 并行 (缩短选中→渲染延迟)
+> ⑥ **验证**: Playwright — 布局(数据左/轨迹右)✅, 2D/3D canvas ✅, 无坐标折线图 ✅, 进度条播放/seek 推进 ✅, 真实移动会话统计(里程 121m/最大速度 1.7m/s)✅, 实时页无回归 ✅, 无 console 错误 ✅
 
 > **2026-08-06 (规划确认 — 历史页重设计 + 看板修复)**:
 > ① **需求**（用户确认）: ① 重新设计历史界面 — 能查看看板界面的所有数据 + 飞行 2D/3D 轨迹 + 进度条; ② 修好看板界面（当前无法用）
