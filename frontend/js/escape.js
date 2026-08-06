@@ -1,7 +1,7 @@
 /**
  * escape.js — 统一 HTML 转义助手（文本上下文 + 属性上下文）。
  * 全仓唯一转义实现，替代散落的 4 套近似实现（ChatMessage._escapeHtml /
- * FlightPlanCard._esc / SessionCard.FlightPlanCard_esc / SettingsPage._escAttr）。
+ * 历史: FlightPlanCard._esc / SettingsPage._escAttr）。
  */
 
 /**

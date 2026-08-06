@@ -2,7 +2,8 @@
  * TaskPanel — 任务管理 (挂在 [ BETA AI ] 表头最右侧)。
  *
  * 任务 = flight session: 绑定 β/α 对话记录 (conversations 表) + 飞行数据 (telemetry 表)。
- * 功能: 新建任务 / 恢复任务 (切换当前会话并载入对话+飞行数据) / 重命名 / 删除记录。
+ * 功能: 新建任务 / 恢复任务 / 重命名 / 删除记录。
+ * 行渲染与操作全部复用 TaskCard (与 总览最近任务 / 历史记录 三处统一)。
  *
  * 结构说明:
  *  - 表头按钮: ChatPanel.render() 每次会整体重建 sidebar DOM, 故本组件监听
@@ -15,13 +16,7 @@ import store from '../state.js';
 import bus from '../event-bus.js';
 import { apiManager } from '../shared.js';
 import { esc } from '../escape.js';
-
-// 遥测条数显示: >=1000 → 1.2k
-function fmtCount(n) {
-    if (n == null) return 0;
-    if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
-    return n;
-}
+import { TaskCard, createNewTask } from './TaskCard.js';
 
 class TaskPanel {
     constructor() {
@@ -30,9 +25,6 @@ class TaskPanel {
         this._tasks = [];
         this._loading = false;
         this._loadError = '';
-        this._renamingId = null;
-        this._confirmDeleteId = null;
-        this._busyId = null;          // 恢复中的任务 id (行禁用 + 状态提示)
         this._boundOnRendered = this._attachToggle.bind(this);
         this._boundOnDocClick = this._onDocClick.bind(this);
         this._boundOnKey = this._onKey.bind(this);
@@ -86,14 +78,12 @@ class TaskPanel {
         window.removeEventListener('resize', this._boundOnResize);
         if (this._panel) this._panel.remove();
         this._panel = null;
-        this._renamingId = null;
-        this._confirmDeleteId = null;
     }
 
     _onDocClick(e) {
         if (this._panel && this._panel.contains(e.target)) return;
         if (e.target.closest && e.target.closest('.task-panel__toggle')) return;
-        // 行内操作(重命名/确认删除)同步重渲染后事件目标已脱离 DOM → 不关闭面板
+        // 行内操作(重命名/删除确认)同步重渲染后事件目标已脱离 DOM → 不关闭面板
         if (e.target.isConnected === false) return;
         this.close();
     }
@@ -119,7 +109,8 @@ class TaskPanel {
         panel.querySelector('.task-panel__new').addEventListener('click', (e) => {
             e.stopPropagation();
             this._createTask();
-        });        document.body.appendChild(panel);
+        });
+        document.body.appendChild(panel);
         this._panel = panel;
         this._position();
     }
@@ -134,7 +125,7 @@ class TaskPanel {
         this._panel.style.maxHeight = `calc(100vh - ${top + 20}px)`;
     }
 
-    // ── 任务列表 ──
+    // ── 任务列表 (行 = TaskCard, 与总览/历史统一) ──
 
     async _refreshList() {
         this._loading = true;
@@ -172,187 +163,28 @@ class TaskPanel {
         const currentId = store.get('flight.sessionId');
         listEl.innerHTML = '';
         for (const t of this._tasks) {
-            listEl.appendChild(this._renderRow(t, currentId));
-        }
-    }
-
-    _renderRow(t, currentId) {
-        const row = document.createElement('div');
-        const isActive = t.id === currentId;
-        const isBusy = this._busyId === t.id;
-        row.className = 'task-panel__row'
-            + (isActive ? ' task-panel__row--active' : '')
-            + (isBusy ? ' task-panel__row--busy' : '');
-
-        const name = t.task_description || ('任务 #' + t.id.slice(-10));
-        const ts = t.last_active || t.created_at;
-        const dateStr = ts ? new Date(ts).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '--';
-        const status = t.status || 'idle';
-        const meta = `${dateStr} · β ${t.conv_count ?? 0} 条 · 数据 ${fmtCount(t.telemetry_count ?? 0)} 条 · ${esc(status)}`;
-
-        if (this._renamingId === t.id) {
-            row.innerHTML = `
-                <div class="task-panel__rename">
-                    <input type="text" class="input input--sm task-panel__rename-input" value="${esc(name)}" maxlength="60" spellcheck="false">
-                    <div class="task-panel__row-actions">
-                        <button type="button" class="btn btn--primary btn--sm" data-rename-ok>✓ 保存</button>
-                        <button type="button" class="btn btn--ghost btn--sm" data-rename-cancel>✕</button>
-                    </div>
-                </div>
-                <div class="task-panel__meta">${meta}</div>
-            `;
-            const input = row.querySelector('.task-panel__rename-input');
-            row.querySelector('[data-rename-ok]').addEventListener('click', (e) => { e.stopPropagation(); this._saveRename(t.id, input); });
-            row.querySelector('[data-rename-cancel]').addEventListener('click', (e) => { e.stopPropagation(); this._renamingId = null; this._renderList(); });
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') this._saveRename(t.id, input);
-                else if (e.key === 'Escape') { this._renamingId = null; this._renderList(); }
+            const card = new TaskCard(t, {
+                current: t.id === currentId,
+                onChanged: () => this._refreshList(),
             });
-            setTimeout(() => { input.focus(); input.select(); }, 0);
-        } else if (this._confirmDeleteId === t.id) {
-            row.innerHTML = `
-                <div class="task-panel__name"><span class="task-panel__name-text">${esc(name)}</span></div>
-                <div class="task-panel__confirm">⚠ 删除该任务的全部 β/α 对话与飞行数据记录？</div>
-                <div class="task-panel__row-actions">
-                    <button type="button" class="btn btn--danger btn--sm" data-del-ok>确认删除</button>
-                    <button type="button" class="btn btn--ghost btn--sm" data-del-cancel>取消</button>
-                </div>
-            `;
-            row.querySelector('[data-del-ok]').addEventListener('click', (e) => { e.stopPropagation(); this._doDelete(t.id); });
-            row.querySelector('[data-del-cancel]').addEventListener('click', (e) => { e.stopPropagation(); this._confirmDeleteId = null; this._renderList(); });
-        } else {
-            row.innerHTML = `
-                <div class="task-panel__name">
-                    ${isActive ? '<span class="task-panel__badge">当前</span>' : ''}
-                    <span class="task-panel__name-text" title="${esc(name)}">${esc(name)}</span>
-                    <span class="task-panel__status task-panel__status--${esc(status)}">${esc(status)}</span>
-                </div>
-                <div class="task-panel__meta">${meta}</div>
-                <div class="task-panel__row-actions">
-                    <button type="button" class="btn btn--ghost btn--sm" data-act="${esc(t.id)}" ${isActive ? 'disabled' : ''} title="切换当前会话并载入其对话与飞行数据">恢复</button>
-                    <button type="button" class="btn btn--ghost btn--sm" data-rename="${esc(t.id)}">重命名</button>
-                    <button type="button" class="btn btn--ghost btn--sm task-panel__btn-danger" data-del="${esc(t.id)}">删除</button>
-                </div>
-            `;
-            row.querySelector(`[data-act="${esc(t.id)}"]`).addEventListener('click', (e) => { e.stopPropagation(); this._restoreTask(t.id); });
-            row.querySelector(`[data-rename="${esc(t.id)}"]`).addEventListener('click', (e) => { e.stopPropagation(); this._startRename(t.id); });
-            row.querySelector(`[data-del="${esc(t.id)}"]`).addEventListener('click', (e) => { e.stopPropagation(); this._confirmDelete(t.id); });
-        }
-        return row;
-    }
-
-    // ── 新建任务 ──
-
-    async _createTask() {
-        const now = new Date();
-        const pad = (n) => String(n).padStart(2, '0');
-        const name = `任务 ${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-        try {
-            const res = await apiManager.createTask({ task_description: name });
-            if (!res || !res.id) throw new Error('未返回任务 id');
-            this._resetUiForNewTask(res.id, name);
-            this._renamingId = null;
-            this._confirmDeleteId = null;
-            await this._refreshList();
-            bus.emit('toast', { message: `已新建任务「${name}」`, level: 'success' });
-        } catch (e) {
-            console.warn('[TaskPanel] create task failed:', e);
-            bus.emit('toast', { message: '新建任务失败: ' + e.message, level: 'error' });
-        }
-    }
-
-    /** 新任务: 清空当前对话/轨迹/飞行上下文, 绑定新会话 id */
-    _resetUiForNewTask(sessionId, name) {
-        store.batch(() => {
-            store.set('chatHistory', []);
-            store.set('flight.sessionId', sessionId);
-            store.set('flight.taskTitle', name);
-            store.set('flight.taskDescription', name);
-            store.set('flight.status', 'idle');
-            store.set('flight.progress', 0);
-            store.set('flight.currentAction', 0);
-            store.set('flight.totalActions', 0);
-            store.set('flight.currentActionCode', '');
-            store.set('flight.currentActionParams', null);
-            store.set('trajectory.flown', []);
-            store.set('trajectory.planned', []);
-            store.set('trajectory.actionSequence', []);
-            store.set('trajectory.currentTarget', null);
-            store.set('trajectory.pending', null);
-        });
-        window.__app?.chatPanel?.render?.();
-    }
-
-    // ── 恢复任务 (切换当前会话, 数据由 app.js 'task-restore' 加载) ──
-
-    async _restoreTask(taskId) {
-        if (this._busyId) return;
-        this._busyId = taskId;
-        this._renderList();
-        try {
-            await apiManager.activateTask(taskId);
-            bus.emit('task-restore', taskId);
-            bus.emit('toast', { message: '正在恢复任务...', level: 'info' });
-        } catch (e) {
-            console.warn('[TaskPanel] restore task failed:', e);
-            bus.emit('toast', { message: '恢复任务失败: ' + e.message, level: 'error' });
-        } finally {
-            this._busyId = null;
+            listEl.appendChild(card.render());
         }
     }
 
     _onTaskRestored() {
+        // 恢复完成: 刷新列表 (当前徽标/状态同步)
         this._refreshList();
     }
 
-    // ── 重命名 ──
+    // ── 新建任务 (公共逻辑在 TaskCard) ──
 
-    _startRename(taskId) {
-        this._renamingId = taskId;
-        this._confirmDeleteId = null;
-        this._renderList();
-    }
-
-    async _saveRename(taskId, inputEl) {
-        const name = inputEl.value.trim();
-        if (!name) { this._renamingId = null; this._renderList(); return; }
+    async _createTask() {
         try {
-            await apiManager.renameTask(taskId, name);
-            if (store.get('flight.sessionId') === taskId) {
-                store.set('flight.taskTitle', name);
-                store.set('flight.taskDescription', name);
-            }
-            this._renamingId = null;
+            await createNewTask();
             await this._refreshList();
-            bus.emit('toast', { message: '已重命名任务', level: 'success' });
         } catch (e) {
-            console.warn('[TaskPanel] rename task failed:', e);
-            bus.emit('toast', { message: '重命名失败: ' + e.message, level: 'error' });
-        }
-    }
-
-    // ── 删除记录 ──
-
-    _confirmDelete(taskId) {
-        this._confirmDeleteId = taskId;
-        this._renamingId = null;
-        this._renderList();
-    }
-
-    async _doDelete(taskId) {
-        try {
-            const res = await apiManager.deleteTask(taskId);
-            this._confirmDeleteId = null;
-            if (res && res.was_active) {
-                // 删除的是当前任务 (后端已清空 session_id) → 立即新建任务承接
-                await this._createTask();
-            } else {
-                await this._refreshList();
-                bus.emit('toast', { message: '已删除任务记录', level: 'success' });
-            }
-        } catch (e) {
-            console.warn('[TaskPanel] delete task failed:', e);
-            bus.emit('toast', { message: '删除任务失败: ' + e.message, level: 'error' });
+            console.warn('[TaskPanel] create task failed:', e);
+            bus.emit('toast', { message: '新建任务失败: ' + e.message, level: 'error' });
         }
     }
 }

@@ -611,430 +611,136 @@ select.input {
 }
 
 /* ============================================================
-   SESSION CARD — History List Item
+   TASK CARD — 三处统一任务卡片 (AI 任务面板 / 总览最近任务 / 历史记录)
+   名称/状态/时间/β对话·数据计数 语义与 TaskCard.js 一致
    ============================================================ */
-.session-card {
+.task-card {
+    display: flex;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: var(--border-hair);
+    background: transparent;
+    transition: background var(--duration-fast) var(--ease-out-expo);
+}
+.task-card:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+.task-card--current {
+    background: var(--color-red-dim);
+    border-left: 2px solid var(--color-red);
+}
+.task-card--selected {
+    background: var(--color-red-dim);
+    box-shadow: inset 0 0 0 1px var(--color-red);
+}
+.task-card--busy {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.task-card__checkbox {
+    margin-top: var(--space-3);
+    flex-shrink: 0;
+    accent-color: var(--color-red);
+}
+
+.task-card__main {
+    flex: 1;
+    min-width: 0;
+}
+
+.task-card__name {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-3);
-    border: var(--border-hair);
-    background: var(--color-surface);
-    cursor: pointer;
-    transition: all var(--duration-fast) var(--ease-out-expo);
-    margin-bottom: 1px;
-}
-.session-card:hover {
-    background: var(--color-surface-raised);
-    border-color: var(--color-border-active);
-}
-.session-card--selected {
-    border-color: var(--color-red);
-    background: var(--color-red-dim);
+    gap: var(--space-2);
+    min-width: 0;
 }
 
-.session-card__date {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
-    white-space: nowrap;
-    flex-shrink: 0;
-    min-width: 115px;
-}
-
-.session-card__badge {
-    padding: 1px var(--space-2);
-    font-family: var(--font-mono);
-    font-size: var(--text-2xs);
-    letter-spacing: var(--track-wider);
-    text-transform: uppercase;
-    white-space: nowrap;
-    border: var(--border-hair);
-}
-.session-card__badge--success { color: var(--color-green);  border-color: rgba(74,246,38,0.3); background: var(--color-green-dim); }
-.session-card__badge--warning { color: var(--color-amber);  border-color: rgba(255,179,0,0.3); background: var(--color-amber-dim); }
-.session-card__badge--error   { color: var(--color-red);    border-color: rgba(255,42,42,0.3); background: var(--color-red-dim); }
-.session-card__badge--info    { color: var(--color-blue);   border-color: rgba(33,150,243,0.3); background: var(--color-blue-dim); }
-
-.session-card__summary {
-    flex: 1;
+.task-card__name-text {
     font-family: var(--font-mono);
     font-size: var(--text-sm);
     color: var(--color-text-primary);
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-/* ============================================================
-   EMPTY STATE — Tactical
-   ============================================================ */
-.empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-10) var(--space-6);
-    text-align: center;
-    gap: var(--space-4);
-}
-.empty-state__icon {
-    font-size: 40px;
-    opacity: 0.25;
-    filter: grayscale(1);
-}
-.empty-state__title {
-    font-family: var(--font-mono);
-    font-size: var(--text-md);
-    letter-spacing: var(--track-wider);
-    text-transform: uppercase;
-    color: var(--color-text-disabled);
-}
-.empty-state__desc {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--color-text-disabled);
-    letter-spacing: var(--track-wide);
-    max-width: 300px;
-    opacity: 0.6;
-}
-
-/* ============================================================
-   VIEW MODE SELECTOR
-   ============================================================ */
-.view-mode-selector {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-}
-.view-mode-selector__modes {
-    display: flex;
-    border: var(--border-hair);
-}
-.view-mode-selector__mode-btn {
-    padding: var(--space-1) var(--space-3);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    letter-spacing: var(--track-wide);
-    color: var(--color-text-disabled);
-    background: transparent;
-    transition: all var(--duration-fast) var(--ease-out-expo);
-}
-.view-mode-selector__mode-btn--active {
-    background: var(--color-red-dim);
-    color: var(--color-red);
-}
-.view-mode-selector__mode-btn:not(:last-child) {
-    border-right: var(--border-hair);
-}
-
-.view-mode-selector__source-select {
-    padding: var(--space-1) var(--space-2);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    background: var(--color-surface);
-    border: var(--border-hair);
-    color: var(--color-text-secondary);
-}
-
-/* ============================================================
-   TIMELINE CONTROL
-   ============================================================ */
-.timeline-control {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    background: var(--color-surface);
-    border: var(--border-hair);
-}
-.timeline-control__btn {
-    width: 28px; height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--color-text-secondary);
-    border: var(--border-hair);
-    background: transparent;
-    transition: all var(--duration-fast) var(--ease-out-expo);
-}
-.timeline-control__btn:hover {
-    border-color: var(--color-red);
-    color: var(--color-red);
-}
-.timeline-control__seek {
     flex: 1;
-    height: 3px;
-    -webkit-appearance: none;
-    appearance: none;
-    background: var(--color-border);
-    outline: none;
-    cursor: pointer;
-}
-.timeline-control__seek::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 12px; height: 12px;
-    background: var(--color-red);
-    cursor: pointer;
-}
-.timeline-control__speed {
-    padding: var(--space-1) var(--space-2);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    background: var(--color-surface);
-    border: var(--border-hair);
-    color: var(--color-text-secondary);
-    cursor: pointer;
+    min-width: 0;
 }
 
-/* ============================================================
-   FLIGHT PLAN CARD
-   ============================================================ */
-.flight-plan-card {
-    border: var(--border-hair);
-    background: var(--color-surface);
-}
-.flight-plan-card__header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-3);
-    background: var(--color-red-dim);
-    border-bottom: var(--border-hair);
-}
-.flight-plan-card__title {
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    letter-spacing: var(--track-wide);
-    text-transform: uppercase;
-    color: var(--color-red);
-}
-.flight-plan-card__body {
-    padding: var(--space-3);
-}
-.flight-plan-card__segment {
-    padding: var(--space-2) 0;
-    border-bottom: var(--border-hair);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-}
-.flight-plan-card__segment:last-child { border-bottom: none; }
-.flight-plan-card__segment-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin-bottom: var(--space-1);
-}
-.flight-plan-card__segment-id {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px; height: 20px;
-    background: var(--color-red);
-    color: var(--color-bg);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    font-weight: 600;
-}
-.flight-plan-card__segment-name {
-    font-weight: 500;
-    letter-spacing: var(--track-wide);
-    text-transform: uppercase;
-}
-.flight-plan-card__waypoint {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-1) 0;
-    margin-left: var(--space-6);
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
-}
-.flight-plan-card__actions {
-    display: flex;
-    gap: var(--space-2);
-    padding: var(--space-3);
-    border-top: var(--border-hair);
-}
-
-/* ============================================================
-   TOOL CALL CARD — Terminal Output
-   ============================================================ */
-.tool-call-card {
-    border: var(--border-hair);
-    background: var(--color-surface);
-    margin: var(--space-2) 0;
-}
-.tool-call-card__header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    background: var(--color-surface-raised);
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    letter-spacing: var(--track-wide);
-    text-transform: uppercase;
-    border-bottom: var(--border-hair);
-}
-.tool-call-card__header-icon { font-size: var(--text-md); }
-.tool-call-card__body {
-    padding: var(--space-2) var(--space-3);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
-    background: var(--color-bg);
-    overflow-x: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
-}
-.tool-call-card__body--collapsed { display: none; }
-
-/* ============================================================
-   SHORTCUT EDITOR
-   ============================================================ */
-.shortcut-editor__list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-}
-.shortcut-editor__item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2);
-    border: var(--border-hair);
-}
-.shortcut-editor__item-icon { font-size: 20px; }
-.shortcut-editor__item-input {
-    flex: 1;
-    padding: var(--space-1) var(--space-2);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    background: var(--color-surface);
-    border: var(--border-hair);
-    color: var(--color-text-primary);
-}
-
-/* ============================================================
-   DASHBOARD PANELS — Data Grid
-   ============================================================ */
-.dashboard-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1px;
-    background: var(--color-border);
-    border: var(--border-hair);
-    padding: var(--space-3);
-    background: var(--color-bg);
-    gap: var(--space-3);
-    border: none;
-}
-
-.dashboard-panel {
-    border: var(--border-hair);
-    background: var(--color-surface);
-    padding: var(--space-4);
-}
-.dashboard-panel__header {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    font-weight: 600;
-    letter-spacing: var(--track-widest);
-    text-transform: uppercase;
-    color: var(--color-text-primary);
-    padding-bottom: var(--space-3);
-    margin-bottom: var(--space-3);
-    border-bottom: var(--border-hair);
-}
-.dashboard-panel__value {
-    font-family: var(--font-display);
-    font-size: var(--text-3xl);
-    font-weight: 800;
-    letter-spacing: var(--track-tight);
-    color: var(--color-text-primary);
-    line-height: var(--leading-tight);
-}
-.dashboard-panel__unit {
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
-    letter-spacing: var(--track-wide);
-    margin-top: var(--space-2);
-}
-
-.dashboard-panel__body {
-    flex: 1;
-    min-height: 0;
-    width: 100%;
-}
-
-/* Filter bar */
-.filter-bar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) 0;
-    margin-bottom: var(--space-3);
-    border-bottom: var(--border-hair);
-}
-.filter-bar__label {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    letter-spacing: var(--track-widest);
-    text-transform: uppercase;
-    color: var(--color-text-disabled);
-}
-.filter-bar__chip {
-    padding: var(--space-1) var(--space-2);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    letter-spacing: var(--track-wide);
-    border: var(--border-hair);
-    cursor: pointer;
-    transition: all var(--duration-fast) var(--ease-out-expo);
-    color: var(--color-text-secondary);
-    background: transparent;
-}
-.filter-bar__chip--active {
-    border-color: var(--color-red);
-    color: var(--color-red);
-    background: var(--color-red-dim);
-}
-
-/* ============================================================
-   ASCII DECORATION HELPERS
-   ============================================================ */
-.ascii-frame {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    letter-spacing: var(--track-wider);
-    color: var(--color-text-disabled);
-}
-
-.data-label {
+.task-card__badge {
+    flex-shrink: 0;
+    padding: 1px var(--space-1);
     font-family: var(--font-mono);
     font-size: var(--text-2xs);
-    letter-spacing: var(--track-widest);
-    text-transform: uppercase;
+    letter-spacing: var(--track-wide);
+    color: var(--color-bg);
+    background: var(--color-red);
+}
+
+/* 飞行状态枚举 → 色调 (执行中/完成=绿, 悬停=蓝, 已规划=琥珀, 中止=红, 空闲=灰) */
+.task-card__status {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    letter-spacing: var(--track-wide);
     color: var(--color-text-disabled);
 }
+.task-card__status--green { color: var(--color-green); }
+.task-card__status--blue  { color: var(--color-blue); }
+.task-card__status--amber { color: var(--color-amber); }
+.task-card__status--red   { color: var(--color-red); }
 
-.data-value {
+.task-card__meta {
+    margin-top: 2px;
     font-family: var(--font-mono);
-    font-size: var(--text-md);
-    color: var(--color-text-primary);
-    font-variant-numeric: tabular-nums;
+    font-size: var(--text-2xs);
+    letter-spacing: var(--track-wide);
+    color: var(--color-text-disabled);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.data-accent {
-    font-family: var(--font-display);
-    font-size: var(--text-2xl);
-    font-weight: 800;
-    letter-spacing: var(--track-tight);
+.task-card__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-top: var(--space-1);
+}
+.task-card__actions .btn--sm {
+    padding: 1px var(--space-2);
+    font-size: var(--text-2xs);
+}
+.task-card__btn-danger:hover {
+    color: var(--color-red) !important;
+    border-color: rgba(255, 42, 42, 0.3) !important;
+    background: rgba(255, 42, 42, 0.08) !important;
+}
+
+/* 重命名行内编辑 */
+.task-card__rename {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+.task-card__rename-input {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    background: var(--color-bg);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-red);
+    padding: var(--space-1) var(--space-2);
+}
+
+/* 删除确认 */
+.task-card__confirm {
+    margin-top: var(--space-1);
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    letter-spacing: var(--track-wide);
     color: var(--color-red);
-    line-height: var(--leading-tight);
 }
 
 /* ============================================================
@@ -1116,121 +822,6 @@ select.input {
     letter-spacing: var(--track-wide);
     color: var(--color-text-disabled);
     line-height: var(--leading-relaxed);
-}
-
-.task-panel__row {
-    padding: var(--space-2) var(--space-3);
-    border-bottom: var(--border-hair);
-    background: transparent;
-    transition: background var(--duration-fast) var(--ease-out-expo);
-}
-.task-panel__row:hover {
-    background: rgba(255, 255, 255, 0.02);
-}
-.task-panel__row--active {
-    background: var(--color-red-dim);
-    border-left: 2px solid var(--color-red);
-}
-.task-panel__row--busy {
-    opacity: 0.55;
-    pointer-events: none;
-}
-
-.task-panel__name {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-width: 0;
-}
-
-.task-panel__name-text {
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    color: var(--color-text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex: 1;
-    min-width: 0;
-}
-
-.task-panel__badge {
-    flex-shrink: 0;
-    padding: 1px var(--space-1);
-    font-family: var(--font-mono);
-    font-size: var(--text-2xs);
-    letter-spacing: var(--track-wide);
-    color: var(--color-bg);
-    background: var(--color-red);
-}
-
-.task-panel__status {
-    flex-shrink: 0;
-    font-family: var(--font-mono);
-    font-size: var(--text-2xs);
-    letter-spacing: var(--track-wide);
-    text-transform: uppercase;
-    color: var(--color-text-disabled);
-}
-.task-panel__status--executing { color: var(--color-green); }
-.task-panel__status--hovering  { color: var(--color-blue); }
-.task-panel__status--planned   { color: var(--color-amber); }
-.task-panel__status--completed { color: var(--color-green); }
-.task-panel__status--aborted   { color: var(--color-red); }
-
-.task-panel__meta {
-    margin-top: var(--space-1);
-    font-family: var(--font-mono);
-    font-size: var(--text-2xs);
-    letter-spacing: var(--track-wide);
-    color: var(--color-text-disabled);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.task-panel__row-actions {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    margin-top: var(--space-2);
-}
-
-.task-panel__row-actions .btn--sm {
-    padding: 1px var(--space-2);
-    font-size: var(--text-2xs);
-}
-
-.task-panel__btn-danger:hover {
-    color: var(--color-red) !important;
-    border-color: rgba(255, 42, 42, 0.3) !important;
-    background: rgba(255, 42, 42, 0.08) !important;
-}
-
-/* 重命名行内编辑 */
-.task-panel__rename {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-}
-.task-panel__rename-input {
-    flex: 1;
-    min-width: 0;
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
-    border: 1px solid var(--color-red);
-    padding: var(--space-1) var(--space-2);
-}
-
-/* 删除确认 */
-.task-panel__confirm {
-    margin-top: var(--space-1);
-    font-family: var(--font-mono);
-    font-size: var(--text-2xs);
-    letter-spacing: var(--track-wide);
-    color: var(--color-red);
 }
 
 .task-panel__footer {

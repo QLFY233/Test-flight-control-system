@@ -4,7 +4,7 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-06 (任务管理功能 — [ BETA AI ] 表头右侧任务面板)
+最近更新：2026-08-06 (三处任务视图统一 — AI 任务面板/总览/历史共用 TaskCard)
 
 > **2026-08-05 (β 工具调用卡死修复 — #7 流式改造回归)**:
 > 现象: β 回复「我来帮你规划…让我同步查询」后无输出（工具调用后 agent 卡死）；curl 复现：get_field_map 等工具调用后流永不继续
@@ -20,6 +20,14 @@
 > ④ **修复**: 行内操作按钮 (重命名/删除确认) 同步重渲染后事件目标脱离 DOM → document 点击监听误关面板 — 加 stopPropagation + isConnected 守卫
 > ⑤ **验证**: 后端 83/83 (新增 Test 6c: 列表统计+级联删除); Playwright 全流程 — 新建(聊天区清空+当前徽标)/重命名(前后端一致)/恢复(19 条 β 对话载入+session 切换)/删除(行内确认+DB 三级联清零)/删当前任务自动新建承接; console 零错误
 > ⑥ 备注: 验证期间 WSL 意外重启 → start_all.sh 全链路恢复后复测通过
+
+> **2026-08-06 (三处任务视图统一 — AI 任务面板 / 总览最近任务 / 历史记录)**:
+> ① **背景**: 三处任务数据源同为 flight_sessions, 但展示/操作不统一 — 总览与历史用旧 SessionCard (字段错配: task_summary/task_title 后端不存在 → 恒「无描述/未知任务」; 状态用 success/warning 旧枚举 → 显示原始英文); 总览/历史无任何任务操作
+> ② **统一方案**: 新组件 `js/components/TaskCard.js` — 唯一任务渲染源 (名称 task_description||任务 #短id / 状态飞行枚举中文+颜色 / 时间短格式 / β 对话·数据计数 / 当前徽标) + 公共操作 (createNewTask / deleteTaskRecord 删当前自动新建承接 / activateTaskRecord / resetUiForNewTask) + 行内重命名/删除确认/多选 checkbox; 三处全部复用
+> ③ **接入**: TaskPanel 重构删重复逻辑 (行渲染/操作全走 TaskCard); OverviewPage 最近任务改用 TaskCard (点击仍跳历史详情, 监听 task-restored 刷新当前徽标); HistoryPage 列表改用 TaskCard (保留多选+发送到 Beta), 右侧详情字段统一为 task_description/状态枚举/对话·数据计数, 监听 task-restored 刷新
+> ④ **清理**: 删除死代码 SessionCard.js + 旧 session-card/task-panel__row CSS, 新增 TASK CARD 样式区块
+> ⑤ **修复**: TaskCard._rerender 的 `render()` 会先覆盖 this._el 再 replaceChild → 抛 "node is not a child" 异常 → _doActivate 在 fetch 前中断、_busy 永久卡死 (按钮全失效)。修复: 先保存旧元素引用再 render; _doActivate 的 finally 恢复渲染
+> ⑥ **验证**: Playwright — 三处同一任务渲染逐字一致 (名称/状态/时间/计数/当前徽标); 历史页恢复→后端 session 切换+聊天载入; 历史页重命名→AI 面板同步; 历史页删除→两处列表同步; console 零错误
 
 ## 待办事项与已知问题（2026-08-05 用户反馈）
 

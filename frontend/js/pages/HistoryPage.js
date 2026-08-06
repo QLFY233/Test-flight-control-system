@@ -7,7 +7,7 @@
 import store from '../state.js';
 import bus from '../event-bus.js';
 import { apiManager } from '../shared.js';
-import { SessionCard } from '../components/SessionCard.js';
+import { TaskCard, taskDisplayName, taskStatusInfo, taskMetaStr } from '../components/TaskCard.js';
 import { TimelineControl } from '../components/TimelineControl.js';
 import { ViewPanel } from '../components/ViewPanel.js';
 import { EmptyState } from '../components/EmptyState.js';
@@ -22,15 +22,20 @@ class HistoryPage {
         this.activeSubTab = 'flight'; // 'flight' | 'data'
         this.timelineControl = null;
         this.historyChartPanel = null;
+        this._boundOnTaskRestored = null;
     }
 
     mount(container) {
         this.container = container;
         this.render();
         this._loadSessions();
+        // 任务恢复/重命名/删除后刷新列表 (当前徽标/名称同步)
+        this._boundOnTaskRestored = () => this._loadSessions();
+        bus.on('task-restored', this._boundOnTaskRestored);
     }
 
     unmount() {
+        if (this._boundOnTaskRestored) { bus.off('task-restored', this._boundOnTaskRestored); this._boundOnTaskRestored = null; }
         if (this.timelineControl) this.timelineControl = null;
         if (this.historyChartPanel) { this.historyChartPanel.unmount(); this.historyChartPanel = null; }
         this.container = null;
@@ -148,9 +153,13 @@ class HistoryPage {
             listEl.appendChild(empty.render());
         } else {
             listEl.innerHTML = '';
+            const currentId = store.get('flight.sessionId');
             for (const session of this.sessions) {
-                session.selected = this.selectedSessions.has(session.id);
-                const card = new SessionCard(session, {
+                // 统一任务卡片 (与 AI 任务面板/总览一致): 多选 + 详情 + 恢复/重命名/删除
+                const card = new TaskCard(session, {
+                    selectable: true,
+                    selected: this.selectedSessions.has(session.id),
+                    current: session.id === currentId,
                     onClick: (s) => {
                         store.set('history.selectedSession', s);
                         this._renderDetail(s);
@@ -164,6 +173,7 @@ class HistoryPage {
                         const sendBtn = this.container?.querySelector('#btn-send-to-beta');
                         if (sendBtn) sendBtn.disabled = this.selectedSessions.size === 0;
                     },
+                    onChanged: () => this._loadSessions(),
                 });
                 listEl.appendChild(card.render());
             }
@@ -174,19 +184,23 @@ class HistoryPage {
         const detailArea = this.container?.querySelector('#history-detail');
         if (!detailArea) return;
 
-        const dateStr = session.date || session.created_at
-            ? new Date(session.date || session.created_at).toLocaleString('zh-CN')
-            : '--';
+        // 统一任务语义 (与 AI 任务面板/总览一致)
+        const name = taskDisplayName(session);
+        const info = taskStatusInfo(session.status);
+        const ts = session.last_active || session.created_at;
+        const dateStr = ts ? new Date(ts).toLocaleString('zh-CN') : '--';
+        const summary = session.task_description || '— 无任务描述 —';
 
         detailArea.innerHTML = `
             <div class="history-page__detail">
                 <div class="history-page__detail-section">
                     <div class="history-page__detail-title">任务详情</div>
                     <div class="card card--raised" style="padding: var(--space-md);">
-                        <div style="font-size: var(--font-lg); font-weight: 600; margin-bottom: var(--space-sm);">${esc(session.task_title || session.name || '未知任务')}</div>
+                        <div style="font-size: var(--font-lg); font-weight: 600; margin-bottom: var(--space-sm);">${esc(name)} <span class="task-card__status task-card__status--${info.tone}">${esc(info.label)}</span></div>
                         <div style="font-size: var(--font-sm); color: var(--color-text-secondary);">时间: ${esc(dateStr)}</div>
-                        <div style="font-size: var(--font-sm); color: var(--color-text-secondary);">状态: ${esc(session.status || '--')}</div>
-                        <div style="font-size: var(--font-sm); color: var(--color-text-secondary); margin-top: var(--space-sm);">${esc(session.task_summary || session.description || '无描述')}</div>
+                        <div style="font-size: var(--font-sm); color: var(--color-text-secondary);">会话: ${esc(session.id || '--')}</div>
+                        <div style="font-size: var(--font-sm); color: var(--color-text-secondary); margin-top: var(--space-sm);">${esc(summary)}</div>
+                        <div style="font-size: var(--font-sm); color: var(--color-text-secondary); margin-top: var(--space-sm);">β 对话 ${session.conv_count ?? 0} 条 · 飞行数据 ${session.telemetry_count ?? 0} 条</div>
                     </div>
                 </div>
 

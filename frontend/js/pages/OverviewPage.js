@@ -5,7 +5,7 @@
 import store from '../state.js';
 import bus from '../event-bus.js';
 import { apiManager, router } from '../shared.js';
-import { SessionCard } from '../components/SessionCard.js';
+import { TaskCard } from '../components/TaskCard.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { genScrollWheel } from '../components/ScrollWheel.js';
 import { esc } from '../escape.js';
@@ -21,6 +21,7 @@ class OverviewPage {
         this.container = null;
         this.title = '总览';
         this._unsubFlight = null;
+        this._boundOnTaskRestored = null;
         this._activeWheel = null;
         this._wheelsDisabled = false;
     }
@@ -30,6 +31,9 @@ class OverviewPage {
         this.render();
         this._bindCards();
         this._loadData();
+        // 任务恢复后刷新最近任务 (当前徽标同步)
+        this._boundOnTaskRestored = () => this._loadData();
+        bus.on('task-restored', this._boundOnTaskRestored);
         this._unsubFlight = store.subscribe('flight', () => {
             const status = store.get('flight.status');
             // 冻结枚举：executing = 任务执行中
@@ -42,6 +46,7 @@ class OverviewPage {
     }
 
     unmount() {
+        if (this._boundOnTaskRestored) { bus.off('task-restored', this._boundOnTaskRestored); this._boundOnTaskRestored = null; }
         if (this._unsubFlight) { this._unsubFlight(); this._unsubFlight = null; }
         this._destroyWheel();
         this.container = null;
@@ -189,11 +194,20 @@ class OverviewPage {
             const grid = this.container?.querySelector('#recent-sessions');
             if (!grid) return;
             if (data.length === 0) {
-                const empty = new EmptyState({ title: '暂无任务记录', desc: '点击下方按钮开始一个新的试飞任务' });
+                const empty = new EmptyState({ title: '暂无任务记录', desc: '点击右上角 [ ☰ 任务 ] 新建任务' });
                 grid.innerHTML = ''; grid.appendChild(empty.render());
             } else {
                 grid.innerHTML = '';
-                data.forEach(s => grid.appendChild(new SessionCard(s, { onClick: s => { router.navigate('#/history'); store.set('history.selectedSession', s); } }).render()));
+                const currentId = store.get('flight.sessionId');
+                data.forEach(s => {
+                    // 统一任务卡片: 名称/状态/时间/对话·数据计数 + 恢复/重命名/删除 (与 AI 任务面板一致)
+                    const card = new TaskCard(s, {
+                        current: s.id === currentId,
+                        onClick: (sess) => { router.navigate('#/history'); store.set('history.selectedSession', sess); },
+                        onChanged: () => this._loadData(),
+                    });
+                    grid.appendChild(card.render());
+                });
             }
         } catch (e) {
             console.warn('[OverviewPage] load sessions:', e.message);
