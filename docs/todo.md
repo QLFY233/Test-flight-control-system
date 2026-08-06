@@ -547,7 +547,7 @@
 | A1 遥测端点补全字段 — `GET /api/history/telemetry/{sid}` 返回 accel/angular_vel/quat（保留 pos/vel，向后兼容） | ✅ 已完成 | — | 2026-08-06 |
 | A2 dashboard_config 真广播 — ws.py 加 broadcast_dashboard_config + beta_tools dashboard_configure/set_filter 经注入回调推送 + lifecycle 接线 | ✅ 已完成 | — | 2026-08-06 |
 | B1 前端存 accel/angularVel — app.js WS pose 处理解析两字段 + state.js 初始态补齐 | ✅ 已完成 | — | 2026-08-06 |
-| B2 看板 accel_line 接真数据 — DashboardPanel 环形缓冲读 store.drone.accel | ⬜ 未开始 | — | — |
+| B2 看板 accel_line 接真数据 — DashboardPanel 环形缓冲读 store.drone.accel | ✅ 已完成 | — | 2026-08-06 |
 | B3 看板去假数据 + 真告警 — bar 面板不再硬编码，订阅 bus 'alert' 实时累计（同 code 计数），无告警空态 | ⬜ 未开始 | — | — |
 | B4 看板 β 工具驱动联调 — 依赖 A2，实测 β「看高度趋势」→ 面板真实切换 | ⬜ 未开始 | — | — |
 | B5 看板空态兜底 — 无实时数据显示引导提示，不再一片 `--`/空图 | ⬜ 未开始 | — | — |

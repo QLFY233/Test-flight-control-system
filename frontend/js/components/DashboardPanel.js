@@ -3,9 +3,9 @@
  * Renders ECharts charts or value cards based on spec from WS dashboard_config.
  *
  * 2026-08 修复: 移除 mock 假数据 (ALT 28.7m / SPD 1.43 m/s / PROGRESS 47.2% 硬编码 +
- * 时序图随机数)。时序面板 (altitude_line/velocity_line) 订阅 store.drone 实时写入环形缓冲,
+ * 时序图随机数)。时序面板 (altitude_line/velocity_line/accel_line) 订阅 store.drone 实时写入环形缓冲,
  * 增量 setOption 更新图表; value 卡片 (source=altitude|speed|progress) 订阅 store 实时渲染,
- * 无数据时显示 '--'。
+ * 无数据时显示 '--'。accel_line 数据源为 store.drone.accel (2026-08-06 接入)。
  */
 
 import store from '../state.js';
@@ -125,15 +125,6 @@ class DashboardPanel {
         this.chart = echarts.init(container);
         const option = this._buildOption();
         this.chart.setOption(option);
-
-        // accel_line: store 无加速度数据源 → 空图 + 标注, 不显示假数据
-        if (this.spec.type === 'accel_line') {
-            container.style.position = 'relative';
-            const hint = document.createElement('div');
-            hint.style.cssText = 'position:absolute;right:8px;bottom:8px;z-index:2;font-family:var(--font-mono);font-size:10px;letter-spacing:0.05em;color:var(--color-text-disabled);background:rgba(10,10,10,0.5);padding:2px 6px;pointer-events:none;';
-            hint.textContent = '// 无加速度数据源';
-            container.appendChild(hint);
-        }
     }
 
     _buildOption() {
@@ -220,10 +211,17 @@ class DashboardPanel {
                     if (val != null) this._pushLine(this._bufs.velocity[i], [now, +val.toFixed(3)]);
                 });
             }
+        } else if (type === 'accel_line') {
+            const a = hasPose ? drone.accel : null;
+            if (a) {
+                const now = Date.now();
+                [a.ax, a.ay, a.az].forEach((val, i) => {
+                    if (val != null) this._pushLine(this._bufs.accel[i], [now, +val.toFixed(3)]);
+                });
+            }
         } else if (type === 'value' && (this.spec.source === 'altitude' || this.spec.source === 'speed')) {
             this._refreshValueCard();
         }
-        // accel_line: store 无加速度数据源 → 保持空图 (已标注)
     }
 
     /**
