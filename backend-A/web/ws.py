@@ -158,6 +158,21 @@ async def broadcast_link_status(link: str, state: str, detail: str | None = None
     })
 
 
+async def broadcast_dashboard_config(panel_id: str, spec: dict, filter_spec: dict | None = None):
+    """推送看板配置 (β dashboard_configure/dashboard_set_filter 工具驱动前端看板)。
+
+    spec 与 filter 二选一或同给: configure 带 spec, set_filter 带 filter_spec。
+    """
+    await broadcast({
+        "type": "dashboard_config",
+        "schema_version": SCHEMA_VERSION,
+        "panel_id": panel_id,
+        "spec": spec,
+        "filter": filter_spec,
+        "ts": time.time(),
+    })
+
+
 @router.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
     """WebSocket 端点 — 双向实时通信。"""

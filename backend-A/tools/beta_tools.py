@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 _state_ref = None  # AppState
 _bus_ref = None    # bus.router.call
 _db_ref = None     # db.repos + session
+_dashboard_broadcast_ref = None  # web.ws.broadcast_dashboard_config (β 工具驱动看板)
 
 # 预翻译用 α 翻译器 (lazy 单例; 复用生命周期内, 不随每次提议重建)
 _pre_translator_ref = None
@@ -97,6 +98,12 @@ def set_tool_context(state, bus, db_session_factory):
     _state_ref = state
     _bus_ref = bus
     _db_ref = db_session_factory
+
+
+def set_dashboard_broadcast(fn):
+    """注入看板配置广播回调 (由 lifecycle 在启动时调用)。"""
+    global _dashboard_broadcast_ref
+    _dashboard_broadcast_ref = fn
 
 
 def _log_push_error(task):
@@ -369,21 +376,33 @@ def analytics_filter(data: list, filter_type: str = "moving_average", params: di
     return _get_filter().run(data, filter_type, params)
 
 
-# ── 看板驱动 (阶段 L, 先导 stub) ──
+# ── 看板驱动 (阶段 L, 先导 stub → 2026-08-06 接通真广播) ──
 
 
-def dashboard_configure(panel_id: str, spec: dict) -> dict:
-    """配置看板面板。"""
+async def _push_dashboard_config(panel_id: str, spec: dict | None, filter_spec: dict | None):
+    """经 WS dashboard_config 推送前端 (未注入广播回调时静默跳过 — 看板配置不影响主流程)。"""
+    fn = _dashboard_broadcast_ref
+    if not fn:
+        return
+    try:
+        await fn(panel_id, spec, filter_spec)
+    except Exception as e:
+        logger.warning(f"[beta-tools] dashboard_config broadcast failed: {e}")
+
+
+async def dashboard_configure(panel_id: str, spec: dict) -> dict:
+    """配置看板面板 (推送 WS dashboard_config, 前端实时切换展示内容)。"""
+    await _push_dashboard_config(panel_id, spec, None)
     return {
         "status": "ok",
         "panel_id": panel_id,
         "spec": spec,
-        "note": "panel configured, WS dashboard_config will push to frontend",
     }
 
 
-def dashboard_set_filter(panel_id: str, filter_spec: dict) -> dict:
-    """设置看板筛选器。"""
+async def dashboard_set_filter(panel_id: str, filter_spec: dict) -> dict:
+    """设置看板筛选器 (推送 WS dashboard_config, 前端 FilterBar 应用)。"""
+    await _push_dashboard_config(panel_id, None, filter_spec)
     return {
         "status": "ok",
         "panel_id": panel_id,

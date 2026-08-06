@@ -118,9 +118,13 @@ class Lifecycle:
             set_ws_context(self.state)
 
             # β tools 需要 state + bus + db
-            from tools.beta_tools import set_tool_context
+            from tools.beta_tools import set_tool_context, set_dashboard_broadcast
             from bus.router import call as bus_call
             set_tool_context(self.state, bus_call, db_session_factory)
+
+            # β dashboard 工具 → WS dashboard_config 广播
+            from web.ws import broadcast_dashboard_config
+            set_dashboard_broadcast(broadcast_dashboard_config)
 
             # Bridge pose/alert/reject → WS broadcast
             from bus.bridge import set_ws_broadcast
