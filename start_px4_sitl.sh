@@ -60,8 +60,8 @@ ss -uln 2>/dev/null | grep -q ":14580 " && echo "  ✅ PX4 SITL OK (PID=$PX4_PID
 # TIMESYNC 收发 (2026-08-03 实测): mavros 主动 10Hz 发 TIMESYNC → PX4 必回 →
 # WSL2 时钟校正致 offset 突变 → "TM : Time jump detected" 每 ~45s 一次。
 # NONE 模式下消息时间戳回落 ROS 本地时间 (B 侧本就走 wall time, 无影响)。
-echo "[3/5] 启动 MAVROS (fcu_url=udp://:14540@127.0.0.1:14557, timesync disabled)..."
-nohup roslaunch "$PROJ/mavros_px4.launch" fcu_url:=udp://:14540@127.0.0.1:14557 &>/tmp/mavros.log &
+echo "[3/5] 启动 MAVROS (fcu_url=udp://:14540@127.0.0.1:14580, timesync disabled)..."
+nohup roslaunch "$PROJ/mavros_px4.launch" fcu_url:=udp://:14540@127.0.0.1:14580 &>/tmp/mavros.log &
 MAVROS_PID=$!
 for i in $(seq 1 20); do
     sleep 1

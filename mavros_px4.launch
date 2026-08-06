@@ -4,7 +4,7 @@
 	     改动: config_yaml 指向项目内 mavros_px4_config.yaml (TIMESYNC 禁用,
 	     消除 WSL2 时钟跳变的 "TM : Time jump detected" 警告; 见 [3/5] 注释) -->
 
-	<arg name="fcu_url" default="udp://:14540@127.0.0.1:14557" />
+	<arg name="fcu_url" default="udp://:14540@127.0.0.1:14580" />
 	<arg name="gcs_url" default="" />
 	<arg name="tgt_system" default="1" />
 	<arg name="tgt_component" default="1" />
