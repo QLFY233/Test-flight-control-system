@@ -9,9 +9,10 @@ import bus from '../event-bus.js';
 import { apiManager } from '../shared.js';
 import { TaskCard, taskDisplayName, taskStatusInfo, taskMetaStr } from '../components/TaskCard.js';
 import { TimelineControl } from '../components/TimelineControl.js';
-import { ViewPanel } from '../components/ViewPanel.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { HistoryPanels } from '../history/HistoryPanels.js';
+import { FieldMap2D } from '../charts/FieldMap2D.js';
+import { Scene3D } from '../charts/Scene3D.js';
 import { playbackEngine } from '../history/playback.js';
 import { esc } from '../escape.js';
 
@@ -23,7 +24,8 @@ class HistoryPage {
         this.selectedSessions = new Set();
         this.activeSubTab = 'flight'; // 'flight' | 'data'
         this.timelineControl = null;
-        this.historyChartPanel = null;
+        this.historyMap2D = null;    // 2D 场地俯视图 (历史模式)
+        this.historyScene3D = null;  // 3D 视图 (历史模式)
         this.historyPanels = null;
         this._boundOnTaskRestored = null;
     }
@@ -46,11 +48,12 @@ class HistoryPage {
         this.container = null;
     }
 
-    /** 清理详情区实例 (页面卸载 + 会话切换时复用, 防订阅/echarts 泄漏)。 */
+    /** 清理详情区实例 (页面卸载 + 会话切换时复用, 防订阅/echarts/three 泄漏)。 */
     _disposeDetailInstances() {
         if (this.timelineControl) { this.timelineControl.unmount?.(); this.timelineControl = null; }
         if (this.historyPanels) { this.historyPanels.unmount(); this.historyPanels = null; }
-        if (this.historyChartPanel) { this.historyChartPanel.unmount(); this.historyChartPanel = null; }
+        if (this.historyMap2D) { this.historyMap2D.unmount(); this.historyMap2D = null; }
+        if (this.historyScene3D) { this.historyScene3D.unmount(); this.historyScene3D = null; }
     }
 
     render() {
@@ -308,9 +311,12 @@ class HistoryPage {
                     <div id="history-panels-container"></div>
                 </div>
 
-                <div class="history-page__detail-section" style="min-height: 250px;">
-                    <div class="history-page__detail-title">轨迹俯视回放</div>
-                    <div id="history-chart-container" style="width: 100%; height: 300px; border: 1px solid var(--color-border); border-radius: var(--radius-md);"></div>
+                <div class="history-page__detail-section" style="min-height: 320px;">
+                    <div class="history-page__detail-title">轨迹回放 · 场地俯视 + 3D</div>
+                    <div class="history-page__traj" style="display:flex;gap:var(--space-3);min-height:300px;flex-wrap:wrap;">
+                        <div id="history-map-2d" style="flex:1;min-width:280px;height:300px;border:1px solid var(--color-border);border-radius:var(--radius-md);"></div>
+                        <div id="history-scene-3d" style="flex:1;min-width:280px;height:300px;border:1px solid var(--color-border);border-radius:var(--radius-md);"></div>
+                    </div>
                 </div>
             </div>
         `;
@@ -329,11 +335,16 @@ class HistoryPage {
             this.historyPanels.mount(panelsContainer);
         }
 
-        // History chart (2D 俯视 + 高度 + 速度)
-        const chartContainer = detailArea.querySelector('#history-chart-container');
-        if (chartContainer) {
-            this.historyChartPanel = new ViewPanel(0, 'chart', 'history');
-            this.historyChartPanel.mount(chartContainer);
+        // 轨迹: 2D 场地俯视图 + 3D 视图 (历史模式, 数据匹配选中任务)
+        const mapContainer = detailArea.querySelector('#history-map-2d');
+        if (mapContainer) {
+            this.historyMap2D = new FieldMap2D('history');
+            this.historyMap2D.mount(mapContainer);
+        }
+        const sceneContainer = detailArea.querySelector('#history-scene-3d');
+        if (sceneContainer) {
+            this.historyScene3D = new Scene3D('history');
+            this.historyScene3D.mount(sceneContainer);
         }
     }
 }

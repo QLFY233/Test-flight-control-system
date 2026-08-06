@@ -39,7 +39,7 @@ class DashboardPanel {
         this.container = null;
         this.chart = null;
         this._boundResize = this._resize.bind(this);
-        // 具名订阅引用: unmount 时真正解绑, 防泄漏 (对齐 HistoryChart.js 模式)
+        // 具名订阅引用: unmount 时真正解绑, 防泄漏 (对齐 HistoryPanels.js 模式)
         this._droneUnsub = null;
         this._flightUnsub = null;
         this._alertUnsub = null;  // bus 'alert' → bar 面板告警统计

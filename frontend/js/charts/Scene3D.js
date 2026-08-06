@@ -5,6 +5,7 @@
  */
 
 import store from '../state.js';
+import bus from '../event-bus.js';
 
 const MAX_TRAIL_POINTS = 3000;   // 轨迹点缓冲上限 (预分配)
 const MIN_TRAIL_STEP = 0.02;     // 移动超过此距离才记录 (悬停不堆积点)
@@ -18,7 +19,8 @@ const trailStore = {
 };
 
 class Scene3D {
-    constructor() {
+    constructor(mode = 'live') {
+        this.mode = mode;   // 'live' | 'history'
         this.container = null;
         this.renderer = null;
         this.scene = null;
@@ -27,12 +29,16 @@ class Scene3D {
         this.droneMesh = null;
         this.altLine = null;
         this.floorMesh = null;
-        this.trailLine = null;        // 绿色飞行轨迹线
+        this.trailLine = null;        // 绿色飞行轨迹线 (live)
         this.planGroup = null;        // 飞行计划渲染组 (计划虚线 + 目标点标记 + 当前动作高亮)
+        this.historyTrailLine = null;  // history: 完整轨迹 (暗)
+        this.historyFlownLine = null;  // history: 已飞轨迹 (亮, drawRange 随回放增长)
         this._animationId = null;
         this._updateUnsub = null;
         this._planUnsub = null;       // trajectory 变更 → 重建计划
         this._flightUnsub = null;     // flight.currentAction 变更 → 重建高亮
+        this._datasetUnsub = null;    // history: 数据集变更 → 重建
+        this._tickHandler = null;     // history: playback-tick → 无人机移动
         this._resizeHandler = null;
         this._keys = new Set();       // WASD 移动按键
         this._lastFrame = null;       // 帧间隔计时
@@ -99,15 +105,33 @@ class Scene3D {
         this._buildFloor();
         this._buildHome();
         this._buildDrone();
-        this._buildTrail();
-        this._buildPlan();
+        if (this.mode === 'history') {
+            this._buildHistoryTrail();
+            this._buildPlan();
+            this._updateHistoryDrone();
+        } else {
+            this._buildTrail();
+            this._buildPlan();
+        }
 
-        // --- Subscribe to pose updates ---
-        this._updateUnsub = store.subscribe('drone', () => this._updateDrone());
+        // --- Subscribe ---
+        // field (边界/home) 全局配置, 两种模式都订阅
         this._updateUnsubField = store.subscribe('field', () => this._updateField());
-        // 飞行计划更新 (alpha_output → trajectory) / 当前动作切换 (status → flight) → 重建计划渲染
-        this._planUnsub = store.subscribe('trajectory', () => this._updatePlan());
-        this._flightUnsub = store.subscribe('flight', () => this._updatePlan());
+        if (this.mode === 'history') {
+            // 历史模式: 数据集变更 → 重建轨迹/计划; playback-tick → 无人机随回放移动
+            this._datasetUnsub = store.subscribe('history.playback.dataset', () => {
+                this._buildHistoryTrail();
+                this._buildPlan();
+                this._updateHistoryDrone();
+            });
+            this._tickHandler = () => this._updateHistoryDrone();
+            bus.on('playback-tick', this._tickHandler);
+        } else {
+            // 实时模式: pose 更新无人机, trajectory/flight 更新计划
+            this._updateUnsub = store.subscribe('drone', () => this._updateDrone());
+            this._planUnsub = store.subscribe('trajectory', () => this._updatePlan());
+            this._flightUnsub = store.subscribe('flight', () => this._updatePlan());
+        }
 
         // --- Resize ---
         this._resizeHandler = () => {
@@ -268,12 +292,102 @@ class Scene3D {
         this.scene.add(this.trailLine);
     }
 
+    // ── 历史模式渲染 (数据来自 history.playback.dataset, 匹配选中历史任务) ──
+
+    // 完整轨迹 (暗) + 已飞轨迹 (亮, drawRange 随回放增长)
+    _buildHistoryTrail() {
+        const ds = store.get('history.playback.dataset');
+        const pts = ds?.points || [];
+        const groundY = this._boundary().zMin || 0;
+        const mapPt = (p) => new THREE.Vector3(p.x ?? 0, Math.max(p.z ?? 0, groundY), p.y ?? 0);
+
+        if (this.historyTrailLine) { this._disposeObject(this.historyTrailLine); this.historyTrailLine = null; }
+        if (pts.length > 1) {
+            const geo = new THREE.BufferGeometry().setFromPoints(pts.map(mapPt));
+            const mat = new THREE.LineBasicMaterial({ color: 0x555555, transparent: true, opacity: 0.5 });
+            this.historyTrailLine = new THREE.Line(geo, mat);
+            this.historyTrailLine.frustumCulled = false;
+            this.scene.add(this.historyTrailLine);
+        }
+
+        if (this.historyFlownLine) { this._disposeObject(this.historyFlownLine); this.historyFlownLine = null; }
+        if (pts.length > 0) {
+            const pos = new Float32Array(pts.length * 3);
+            pts.forEach((p, i) => {
+                const v = mapPt(p);
+                pos[i * 3] = v.x; pos[i * 3 + 1] = v.y; pos[i * 3 + 2] = v.z;
+            });
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            const idx = Math.max(0, Math.min(store.get('history.playback.index') || 0, pts.length - 1));
+            geo.setDrawRange(0, idx + 1);
+            const mat = new THREE.LineBasicMaterial({ color: 0x00E676, linewidth: 2 });
+            this.historyFlownLine = new THREE.Line(geo, mat);
+            this.historyFlownLine.frustumCulled = false;
+            this.scene.add(this.historyFlownLine);
+        }
+    }
+
+    // 历史无人机位置: 取回放当前帧 (playback-tick 增量更新)
+    _updateHistoryDrone() {
+        const ds = store.get('history.playback.dataset');
+        const pts = ds?.points || [];
+        const idx = Math.max(0, Math.min(store.get('history.playback.index') || 0, pts.length - 1));
+        const p = pts[idx];
+        if (!p) return;
+        const groundY = this._boundary().zMin || 0;
+        const displayZ = Math.max(p.z ?? 0, groundY);
+        if (this.droneMesh) this.droneMesh.position.set(p.x ?? 0, displayZ, p.y ?? 0);
+        if (this.altLine) {
+            this.altLine.geometry.setFromPoints([
+                new THREE.Vector3(p.x ?? 0, groundY, p.y ?? 0),
+                new THREE.Vector3(p.x ?? 0, displayZ, p.y ?? 0),
+            ]);
+        }
+        // 已飞轨迹 drawRange 增长
+        if (this.historyFlownLine && pts.length > 0) {
+            this.historyFlownLine.geometry.setDrawRange(0, idx + 1);
+            this.historyFlownLine.geometry.computeBoundingSphere();
+        }
+    }
+
+    // 历史计划: 数据集 planned 目标点 → 青色虚线 + 编号标记
+    _buildHistoryPlan() {
+        const ds = store.get('history.playback.dataset');
+        const planned = ds?.planned || [];
+        const groundY = this._boundary().zMin || 0;
+        const mapPt = (p) => new THREE.Vector3(p.x ?? 0, Math.max(p.z ?? 0, groundY), p.y ?? 0);
+        if (planned.length > 1) {
+            const geo = new THREE.BufferGeometry().setFromPoints(planned.map(mapPt));
+            const mat = new THREE.LineDashedMaterial({ color: 0x00BCD4, dashSize: 0.15, gapSize: 0.15 });
+            const line = new THREE.Line(geo, mat);
+            line.computeLineDistances();
+            this.planGroup.add(line);
+        }
+        planned.forEach((g, i) => {
+            const geo = new THREE.BoxGeometry(0.15, 0.15, 0.15);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x00BCD4 });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.copy(mapPt(g));
+            this.planGroup.add(mesh);
+            const label = this._makePlanLabel(String(i + 1), '#00BCD4');
+            if (label) {
+                label.position.set(g.x ?? 0, (g.z ?? 0) + 0.45, g.y ?? 0);
+                this.planGroup.add(label);
+            }
+        });
+    }
+
     // ── 飞行计划渲染 ──
     // 数据源: store.trajectory (app.js 归一化: planned=[{x,y,z}],
     // actionSequence=[{code,target,value,units,comment,goal:{x,y,z}|null}])
     // 坐标映射 ENU → Three.js: x→x(东), z→y(高), y→z(北), 对齐 _updateDrone
     _buildPlan() {
         this.planGroup = new THREE.Group();
+        if (this.mode === 'history') {
+            this._buildHistoryPlan();
+            return;
+        }
         const trajectory = store.get('trajectory') || {};
         const flight = store.get('flight') || {};
         const groundY = this._boundary().zMin || 0;
@@ -515,12 +629,17 @@ class Scene3D {
         this._keys.clear();
         if (this._planUnsub) { this._planUnsub(); this._planUnsub = null; }
         if (this._flightUnsub) { this._flightUnsub(); this._flightUnsub = null; }
+        if (this._datasetUnsub) { this._datasetUnsub(); this._datasetUnsub = null; }
+        if (this._tickHandler) { bus.off('playback-tick', this._tickHandler); this._tickHandler = null; }
         this._disposePlan();
         // 清理场景资源 (GPU 内存)
         this._disposeObject(this.floorMesh);
         this._disposeObject(this.trailLine);
+        this._disposeObject(this.historyTrailLine);
+        this._disposeObject(this.historyFlownLine);
         this._disposeObject(this.altLine);
         this.floorMesh = this.trailLine = this.altLine = null;
+        this.historyTrailLine = this.historyFlownLine = null;
         if (this.controls) { this.controls.dispose(); this.controls = null; }
         if (this.renderer) { this.renderer.dispose(); this.renderer = null; }
         this.scene = null;

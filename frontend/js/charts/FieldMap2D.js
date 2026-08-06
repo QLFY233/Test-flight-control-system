@@ -2,19 +2,25 @@
  * FieldMap2D — Top-down field view for Beta page.
  * Shows boundary rectangle, obstacle projections, home marker.
  * Supports zoom, pan, and click to select reference point.
+ *
+ * 2026-08-06: 新增 history 模式 — 渲染选中历史任务轨迹 (history.playback.dataset)
+ * + 回放游标, 随 playback-tick 移动; 不污染实时数据。
  */
 
 import store from '../state.js';
 import bus from '../event-bus.js';
 
 class FieldMap2D {
-    constructor() {
+    constructor(mode = 'live') {
+        this.mode = mode;
         this.chart = null;
         this.container = null;
         this._resizeHandler = null;
         this._updateUnsub = null;
         this._trajUnsub = null;   // trajectory 变更 → 重建 (计划/轨迹线)
         this._droneUnsub = null;  // drone 变更 → 无人机标记增量更新 (10Hz)
+        this._datasetUnsub = null; // history 模式: 数据集变更 → 重建
+        this._tickHandler = null;  // history 模式: playback-tick → 游标移动
     }
 
     mount(container) {
@@ -49,18 +55,28 @@ class FieldMap2D {
             }
         });
 
-        // Subscribe to field changes
+        // Subscribe to field changes (global 场地配置, 两种模式共用)
         this._updateUnsub = store.subscribe('field', () => {
             this._buildOption();
         });
-        // 计划/已飞轨迹更新 → 整图重建 (低频, 对齐 field 模式)
-        this._trajUnsub = store.subscribe('trajectory', () => {
-            this._buildOption();
-        });
-        // 无人机位置 10Hz → 仅增量更新标记 series, 不重建整图
-        this._droneUnsub = store.subscribe('drone', () => {
-            this._updateDroneMarker();
-        });
+
+        if (this.mode === 'history') {
+            // 历史模式: 数据集变更 → 重建轨迹; playback-tick → 回放游标移动
+            this._datasetUnsub = store.subscribe('history.playback.dataset', () => {
+                this._buildOption();
+            });
+            this._tickHandler = () => this._updateHistoryMarker();
+            bus.on('playback-tick', this._tickHandler);
+        } else {
+            // 计划/已飞轨迹更新 → 整图重建 (低频, 对齐 field 模式)
+            this._trajUnsub = store.subscribe('trajectory', () => {
+                this._buildOption();
+            });
+            // 无人机位置 10Hz → 仅增量更新标记 series, 不重建整图
+            this._droneUnsub = store.subscribe('drone', () => {
+                this._updateDroneMarker();
+            });
+        }
     }
 
     unmount() {
@@ -68,8 +84,21 @@ class FieldMap2D {
         if (this._updateUnsub) { this._updateUnsub(); this._updateUnsub = null; }
         if (this._trajUnsub) { this._trajUnsub(); this._trajUnsub = null; }
         if (this._droneUnsub) { this._droneUnsub(); this._droneUnsub = null; }
+        if (this._datasetUnsub) { this._datasetUnsub(); this._datasetUnsub = null; }
+        if (this._tickHandler) { bus.off('playback-tick', this._tickHandler); this._tickHandler = null; }
         if (this.chart) { this.chart.dispose(); this.chart = null; }
         if (this.container) { this.container.innerHTML = ''; this.container = null; }
+    }
+
+    // 历史回放游标: 当前帧位置 (playback-tick 增量更新, 固定 id 合并)
+    _updateHistoryMarker() {
+        if (!this.chart || this.chart.isDisposed()) return;
+        const ds = store.get('history.playback.dataset');
+        const pts = ds?.points || [];
+        const idx = store.get('history.playback.index') || 0;
+        const p = pts[idx];
+        const data = (p && p.x != null && p.y != null) ? [[p.x, p.y]] : [];
+        this.chart.setOption({ series: [{ id: 'fieldmap-playback', data }] });
     }
 
     // 无人机位置标记: 10Hz 增量更新 (series 固定 id, ECharts 按 id 合并)
@@ -159,111 +188,126 @@ class FieldMap2D {
             },
         }] : [];
 
-        // Planned trajectory
-        const trajectory = store.get('trajectory');
+        // 数据源: live 读实时 store.trajectory; history 读回放数据集 (匹配选中历史任务)
+        const trajectory = this.mode === 'history' ? null : (store.get('trajectory') || {});
         const plannedSeries = [];
 
-        // 待批准预览 (黄色): β 提议预翻译 (store.trajectory.pending), 批准后由 alpha_output 清空
-        const pending = trajectory?.pending || null;
-        if (pending?.planned && pending.planned.length > 1) {
-            plannedSeries.push({
-                name: 'PendingPlan',
-                type: 'line',
-                data: pending.planned.map(p => [p.x, p.y]),
-                lineStyle: {
-                    color: '#FFC107',
-                    type: 'dashed',
-                    width: 1.5,
-                },
-                showSymbol: false,
-            });
-        }
-        if (pending?.seq) {
-            const pWp = pending.seq
-                .filter(a => a.goal && a.goal.x != null && a.goal.y != null)
-                .map(a => ({ value: [a.goal.x, a.goal.y], label: (a.code || 'act') + '?' }));
-            if (pWp.length > 0) {
+        if (this.mode === 'history') {
+            // 历史任务轨迹 (完整 XY 路径, 数据来自选中任务的遥测)
+            const ds = store.get('history.playback.dataset');
+            const pts = ds?.points || [];
+            if (pts.length > 1) {
                 plannedSeries.push({
-                    name: 'PendingWaypoints',
+                    name: 'HistoryFlown',
+                    type: 'line',
+                    data: pts.map(p => [p.x, p.y]),
+                    lineStyle: { color: '#4CAF50', width: 2 },
+                    showSymbol: false,
+                });
+            }
+        } else {
+            // 待批准预览 (黄色): β 提议预翻译 (store.trajectory.pending), 批准后由 alpha_output 清空
+            const pending = trajectory?.pending || null;
+            if (pending?.planned && pending.planned.length > 1) {
+                plannedSeries.push({
+                    name: 'PendingPlan',
+                    type: 'line',
+                    data: pending.planned.map(p => [p.x, p.y]),
+                    lineStyle: {
+                        color: '#FFC107',
+                        type: 'dashed',
+                        width: 1.5,
+                    },
+                    showSymbol: false,
+                });
+            }
+            if (pending?.seq) {
+                const pWp = pending.seq
+                    .filter(a => a.goal && a.goal.x != null && a.goal.y != null)
+                    .map(a => ({ value: [a.goal.x, a.goal.y], label: (a.code || 'act') + '?' }));
+                if (pWp.length > 0) {
+                    plannedSeries.push({
+                        name: 'PendingWaypoints',
+                        type: 'scatter',
+                        data: pWp,
+                        symbolSize: 7,
+                        symbol: 'circle',
+                        itemStyle: {
+                            color: '#FFB300',
+                            borderColor: '#FFD54F',
+                            borderWidth: 1.5,
+                        },
+                        label: {
+                            show: true,
+                            position: 'top',
+                            color: '#FFB300',
+                            fontSize: 9,
+                            formatter: (p) => p.data.label,
+                        },
+                    });
+                }
+            }
+
+            if (trajectory?.planned && trajectory.planned.length > 1) {
+                plannedSeries.push({
+                    name: 'Planned',
+                    type: 'line',
+                    data: trajectory.planned.map(p => [p.x, p.y]),
+                    lineStyle: {
+                        color: '#00BCD4',
+                        type: 'dashed',
+                        width: 1.5,
+                    },
+                    showSymbol: false,
+                });
+            }
+
+            // Flown trajectory
+            if (trajectory?.flown && trajectory.flown.length > 1) {
+                plannedSeries.push({
+                    name: 'Flown',
+                    type: 'line',
+                    data: trajectory.flown.map(p => [p.x, p.y]),
+                    lineStyle: {
+                        color: '#4CAF50',
+                        width: 2,
+                    },
+                    showSymbol: false,
+                });
+            }
+
+            // ActionSequence waypoints (schema_version=2: 使用 actionSequence 替代旧 waypoints)
+            // 目标点优先取归一化 a.goal; 兼容旧格式 a.target(数组 [x,y,z]) / a.params.target(对象)
+            const actionSeq = trajectory?.actionSequence || [];
+            const wpData = [];
+            if (actionSeq.length > 0) {
+                actionSeq.forEach((a, i) => {
+                    const g = a.goal ?? this._toXYZ(a.target) ?? this._toXYZ(a.params && a.params.target);
+                    if (!g) return;   // hover/yaw 等无目标动作跳过
+                    wpData.push({ value: [g.x, g.y], label: a.code || String(i + 1) });
+                });
+            }
+            if (wpData.length > 0) {
+                plannedSeries.push({
+                    name: 'Waypoints',
                     type: 'scatter',
-                    data: pWp,
-                    symbolSize: 7,
+                    data: wpData,
+                    symbolSize: 8,
                     symbol: 'circle',
                     itemStyle: {
-                        color: '#FFB300',
-                        borderColor: '#FFD54F',
-                        borderWidth: 1.5,
+                        color: '#00BCD4',
+                        borderColor: '#4DD0E1',
+                        borderWidth: 2,
                     },
                     label: {
                         show: true,
                         position: 'top',
-                        color: '#FFB300',
-                        fontSize: 9,
+                        color: '#9E9E9E',
+                        fontSize: 10,
                         formatter: (p) => p.data.label,
                     },
                 });
             }
-        }
-
-        if (trajectory?.planned && trajectory.planned.length > 1) {
-            plannedSeries.push({
-                name: 'Planned',
-                type: 'line',
-                data: trajectory.planned.map(p => [p.x, p.y]),
-                lineStyle: {
-                    color: '#00BCD4',
-                    type: 'dashed',
-                    width: 1.5,
-                },
-                showSymbol: false,
-            });
-        }
-
-        // Flown trajectory
-        if (trajectory?.flown && trajectory.flown.length > 1) {
-            plannedSeries.push({
-                name: 'Flown',
-                type: 'line',
-                data: trajectory.flown.map(p => [p.x, p.y]),
-                lineStyle: {
-                    color: '#4CAF50',
-                    width: 2,
-                },
-                showSymbol: false,
-            });
-        }
-
-        // ActionSequence waypoints (schema_version=2: 使用 actionSequence 替代旧 waypoints)
-        // 目标点优先取归一化 a.goal; 兼容旧格式 a.target(数组 [x,y,z]) / a.params.target(对象)
-        const actionSeq = trajectory?.actionSequence || [];
-        const wpData = [];
-        if (actionSeq.length > 0) {
-            actionSeq.forEach((a, i) => {
-                const g = a.goal ?? this._toXYZ(a.target) ?? this._toXYZ(a.params && a.params.target);
-                if (!g) return;   // hover/yaw 等无目标动作跳过
-                wpData.push({ value: [g.x, g.y], label: a.code || String(i + 1) });
-            });
-        }
-        if (wpData.length > 0) {
-            plannedSeries.push({
-                name: 'Waypoints',
-                type: 'scatter',
-                data: wpData,
-                symbolSize: 8,
-                symbol: 'circle',
-                itemStyle: {
-                    color: '#00BCD4',
-                    borderColor: '#4DD0E1',
-                    borderWidth: 2,
-                },
-                label: {
-                    show: true,
-                    position: 'top',
-                    color: '#9E9E9E',
-                    fontSize: 10,
-                    formatter: (p) => p.data.label,
-                },
-            });
         }
 
         this.chart.setOption({
@@ -313,24 +357,44 @@ class FieldMap2D {
                 ...homeSeries,
                 ...obstacleSeries,
                 ...plannedSeries,
-                // 无人机当前位置标记 (青色圆点; id 固定供 _updateDroneMarker 增量更新)
-                {
-                    id: 'fieldmap-drone',
-                    name: 'Drone',
-                    type: 'scatter',
-                    data: (() => {
-                        const p = store.get('drone')?.position;
-                        return (p && p.x != null && p.y != null) ? [[p.x, p.y]] : [];
-                    })(),
-                    symbolSize: 10,
-                    symbol: 'circle',
-                    itemStyle: {
-                        color: '#00BCD4',
-                        borderColor: '#4DD0E1',
-                        borderWidth: 1,
+                // 实时模式: 无人机当前位置标记 (青色; id 固定供 _updateDroneMarker 增量更新)
+                // 历史模式: 回放游标 (红色; id 固定供 _updateHistoryMarker 增量更新)
+                this.mode === 'history'
+                    ? {
+                        id: 'fieldmap-playback',
+                        name: 'Playback',
+                        type: 'scatter',
+                        data: (() => {
+                            const ds = store.get('history.playback.dataset');
+                            const p = ds?.points?.[store.get('history.playback.index') || 0];
+                            return (p && p.x != null && p.y != null) ? [[p.x, p.y]] : [];
+                        })(),
+                        symbolSize: 10,
+                        symbol: 'circle',
+                        itemStyle: {
+                            color: '#FF2A2A',
+                            borderColor: '#FF8A80',
+                            borderWidth: 1.5,
+                        },
+                        z: 10,
+                    }
+                    : {
+                        id: 'fieldmap-drone',
+                        name: 'Drone',
+                        type: 'scatter',
+                        data: (() => {
+                            const p = store.get('drone')?.position;
+                            return (p && p.x != null && p.y != null) ? [[p.x, p.y]] : [];
+                        })(),
+                        symbolSize: 10,
+                        symbol: 'circle',
+                        itemStyle: {
+                            color: '#00BCD4',
+                            borderColor: '#4DD0E1',
+                            borderWidth: 1,
+                        },
+                        z: 10,
                     },
-                    z: 10,
-                },
             ],
             animation: true,
             animationDuration: 400,

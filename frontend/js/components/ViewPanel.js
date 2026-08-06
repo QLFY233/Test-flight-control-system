@@ -7,7 +7,6 @@ import { VideoPanel } from './VideoPanel.js';
 import { AltitudeChart } from '../charts/AltitudeChart.js';
 import { VelocityChart } from '../charts/VelocityChart.js';
 import { FieldMap2D } from '../charts/FieldMap2D.js';
-import { HistoryChart } from '../charts/HistoryChart.js';
 import { Scene3D } from '../charts/Scene3D.js';
 import store from '../state.js';
 
@@ -128,9 +127,6 @@ class ViewPanel {
                 break;
             case 'fieldmap':
                 this.innerComponent = new FieldMap2D();
-                break;
-            case 'history':
-                this.innerComponent = new HistoryChart();
                 break;
             default:
                 this.innerComponent = new AltitudeChart();
