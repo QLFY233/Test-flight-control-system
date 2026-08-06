@@ -11,6 +11,7 @@ import { TaskCard, taskDisplayName, taskStatusInfo, taskMetaStr } from '../compo
 import { TimelineControl } from '../components/TimelineControl.js';
 import { ViewPanel } from '../components/ViewPanel.js';
 import { EmptyState } from '../components/EmptyState.js';
+import { playbackEngine } from '../history/playback.js';
 import { esc } from '../escape.js';
 
 class HistoryPage {
@@ -29,6 +30,8 @@ class HistoryPage {
         this.container = container;
         this.render();
         this._loadSessions();
+        // 回放引擎: 订阅播放/seek/步进/倍速事件, rAF 推进 (页面内常驻)
+        playbackEngine.mount();
         // 任务恢复/重命名/删除后刷新列表 (当前徽标/名称同步)
         this._boundOnTaskRestored = () => this._loadSessions();
         bus.on('task-restored', this._boundOnTaskRestored);
@@ -36,6 +39,7 @@ class HistoryPage {
 
     unmount() {
         if (this._boundOnTaskRestored) { bus.off('task-restored', this._boundOnTaskRestored); this._boundOnTaskRestored = null; }
+        playbackEngine.unmount();
         if (this.timelineControl) this.timelineControl = null;
         if (this.historyChartPanel) { this.historyChartPanel.unmount(); this.historyChartPanel = null; }
         this.container = null;
