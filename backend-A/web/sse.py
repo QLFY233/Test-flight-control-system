@@ -3,12 +3,19 @@ SSE (Server-Sent Events) — β Chat 流式响应。
 POST /api/chat/beta → SSE text/tool_call_start/tool_call_result/plan/error 事件。
 
 2026-08-05 (#7): 改流式输出 — agent.run() → agent.run_stream(), text 事件逐 chunk 下发。
+2026-08-05 (修复): run_stream 默认不执行工具调用 → 改 run_stream_events() (工具自动执行 + 增量文本流)。
 """
 import json
 import logging
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from pydantic_ai import (
+    PartDeltaEvent,
+    FunctionToolCallEvent,
+    FunctionToolResultEvent,
+    TextPartDelta,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -96,21 +103,36 @@ async def chat_beta(req: ChatRequest):
             await _save_conv(session_id, "beta", "human", req.message)
 
         try:
-            # 流式: run_stream → stream_text() 逐 token 产出 text 事件 (2026-08-05 #7)。
-            # 注: pydantic-ai 2.0 stream_text() 产出**累积文本** (每 chunk = 到当前为止的全部),
-            # 需与上一 chunk 求差得到增量, 否则前端逐 chunk 追加会重复。
-            # 工具调用 (propose_to_alpha 等) 在流内自动执行, 结果经 _state_ref 读取。
-            async with _beta_agent.run_stream(req.message) as result:
-                prev = ""
-                async for chunk in result.stream_text():
-                    delta = chunk[len(prev):] if chunk.startswith(prev) else chunk
-                    prev = chunk
-                    if delta:
-                        yield await _sse_event("text", {"content": delta})
+            # 流式: run_stream_events() 逐事件流 (2026-08-05 修复 — run_stream 在
+            # 默认 end_strategy 下**不执行工具调用** (pydantic-ai 2.0 文档: "tool calls
+            # will not run in streaming mode with the default settings"), 导致 β 文本后
+            # 调 get_field_map 等工具时 agent 卡死无输出。run_stream_events() 才会
+            # 在工具调用期间持续运行并流出全部事件。
+            # TextPartDelta.content_delta 为**增量**文本 (非累积), 直接发前端追加。
+            full_text = ""
+            async with _beta_agent.run_stream_events(req.message) as result:
+                async for event in result:
+                    if isinstance(event, PartDeltaEvent) and isinstance(event.delta, TextPartDelta):
+                        delta = event.delta.content_delta
+                        if delta:
+                            full_text += delta
+                            yield await _sse_event("text", {"content": delta})
+                    elif isinstance(event, FunctionToolCallEvent):
+                        yield await _sse_event("tool_call_start", {
+                            "name": event.part.tool_name,
+                            "args": event.part.args if isinstance(event.part.args, str) else str(event.part.args or ""),
+                        })
+                    elif isinstance(event, FunctionToolResultEvent):
+                        content = event.part.content
+                        yield await _sse_event("tool_call_result", {
+                            "name": event.part.tool_name or "",
+                            "result": content if isinstance(content, str) else str(content or ""),
+                        })
+                    # AgentRunResultEvent: 最终结果确认, 文本已由 delta 事件发完, 无需处理
 
             # #11: 流结束后存 β 完整回复
-            if session_id and prev:
-                await _save_conv(session_id, "beta", "agent", prev)
+            if session_id and full_text:
+                await _save_conv(session_id, "beta", "agent", full_text)
 
             # 流结束后检查是否有待审提议 (β 调用了 propose_to_alpha)
             if _state_ref and _state_ref.pending_proposal:

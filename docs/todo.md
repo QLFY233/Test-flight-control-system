@@ -4,7 +4,14 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-05 (启动修复 — backend-B 阶段1回归 + start_all.sh pkill ERE)
+最近更新：2026-08-05 (β 工具调用卡死修复 — #7 流式改造回归)
+
+> **2026-08-05 (β 工具调用卡死修复 — #7 流式改造回归)**:
+> 现象: β 回复「我来帮你规划…让我同步查询」后无输出（工具调用后 agent 卡死）；curl 复现：get_field_map 等工具调用后流永不继续
+> 根因: sse.py #7 流式改造用 `run_stream()+stream_text()`，但 **pydantic-ai 2.0 文档明确：run_stream 默认 end_strategy 下不执行工具调用**（"tool calls will not run in streaming mode with the default settings"）→ β 首轮文本+工具调用时 agent 挂起
+> 修复 (sse.py): 改 `run_stream_events()` 逐事件流 — TextPartDelta.content_delta（增量文本）→ text 事件；FunctionToolCallEvent/FunctionToolResultEvent → tool_call_start/tool_call_result 事件（前端 sse.js 已支持）；累积 full_text 存对话持久化；plan 事件逻辑不变
+> 验证: curl「查询场地边界」→ tool_call_start(get_field_map) → tool_call_result(场地信息) → 流式文本继续；「帮我规划一次飞行任务」→ 5 次工具调用全部执行 + 569 个 text 事件（10KB 完整回复）零卡死
+> 重启: run_a.py 已重启生效
 
 ## 待办事项与已知问题（2026-08-05 用户反馈）
 
