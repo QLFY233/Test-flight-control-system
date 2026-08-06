@@ -558,7 +558,7 @@
 | C5 3D 轨迹面板 — Scene3D 历史模式 setHistoryPoints/seekPlayback（不订阅实时 store；改动过大则独立 HistoryScene3D.js） | ⬜ 未开始 | — | — |
 | C6 进度条升级 — TimelineControl 时长改从数据集 duration 计算（修恒 60s bug）+ 播放进度条 + 任务进度条（currentAction/totalActions）双显示 | ✅ 已完成 | — | 2026-08-06 |
 | C7 历史详情布局重排 + 接线 — HistoryPage _renderDetail 重构（摘要卡/回放条/面板网格/2D|3D）+ HistoryChart 改读数据集 + pages.css 样式 | ✅ 已完成 | — | 2026-08-06 |
-| C8 收尾验证 — sw.js BUILD_ID bump + node --check 全过 + 后端测试不回归 + 浏览器实测（2D/3D/进度条/console 零错误） | ⬜ 未开始 | — | — |
+| C8 收尾验证 — sw.js BUILD_ID bump + node --check 全过 + 后端测试不回归 + 浏览器实测（2D/3D/进度条/console 零错误） | ✅ 已完成 | — | 2026-08-06 |
 
 ---
 
