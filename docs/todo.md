@@ -4,7 +4,14 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-06 (飞控页 [ α OUT ] Alpha 实时输出卡片)
+最近更新：2026-08-06 (PX4 阶段2 飞机不动修复 — mavros 端口 + type_mask 双根因)
+
+> **2026-08-06 (PX4 阶段2 飞机不动修复 — 双根因)**:
+> ① **现象**: α 输出 goto/takeoff 动作但飞机不动 (用户报告「飞回原点 → goto(0,0,0) 但飞机不动」)
+> ② **根因 A — mavros fcu_url 端口错**: launch 配置 `udp://:14540@127.0.0.1:14557`, 但 PX4 v1.13 SITL onboard mavlink 实例绑定 **14580** (发往 mavros 14540; 脚本注释本就写明) → mavros 下行 SET_POSITION_TARGET_LOCAL_NED 丢包。修复: `mavros_px4.launch` + `start_px4_sitl.sh` 14557→14580
+> ③ **根因 B — B 侧 type_mask=0**: `Phase2Adapter.TYPE_MASK_POSITION = 0` (全部字段"有效") 但 B 只填 position, 速度/加速度为 0 → PX4 判定 `SET_POSITION_TARGET_LOCAL_NED invalid` (实测: 手动 2552 被接受且飞机动, B 的 0 被拒)。修复: 改 2552 (0x9F8 = IGNORE_VX|VY|VZ|AFX|AFY|AFZ|YAW_RATE, 即注释声称的"忽略速度/加速度/力/yaw_rate"语义)
+> ④ **验证**: 修复后完整链路 — β「起飞到 3 米」→ α 翻译 takeoff(0,0,2.5) → B 下发 → PX4 执行 → 飞机升至 2.4m 悬停 → 自动推进 hover → flight_status=completed, progress 100%; invalid 计数不再增长; B 测试 152/152
+> ⑤ **备注**: 重启 mavros 会触发 PX4 failsafe (manual control lost → 降落掉臂), 需重启 B 重新 preflight (streaming→arm→offboard→ACTIVE); 环境重启用 start_px4_sitl.sh (nohup 后台跑防 timeout 杀进程链)
 
 > **2026-08-05 (β 工具调用卡死修复 — #7 流式改造回归)**:
 > 现象: β 回复「我来帮你规划…让我同步查询」后无输出（工具调用后 agent 卡死）；curl 复现：get_field_map 等工具调用后流永不继续

@@ -144,8 +144,11 @@ class Phase2Adapter(SetpointAdapter):
     abort/land 兜底: emergency_land() → set_mode AUTO.LAND (design §5.3)。
     """
 
-    # type_mask 位置控制 (design §4.2): 忽略速度/加速度/力/yaw_rate, 使用 yaw
-    TYPE_MASK_POSITION = 0
+    # type_mask 位置控制 (design §4.2): 忽略速度/加速度/力/yaw_rate, 使用 yaw。
+    # 2552 = 0x9F8 = IGNORE_VX|IGNORE_VY|IGNORE_VZ|IGNORE_AFX|IGNORE_AFY|IGNORE_AFZ|IGNORE_YAW_RATE。
+    # ⚠ 勿改为 0: 全部字段"有效"时 B 只填位置, 速度/加速度为 0 → PX4 判
+    # SET_POSITION_TARGET_LOCAL_NED invalid → 飞机不动 (2026-08-06 实测: 2552 生效)。
+    TYPE_MASK_POSITION = 2552
 
     def __init__(self, prefix: str = PHASE2_PREFIX, home: list = None, state=None):
         from mavros_msgs.msg import PositionTarget, State
