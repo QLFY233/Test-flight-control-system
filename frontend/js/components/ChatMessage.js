@@ -56,30 +56,26 @@ class ChatMessage {
             }
 
         } else if (role === 'tool_result') {
-            // Tool result card — 长结果截断 (≤300 字符), 点击头部展开全文
+            // Tool result card — 默认折叠 (只显示工具名一行), 点击展开全文;
+            // 长内容由 body max-height 140px 内部滚动兜底
             const resultStr = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
-            const TRUNCATE_LEN = 300;
-            const truncated = resultStr.length > TRUNCATE_LEN;
-            const shown = truncated ? resultStr.slice(0, TRUNCATE_LEN) + '\n…' : resultStr;
             wrapper.innerHTML = `
                 <div class="tool-call-card">
                     <div class="tool-call-card__header">
                         <span class="tool-call-card__header-icon">&#10003;</span>
                         <span>${esc(toolName || 'Result')}</span>
-                        ${truncated ? '<span class="tool-call-card__toggle">▸ 展开</span>' : ''}
+                        <span class="tool-call-card__toggle">▸</span>
                     </div>
-                    <div class="tool-call-card__body">${esc(shown)}</div>
+                    <div class="tool-call-card__body tool-call-card__body--collapsed">${esc(resultStr)}</div>
                 </div>
             `;
             const header = wrapper.querySelector('.tool-call-card__header');
             const body = wrapper.querySelector('.tool-call-card__body');
-            if (header && body && truncated) {
-                let expanded = false;
+            if (header && body) {
                 header.addEventListener('click', () => {
-                    expanded = !expanded;
-                    body.textContent = expanded ? resultStr : shown;
+                    const collapsed = body.classList.toggle('tool-call-card__body--collapsed');
                     const toggle = wrapper.querySelector('.tool-call-card__toggle');
-                    if (toggle) toggle.textContent = expanded ? '▾ 收起' : '▸ 展开';
+                    if (toggle) toggle.textContent = collapsed ? '▸' : '▾';
                 });
             }
 
