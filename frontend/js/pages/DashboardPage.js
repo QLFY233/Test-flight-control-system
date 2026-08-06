@@ -24,12 +24,19 @@ class DashboardPage {
         this._initGrid();
         this._initFilter();
         wsManager.on('dashboard_config', this._boundOnDashboardConfig);
+        // 空态兜底: WS 断连 / 无遥测时显示引导横幅
+        this._statusUnsubs = [
+            store.subscribe('connection', () => this._updateStatusBanner()),
+            store.subscribe('drone', () => this._updateStatusBanner()),
+        ];
+        this._updateStatusBanner();
     }
 
     unmount() {
         if (this.grid) { this.grid.unmount(); this.grid = null; }
         if (this.filterBar) { this.filterBar.unmount(); this.filterBar = null; }
         wsManager.off('dashboard_config', this._boundOnDashboardConfig);
+        if (this._statusUnsubs) { this._statusUnsubs.forEach(u => u()); this._statusUnsubs = []; }
         this.container = null;
     }
 
@@ -42,10 +49,29 @@ class DashboardPage {
                     <span style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--track-widest);text-transform:uppercase;color:var(--color-text-disabled);">[ DASHBOARD ]</span>
                     <span style="font-family:var(--font-mono);font-size:var(--text-2xs);letter-spacing:var(--track-wider);text-transform:uppercase;color:var(--color-text-disabled);">BETA TOOL DRIVEN · REALTIME</span>
                 </div>
+                <div id="dashboard-status" style="display:none;padding:var(--space-2) var(--space-4);font-family:var(--font-mono);font-size:var(--text-2xs);letter-spacing:var(--track-wide);color:var(--color-amber);background:rgba(255,179,0,0.06);border-bottom:var(--border-hair);align-items:center;"></div>
                 <div id="dashboard-filter-bar"></div>
                 <div id="dashboard-grid" style="flex: 1; overflow-y: auto; padding: var(--space-3);"></div>
             </div>
         `;
+    }
+
+    /**
+     * 空态兜底: WS 未连接 / 尚未收到遥测时显示引导横幅, 数据到达后隐藏。
+     */
+    _updateStatusBanner() {
+        const el = this.container?.querySelector('#dashboard-status');
+        if (!el) return;
+        const wsConnected = store.get('connection.ws') === 'connected';
+        const hasPose = store.get('drone.timestamp') != null;
+        let msg = null;
+        if (!wsConnected) {
+            msg = '// 连接断开，等待实时数据…';
+        } else if (!hasPose) {
+            msg = '// 无实时数据 — 启动飞行后自动填充 · 或到 [ 历史 ] 页查看过往记录';
+        }
+        el.style.display = msg ? 'flex' : 'none';
+        el.textContent = msg || '';
     }
 
     _initGrid() {
