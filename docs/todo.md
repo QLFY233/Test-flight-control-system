@@ -4,7 +4,15 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-06 (任务自动命名修复 — forward 路径 + 已存在会话补名)
+最近更新：2026-08-06 (历史页重设计 + 看板修复 — 规划已确认，写入 todo)
+
+> **2026-08-06 (规划确认 — 历史页重设计 + 看板修复)**:
+> ① **需求**（用户确认）: ① 重新设计历史界面 — 能查看看板界面的所有数据 + 飞行 2D/3D 轨迹 + 进度条; ② 修好看板界面（当前无法用）
+> ② **看板现状诊断**: β `dashboard_configure` 工具只返回 note、从不广播 `dashboard_config` WS → 前端 β 工具驱动是死的; WS `pose` 广播带 `accel/angularVel` 但 app.js 丢弃 → 加速度面板恒空; 异常 bar 面板硬编码假数据 [3,7,2,5,1]; FilterBar 只 console.log; 无数据时全页 `--`/空图观感"坏了"
+> ③ **历史现状诊断**: `_renderDetail` 从不加载选中会话遥测 → HistoryChart 读 `store.trajectory.flown`（当前会话）非历史会话; 无 3D 轨迹; 无看板式数据面板; TimelineControl 时长恒 60s（flown 无 t）; telemetry 端点只返回 pos+vel（accel/angular_vel/quat 未返回）
+> ④ **方案**: Part A 后端（telemetry 端点补全字段 + dashboard_config 真广播）→ Part B 看板修复（接真 accel/去假数据/β 驱动/空态兜底）→ Part C 历史重构（会话数据集加载器 + 回放引擎 + 看板式面板 + 2D + 3D + 双进度条）
+> ⑤ **关键决策**: 历史回放数据存独立路径 `store.history.playback.dataset`（不污染实时 `trajectory.flown`）; 3D 历史视图倾向扩展 Scene3D 历史模式（回归风险大则独立 HistoryScene3D）; 异常面板改"飞行统计"（时长/里程/最大速度等真实计算）+ 实时告警计数（DB 无告警表，历史侧无法展示真实历史告警）
+> ⑥ **模块明细**见下方「阶段N」表
 
 > **2026-08-06 (PX4 阶段2 飞机不动修复 — 双根因)**:
 > ① **现象**: α 输出 goto/takeoff 动作但飞机不动 (用户报告「飞回原点 → goto(0,0,0) 但飞机不动」)
@@ -530,6 +538,27 @@
 | 蒸馏小模型 α 训练（alpha-small/） | ⏳ | — | — |
 | 端侧小模型训练（small-model/ MLP） | ⏳ | — | — |
 | 外场真机演示 | ⏳ | — | — |
+
+### 阶段N — 历史页重设计 + 看板修复（2026-08-06 新增需求，用户确认）
+> 微小事务拆分粒度对齐确认后的规划。Part A 后端 → Part B 看板修复 → Part C 历史重构。
+
+| 模块 | 状态 | 负责人 | 最近更新 |
+|---|---|---|---|
+| A1 遥测端点补全字段 — `GET /api/history/telemetry/{sid}` 返回 accel/angular_vel/quat（保留 pos/vel，向后兼容） | ✅ 已完成 | — | 2026-08-06 |
+| A2 dashboard_config 真广播 — ws.py 加 broadcast_dashboard_config + beta_tools dashboard_configure/set_filter 经注入回调推送 + lifecycle 接线 | ⬜ 未开始 | — | — |
+| B1 前端存 accel/angularVel — app.js WS pose 处理解析两字段 + state.js 初始态补齐 | ⬜ 未开始 | — | — |
+| B2 看板 accel_line 接真数据 — DashboardPanel 环形缓冲读 store.drone.accel | ⬜ 未开始 | — | — |
+| B3 看板去假数据 + 真告警 — bar 面板不再硬编码，订阅 bus 'alert' 实时累计（同 code 计数），无告警空态 | ⬜ 未开始 | — | — |
+| B4 看板 β 工具驱动联调 — 依赖 A2，实测 β「看高度趋势」→ 面板真实切换 | ⬜ 未开始 | — | — |
+| B5 看板空态兜底 — 无实时数据显示引导提示，不再一片 `--`/空图 | ⬜ 未开始 | — | — |
+| C1 会话数据集加载器 — HistoryPage 选中会话拉全量遥测+详情，组装 points/duration/taskInfo/planned，存 `store.history.playback.dataset`（不污染实时轨迹） | ⬜ 未开始 | — | — |
+| C2 回放引擎 — 新 js/history/playback.js：rAF 按倍速推进 time→索引/位姿，发 playback-* 总线事件 | ⬜ 未开始 | — | — |
+| C3 看板式历史数据面板 — 新 js/history/HistoryPanels.js：高度/速度三维/加速度/角速度折线 + 飞行统计卡片 + 任务进度（从数据集真实计算） | ⬜ 未开始 | — | — |
+| C4 2D 轨迹面板 — FieldMap2D 参数化：会话完整 XY 轨迹 + home + 边界 + 回放游标 | ⬜ 未开始 | — | — |
+| C5 3D 轨迹面板 — Scene3D 历史模式 setHistoryPoints/seekPlayback（不订阅实时 store；改动过大则独立 HistoryScene3D.js） | ⬜ 未开始 | — | — |
+| C6 进度条升级 — TimelineControl 时长改从数据集 duration 计算（修恒 60s bug）+ 播放进度条 + 任务进度条（currentAction/totalActions）双显示 | ⬜ 未开始 | — | — |
+| C7 历史详情布局重排 + 接线 — HistoryPage _renderDetail 重构（摘要卡/回放条/面板网格/2D|3D）+ HistoryChart 改读数据集 + pages.css 样式 | ⬜ 未开始 | — | — |
+| C8 收尾验证 — sw.js BUILD_ID bump + node --check 全过 + 后端测试不回归 + 浏览器实测（2D/3D/进度条/console 零错误） | ⬜ 未开始 | — | — |
 
 ---
 

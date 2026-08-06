@@ -352,11 +352,18 @@ async def get_telemetry(
         async with _db_factory() as session:
             from db.repos import get_telemetry_range
             rows = await get_telemetry_range(session, session_id, t_from, t_end)
+            # 2026-08-06: 补全 accel/angular_vel/quat — 历史页回放需看板全量数据;
+            # 兼容历史行 NULL 列 → 0.0, 保证数组字段恒为定长数值
+            def _v(*vals):
+                return [0.0 if v is None else float(v) for v in vals]
             data = [
                 {
                     "t": r.t,
-                    "pos": [r.position_x, r.position_y, r.position_z],
-                    "vel": [r.velocity_x, r.velocity_y, r.velocity_z],
+                    "pos": _v(r.position_x, r.position_y, r.position_z),
+                    "vel": _v(r.velocity_x, r.velocity_y, r.velocity_z),
+                    "accel": _v(r.accel_x, r.accel_y, r.accel_z),
+                    "angular_vel": _v(r.angular_velocity_x, r.angular_velocity_y, r.angular_velocity_z),
+                    "quat": _v(r.quat_w, r.quat_x, r.quat_y, r.quat_z),
                 }
                 for r in rows[:limit]
             ]
