@@ -4,7 +4,7 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-06 (PX4 阶段2 飞机不动修复 — mavros 端口 + type_mask 双根因)
+最近更新：2026-08-06 (聊天区工具卡片紧凑化 + 历史页缓存修复 + args 答疑)
 
 > **2026-08-06 (PX4 阶段2 飞机不动修复 — 双根因)**:
 > ① **现象**: α 输出 goto/takeoff 动作但飞机不动 (用户报告「飞回原点 → goto(0,0,0) 但飞机不动」)
@@ -12,6 +12,12 @@
 > ③ **根因 B — B 侧 type_mask=0**: `Phase2Adapter.TYPE_MASK_POSITION = 0` (全部字段"有效") 但 B 只填 position, 速度/加速度为 0 → PX4 判定 `SET_POSITION_TARGET_LOCAL_NED invalid` (实测: 手动 2552 被接受且飞机动, B 的 0 被拒)。修复: 改 2552 (0x9F8 = IGNORE_VX|VY|VZ|AFX|AFY|AFZ|YAW_RATE, 即注释声称的"忽略速度/加速度/力/yaw_rate"语义)
 > ④ **验证**: 修复后完整链路 — β「起飞到 3 米」→ α 翻译 takeoff(0,0,2.5) → B 下发 → PX4 执行 → 飞机升至 2.4m 悬停 → 自动推进 hover → flight_status=completed, progress 100%; invalid 计数不再增长; B 测试 152/152
 > ⑤ **备注**: 重启 mavros 会触发 PX4 failsafe (manual control lost → 降落掉臂), 需重启 B 重新 preflight (streaming→arm→offboard→ACTIVE); 环境重启用 start_px4_sitl.sh (nohup 后台跑防 timeout 杀进程链)
+
+> **2026-08-06 (聊天区工具卡片紧凑化 + 历史页卡片样式恢复 + 工具 args 答疑)**:
+> ① **历史页"只有字体无卡片框"**: 根因 — SW Stale-While-Revalidate 混合缓存 (新 components.css 已删 session-card 样式 + 旧 HistoryPage.js 仍 import 已删除的 SessionCard.js) → 旧卡片元素无样式纯文本。修复: sw.js BUILD_ID 更新废弃旧缓存 (用户需刷新一次页面); 实测硬刷新后 .task-card 边框/背景/当前红色左边框正常
+> ② **工具调用 args 显示 {} 答疑**: 正常 — 所有 β 工具均为无参函数 (`def get_field_map()`), pydantic-ai 对无参工具生成空 args {}; 工具实际执行正常 (✓ 行有返回数据)。get_current_environment 返回 None 也是正常的 (当前会话未设置环境, 可去总览/设置页配置)
+> ③ **工具卡片刷屏优化** (ChatMessage.js + CSS): 无参工具不渲染参数行 (卡片只剩一行工具名); 有参工具默认折叠 (点击展开, ▸/▾ 指示); tool_result 长内容截断 300 字符 + 「▸ 展开/▾ 收起」; 卡片 margin/padding/字号缩小 (space-2→space-1, text-xs→text-2xs), body max-height 140px 内部滚动
+> ④ **验证**: Playwright — 无参卡 bodyCount=0; 有参卡默认 collapsed + ▸; 800 字符结果截为 302 (含…); 展开后全文; 历史页卡片 border-bottom/current 红边框恢复; console 零错误
 
 > **2026-08-05 (β 工具调用卡死修复 — #7 流式改造回归)**:
 > 现象: β 回复「我来帮你规划…让我同步查询」后无输出（工具调用后 agent 卡死）；curl 复现：get_field_map 等工具调用后流永不继续

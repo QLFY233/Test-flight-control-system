@@ -31,41 +31,57 @@ class ChatMessage {
         wrapper.className = cssClass;
 
         if (role === 'tool_call') {
-            // Collapsible tool call card
+            // Collapsible tool call card — 无参工具(空 args)不显示参数行;
+            // 有参默认折叠, 点击头部展开 (紧凑防刷屏)
             const argsStr = toolArgs ? (typeof toolArgs === 'string' ? toolArgs : JSON.stringify(toolArgs, null, 2)) : '';
+            const hasArgs = !!argsStr && argsStr !== '{}' && argsStr !== '""';
             wrapper.innerHTML = `
                 <div class="tool-call-card">
                     <div class="tool-call-card__header">
                         <span class="tool-call-card__header-icon">&#9881;</span>
                         <span>${esc(toolName || 'Tool Call')}</span>
+                        ${hasArgs ? '<span class="tool-call-card__toggle">▸</span>' : ''}
                     </div>
-                    <div class="tool-call-card__body">${esc(argsStr)}</div>
+                    ${hasArgs ? `<div class="tool-call-card__body tool-call-card__body--collapsed">${esc(argsStr)}</div>` : ''}
                 </div>
             `;
-
             const header = wrapper.querySelector('.tool-call-card__header');
             const body = wrapper.querySelector('.tool-call-card__body');
-            header.addEventListener('click', () => {
-                body.classList.toggle('tool-call-card__body--collapsed');
-            });
+            if (header && body) {
+                header.addEventListener('click', () => {
+                    const collapsed = body.classList.toggle('tool-call-card__body--collapsed');
+                    const toggle = wrapper.querySelector('.tool-call-card__toggle');
+                    if (toggle) toggle.textContent = collapsed ? '▸' : '▾';
+                });
+            }
 
         } else if (role === 'tool_result') {
-            // Tool result card
+            // Tool result card — 长结果截断 (≤300 字符), 点击头部展开全文
             const resultStr = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+            const TRUNCATE_LEN = 300;
+            const truncated = resultStr.length > TRUNCATE_LEN;
+            const shown = truncated ? resultStr.slice(0, TRUNCATE_LEN) + '\n…' : resultStr;
             wrapper.innerHTML = `
                 <div class="tool-call-card">
                     <div class="tool-call-card__header">
                         <span class="tool-call-card__header-icon">&#10003;</span>
                         <span>${esc(toolName || 'Result')}</span>
+                        ${truncated ? '<span class="tool-call-card__toggle">▸ 展开</span>' : ''}
                     </div>
-                    <div class="tool-call-card__body">${esc(resultStr)}</div>
+                    <div class="tool-call-card__body">${esc(shown)}</div>
                 </div>
             `;
             const header = wrapper.querySelector('.tool-call-card__header');
             const body = wrapper.querySelector('.tool-call-card__body');
-            header.addEventListener('click', () => {
-                body.classList.toggle('tool-call-card__body--collapsed');
-            });
+            if (header && body && truncated) {
+                let expanded = false;
+                header.addEventListener('click', () => {
+                    expanded = !expanded;
+                    body.textContent = expanded ? resultStr : shown;
+                    const toggle = wrapper.querySelector('.tool-call-card__toggle');
+                    if (toggle) toggle.textContent = expanded ? '▾ 收起' : '▸ 展开';
+                });
+            }
 
         } else {
             // Regular message bubble
