@@ -87,10 +87,7 @@ async function init() {
                 }
             });
         }
-        // Apply display theme if saved
-        if (saved.display?.theme === 'light') {
-            document.body.classList.add('theme-light');
-        }
+        // 显示主题已移除（保持暗色工业风单主题）— 不再应用 theme-light
     } catch(e) { /* ignore parse errors */ }
 
     // 同源自适应: 页面由 A 服务 StaticFiles 挂载时, base_url 跟随 location.origin
@@ -209,7 +206,7 @@ async function init() {
     syncTabs();
 
     // Save config
-    window.addEventListener('beforeunload', () => { const c = a.config; const s = { theme: c?.display?.theme, language: c?.display?.language }; const e = JSON.parse(localStorage.getItem('flight-control-config') || '{}'); Object.assign(e, { display: { ...(e.display || {}), ...s } }); localStorage.setItem('flight-control-config', JSON.stringify(e)); });
+    window.addEventListener('beforeunload', () => { const c = a.config; const s = { language: c?.display?.language }; const e = JSON.parse(localStorage.getItem('flight-control-config') || '{}'); Object.assign(e, { display: { ...(e.display || {}), ...s } }); localStorage.setItem('flight-control-config', JSON.stringify(e)); });
 
     console.log('INIT DONE ✅');
     } catch(e) {

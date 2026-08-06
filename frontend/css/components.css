@@ -439,6 +439,82 @@ select.input {
     color: var(--color-amber);
 }
 
+/* System alert info (default/fallback level) */
+.chat-message--system-alert-info .chat-message__bubble {
+    background: var(--color-blue-dim);
+    border-color: rgba(33,150,243,0.3);
+    color: var(--color-blue);
+}
+
+/* Alert message badges: code prefix + collapse count (ChatPanel 附加) */
+.chat-alert-code {
+    display: inline-block;
+    font-size: 9px;
+    letter-spacing: var(--track-wide);
+    text-transform: uppercase;
+    opacity: 0.85;
+    margin-right: var(--space-2);
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    padding: 0 4px;
+    vertical-align: middle;
+}
+.chat-alert-count {
+    display: inline-block;
+    font-size: 9px;
+    margin-left: var(--space-2);
+    color: var(--color-amber);
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    padding: 0 4px;
+    vertical-align: middle;
+}
+
+/* Quick-action cards (empty state) — 常用功能快捷入口 */
+.chat-quick-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+}
+.chat-quick-cards {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+}
+.chat-quick-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    width: 92px;
+    padding: var(--space-2) var(--space-1);
+    background: var(--color-surface-raised);
+    border: var(--border-hair);
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.chat-quick-card:hover {
+    border-color: #00BCD4;
+    background: rgba(0, 188, 212, 0.08);
+    color: #00BCD4;
+}
+.chat-quick-card__icon {
+    font-size: 18px;
+    line-height: 1;
+}
+.chat-quick-card__title {
+    font-size: var(--text-2xs);
+    letter-spacing: var(--track-wide);
+    text-transform: uppercase;
+}
+
 .chat-message__time {
     font-family: var(--font-mono);
     font-size: var(--text-2xs);

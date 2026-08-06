@@ -50,14 +50,13 @@
 |---|---|---|---|---|
 | 1 | 页面下方 PROGRESS 进度条不动 | 🐛 bug | ✅ | 根因: 后端 status payload 缺 progress 字段 (flight.progress 恒 0) + BottomBar 无订阅。修复: B 侧 _send_status 计算 progress (currentAction/totalActions) + A 侧 bridge 转发 + WS broadcast_status 加字段; BottomBar 由 app.js scheduleBottomBar 驱动重渲染 (已存在, 无需自订阅)。验证: 多动作计划 20%→40% 实时递增 |
 | 4 | 看板页面只有拖动模块时数据才更新 | 🐛 bug | ✅ | 已由 #2 实时化改造修复 (DashboardPanel 订阅 store.drone/flight + 环形缓冲 + _refreshValueCard)。验证: 飞行中 ALT -0.26→0.92 实时递增, SPD/PROGRESS 同步, 无需拖动 |
-| 2 | [ BETA AI ] 界面美化 | ✨ 需求 | ⬜ | ① 常用功能（飞行规划/历史分析/数据处理等）卡片化美化；② 异常信息（alert 系统消息）美化——当前在对话流中**容易刷屏**（节流/折叠/去重待优化） |
+| 2 | [ BETA AI ] 界面美化 | ✨ 需求 | ✅ | ① 常用功能卡片化：ChatPanel empty 态 4 张快捷卡（飞行规划✈/历史分析⌚/数据处理〰/状态查询◉）点击即发预设指令；② 异常信息防刷屏：同 code 1s 节流丢弃 + 10s 折叠计数（×N 徽标，DOM+store 双同步）+ level 色卡片（critical 红/warning 黄/info 蓝）+ code 徽标。验证: 5 条同 code→store 仅 1 条；间隔 2s×3 条→折叠 ×3 徽标 |
 | 3 | AI 自动给飞行任务取名 | ✨ 需求 | ✅ | β 生成提议时自动产任务名（flight_sessions.task_description / FlightPlanCard 标题展示） |
-| 4 | 看板页面只有拖动模块时数据才更新 | 🐛 bug | ⬜ | DashboardPanel 数据刷新机制问题（拖动触发 resize/重渲染才更新；实时数据订阅未生效，与修复 #2 的实时化改造相关） |
 | 5 | 历史界面有 bug | 🐛 bug | ✅ | 根因: `.history-page__detail` 行方向 flex → 3 详情区(任务/回放控制/轨迹)横向并排, 窄窗口挤压。修复: 改列方向+stretch+overflow-y:auto, detail-section 加 min-width:0+padding; EmptyState 靠自身内部 flex 居中两态兼容。验证: 800px 视口 3 section 同 x 同宽 498px y 递增纵向堆叠 |
 | 6 | 数据驱动的分析工具与可视化，分析过程可视化 | ✨ 需求 | ⬜ | β analytics 工具结果可视化（FFT/统计/滤波图表展示）+ 分析过程可视化（工具调用过程展示） |
 | 7 | 没有流式输出 | 🐛 bug | ✅ | 根因: sse.py 用非流式 agent.run() 一次返回。修复: 改 agent.run_stream() + stream_text(), 累积文本求差取增量逐 chunk 发 text 事件; 移除无用导入。验证: 10+ text 事件增量不重复; 前端"你好"→β 完整回复无重复无错误 |
 | 8 | 去掉设置页「后端」部分 | ✨ 需求 | ✅ | SettingsPage 移除「后端」Tab（后端地址/WS/SSE 端点配置，部署内网同源后无需暴露） |
-| 9 | 去掉显示设置里的「主题」 | ✨ 需求 | ⬜ | SettingsPage 显示 Tab 移除主题切换（保持暗色工业风单主题） |
+| 9 | 去掉显示设置里的「主题」 | ✨ 需求 | ✅ | SettingsPage display Tab 移除（原仅含主题一项），tabs=[voice,environment]；app.js 移除 theme-light 应用 + beforeunload 不再存 theme。验证: 设置页无主题/无显示 Tab，语音/环境 Tab 正常 |
 | 10 | 连接 TTS/STT 服务并调试 | ✨ 需求 | ⬜ | 讯飞语音链路（STT 签名/wpgs + TTS）联调：需 XF_APP_ID/API_KEY/API_SECRET 有效凭证，前端 AudioWorklet PCM 采集 + 音频播放验证 |
 | 11 | AI 历史记录与当前任务刷新自动恢复 | ✨ 需求 | ✅ | 刷新后可恢复历史任务：AI 对话记录、飞行信息、规划信息、α 上下文（会话级快照/续接，对齐 conversations 表 + flight_sessions） |
 | 12 | 历史回放横向宽度响应式 | 🐛 bug | ✅ | 同 #5 修复: .history-page__detail 改列方向, 3 详情区纵向堆叠铺满宽度, 窄窗口不再横向挤压 |

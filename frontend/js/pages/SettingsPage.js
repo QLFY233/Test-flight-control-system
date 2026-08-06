@@ -35,27 +35,13 @@ class SettingsPage {
     }
 
     render() {
-        const tabs = ['display', 'voice', 'environment'];
-        const tabLabels = { display: '显示', voice: '语音', environment: '环境' };
+        const tabs = ['voice', 'environment'];
+        const tabLabels = { voice: '语音', environment: '环境' };
 
-        const dc = this.localConfig.display || {};
         const vc = this.localConfig.voice || {};
 
         let bodyHtml = '';
         switch (this.activeTab) {
-            case 'display':
-                bodyHtml = `
-                    <div class="settings-page__section-title">显示设置</div>
-                    <div class="settings-page__field settings-page__field--inline">
-                        <span class="input-group__label">主题</span>
-                        <select class="input" id="cfg-display-theme" style="width: auto;">
-                            <option value="dark" ${dc.theme !== 'light' ? 'selected' : ''}>暗色</option>
-                            <option value="light" ${dc.theme === 'light' ? 'selected' : ''}>亮色</option>
-                        </select>
-                    </div>
-                `;
-                break;
-
             case 'voice':
                 bodyHtml = `
                     <div class="settings-page__section-title">语音设置</div>
@@ -197,9 +183,7 @@ class SettingsPage {
     }
 
     _saveSettings() {
-        // Read display
-        const theme = this._getSelectVal('cfg-display-theme');
-        if (theme) this.localConfig.display = { ...(this.localConfig.display || {}), theme };
+        // 显示设置已移除（保持暗色工业风单主题）— 不再读 cfg-display-theme
 
         // 数值输入校验：parseFloat 产出 NaN 时回退保存值/默认值（避免 JSON.stringify 落 null）
         const toNum = (raw, fallback) => {
@@ -270,10 +254,6 @@ class SettingsPage {
     }
 
     _getInputVal(id) {
-        return this.container?.querySelector(`#${id}`)?.value || '';
-    }
-
-    _getSelectVal(id) {
         return this.container?.querySelector(`#${id}`)?.value || '';
     }
 
