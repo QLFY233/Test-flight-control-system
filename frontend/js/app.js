@@ -19,6 +19,7 @@ import { StatusBar } from './components/StatusBar.js';
 import { BottomBar } from './components/BottomBar.js';
 import { ConnectionOverlay } from './components/ConnectionOverlay.js';
 import { ChatPanel } from './components/ChatPanel.js';
+import { TaskPanel } from './components/TaskPanel.js';
 import { ShortcutEditor } from './components/ShortcutEditor.js';
 
 
@@ -137,6 +138,10 @@ async function init() {
     a.chatPanel.mount();
     console.log('ChatPanel mounted (right sidebar)');
 
+    // 任务管理 — 表头 [ BETA AI ] 最右侧按钮 (新建/恢复/重命名/删除)
+    new TaskPanel().mount();
+    console.log('TaskPanel mounted');
+
     // Floating Ball
     const fb = document.createElement('div'); fb.id = 'fb';
     document.querySelector('.app-container').appendChild(fb);
@@ -164,8 +169,7 @@ async function init() {
     refreshLinkStatus();
     // #11: 刷新后恢复当前会话状态（对话记录/飞行信息/规划信息/α 上下文）
     restoreSessionState();
-    // SSE plan 事件 (β 提议, 待批准) → 待批准航线预览 (黄色)
-    // 后端 plan 事件 actions = α 预翻译结果 (可能为空 → 无预览);
+    // SSE plan 事件 (β 提议, 待批准) → 待批准航线预览 (黄色)    // 后端 plan 事件 actions = α 预翻译结果 (可能为空 → 无预览);
     // 批准后 alpha_output 到达时自动清空 (正式计划覆盖预览)
     bus.on('plan-received', (plan) => {
         try {
@@ -184,6 +188,20 @@ async function init() {
         }
     });
     console.log('WS handlers registered');
+
+    // 任务面板「恢复任务」: 切换当前会话并载入 β/α 对话 + 飞行数据
+    bus.on('task-restore', async (sid) => {
+        if (!sid) return;
+        try {
+            const name = await loadTaskContext(sid);
+            store.set('flight.sessionId', sid);
+            bus.emit('toast', { message: '已恢复任务' + (name ? `「${name}」` : ''), level: 'success' });
+            bus.emit('task-restored', sid);
+        } catch (e) {
+            console.warn('[App] task restore failed:', e);
+            bus.emit('toast', { message: '恢复任务失败: ' + e.message, level: 'error' });
+        }
+    });
 
     // Field config
     a.apiManager.getFieldConfig().then(fd => {
@@ -459,8 +477,7 @@ function refreshLinkStatus() {
  * #11: 刷新/重开后恢复当前会话状态（会话级快照/续接）。
  * store 为内存态（刷新即丢），后端 AppState + DB 仍在 → 拉取恢复：
  *   - 会话 id / 飞行状态   → GET /api/overview
- *   - 任务描述 / α 上下文   → GET /api/sessions/{id} (alpha_actions 是 ActionCommand JSON)
- *   - β 对话记录           → GET /api/history/conversations/{id} → 重渲染 ChatPanel
+ *   - 任务上下文           → loadTaskContext()
  * 任一环节失败静默（实时 WS 仍是主数据源），不阻塞启动。
  */
 async function restoreSessionState() {
@@ -474,47 +491,100 @@ async function restoreSessionState() {
             store.set('flight.sessionId', sid);
             if (ov.flight_status && ov.flight_status !== 'idle') store.set('flight.status', ov.flight_status);
         });
-
-        try {
-            const detail = await a.apiManager.getSessionDetail(sid);
-            if (detail) {
-                store.batch(() => {
-                    if (detail.task_description) store.set('flight.taskDescription', detail.task_description);
-                    if (detail.status && detail.status !== 'idle') store.set('flight.status', detail.status);
-                    const aa = detail.alpha_actions;
-                    if (typeof aa === 'string' && aa.trim()) {
-                        try {
-                            _restoreActionContext(JSON.parse(aa));
-                        } catch (e) {
-                            console.warn('[App] parse alpha_actions failed:', e);
-                        }
-                    }
-                });
-            }
-        } catch (e) {
-            // 会话详情拉取失败静默（会话行可能尚未建立）
-        }
-
-        try {
-            const conv = await a.apiManager.getConversations(sid);
-            const list = Array.isArray(conv) ? conv : (conv?.data || []);
-            const history = list
-                .filter(c => c && c.agent === 'beta' && (c.role === 'human' || c.role === 'agent'))
-                .map(c => ({
-                    role: c.role === 'human' ? 'human' : 'agent',
-                    content: c.content || '',
-                    timestamp: c.created_at ? new Date(c.created_at).getTime() : Date.now(),
-                }));
-            if (history.length) {
-                store.set('chatHistory', history);
-                if (a.chatPanel && typeof a.chatPanel.render === 'function') a.chatPanel.render();
-            }
-        } catch (e) {
-            // 对话拉取失败静默
-        }
+        await loadTaskContext(sid);
     } catch (e) {
         console.warn('[App] restore session state failed:', e);
     }
+}
+
+/**
+ * 载入任务上下文到 UI（任务面板「恢复任务」与启动恢复共用）：
+ *   - 会话详情      → 任务名/状态/α 动作上下文 (alpha_actions → trajectory)
+ *   - 对话记录      → β human/agent + α 动作记录(tool_call) 映射为系统消息
+ *   - 飞行数据      → 遥测轨迹 trajectory.flown (降采样 ≤600 点)
+ * 任一环节失败静默（实时 WS 仍是主数据源），不阻塞。
+ * @returns {Promise<string|null>} 任务名 (可能 null)
+ */
+async function loadTaskContext(sid) {
+    const a = window.__app;
+    if (!a?.apiManager || !sid) return null;
+
+    // 1. 会话详情: 任务名 / 状态 / α 动作上下文
+    let taskName = null;
+    try {
+        const detail = await a.apiManager.getSessionDetail(sid);
+        if (detail) {
+            taskName = detail.task_description || null;
+            store.batch(() => {
+                if (taskName) {
+                    store.set('flight.taskTitle', taskName);
+                    store.set('flight.taskDescription', taskName);
+                }
+                if (detail.status && detail.status !== 'idle') store.set('flight.status', detail.status);
+                const aa = detail.alpha_actions;
+                if (typeof aa === 'string' && aa.trim()) {
+                    try {
+                        _restoreActionContext(JSON.parse(aa));
+                    } catch (e) {
+                        console.warn('[App] parse alpha_actions failed:', e);
+                    }
+                }
+            });
+        }
+    } catch (e) {
+        console.warn('[App] load task detail failed:', e);
+    }
+
+    // 2. 对话记录: β 对话 + α 动作记录
+    try {
+        const conv = await a.apiManager.getConversations(sid);
+        const list = Array.isArray(conv) ? conv : (conv?.data || []);
+        const history = _conversationsToHistory(list);
+        store.set('chatHistory', history);
+        if (a.chatPanel && typeof a.chatPanel.render === 'function') a.chatPanel.render();
+    } catch (e) {
+        console.warn('[App] load task conversations failed:', e);
+    }
+
+    // 3. 飞行数据: 遥测轨迹 → trajectory.flown (降采样 ≤600 点, 对齐实时上限)
+    try {
+        const res = await a.apiManager.getTelemetry(sid, { limit: 1000 });
+        const list = (res && Array.isArray(res.data)) ? res.data : [];
+        let pts = list;
+        if (pts.length > 600) {
+            const step = Math.ceil(pts.length / 600);
+            pts = pts.filter((_, i) => i % step === 0);
+        }
+        store.set('trajectory.flown', pts.map(p => ({
+            x: Array.isArray(p.pos) ? (p.pos[0] || 0) : 0,
+            y: Array.isArray(p.pos) ? (p.pos[1] || 0) : 0,
+            z: Array.isArray(p.pos) ? (p.pos[2] || 0) : 0,
+        })));
+    } catch (e) {
+        console.warn('[App] load task telemetry failed:', e);
+    }
+
+    return taskName;
+}
+
+/** 会话记录 → chatHistory（β 对话 + α 动作记录映射为系统消息） */
+function _conversationsToHistory(list) {
+    const history = [];
+    for (const c of (list || [])) {
+        const ts = c.created_at ? new Date(c.created_at).getTime() : Date.now();
+        if (c.agent === 'beta' && (c.role === 'human' || c.role === 'agent')) {
+            history.push({ role: c.role === 'human' ? 'human' : 'agent', content: c.content || '', timestamp: ts });
+        } else if (c.agent === 'alpha' && c.role === 'tool_call') {
+            // α 动作记录 (ActionCommand JSON) → 折叠系统消息
+            let n = 0;
+            try {
+                const obj = JSON.parse(c.content);
+                n = Array.isArray(obj?.actions) ? obj.actions.length : 0;
+            } catch { /* 非 JSON 记录忽略 */ }
+            history.push({ role: 'system', subtype: 'alpha_output', content: `[α] 动作序列: ${n} 条`, timestamp: ts });
+        }
+    }
+    return history;
 }
 
 /**

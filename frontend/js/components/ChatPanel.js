@@ -116,6 +116,9 @@ class ChatPanel {
         this._lastAlertMap = new Map();
 
         this._bindEvents();
+
+        // TaskPanel 依赖表头重挂按钮 (render 整体重建 DOM)
+        bus.emit('chat-panel-rendered', this.container);
     }
 
     _bindEvents() {

@@ -247,6 +247,52 @@ async def test_session_detail():
 
 asyncio.run(test_session_detail())
 
+# ── Test 6c: 任务管理 — 列表统计 + 级联删除 ──
+print("\n📋 Test 6c: 任务管理 — 列表统计 + 级联删除")
+
+async def test_task_manage():
+    from db.repos import list_sessions_with_stats, delete_session, get_session
+    from db.repos import get_conversations as _conv, get_telemetry_range as _tel
+
+    async with async_session() as s:
+        # 建两个会话: 一个带对话+遥测, 一个空
+        await create_flight_session(s, "20260805100000", "起飞1m→飞往(3,2)")
+        await create_flight_session(s, "20260805200000", "任务 B")
+        await save_conversation(s, "20260805100000", "beta", "human", "起飞")
+        await save_conversation(s, "20260805100000", "beta", "agent", "好的")
+        await save_conversation(s, "20260805100000", "alpha", "tool_call", '{"actions": []}')
+        from sqlalchemy import insert
+        import db.session as dbs
+        await s.execute(insert(dbs.Base.metadata.tables["telemetry"]), [
+            {"session_id": "20260805100000", "t": 0.0, "position_x": 0.0, "position_y": 0.0, "position_z": 1.0},
+            {"session_id": "20260805100000", "t": 0.1, "position_x": 0.1, "position_y": 0.0, "position_z": 1.0},
+        ])
+        await s.commit()
+
+        rows = await list_sessions_with_stats(s, limit=100)
+        by_id = {r["id"]: r for r in rows}
+        check("任务列表含 2 条", len(rows) >= 2, f"got {len(rows)}")
+        r1 = by_id.get("20260805100000")
+        check("任务A conv_count == 3", r1 and r1["conv_count"] == 3, f"got {r1 and r1['conv_count']}")
+        check("任务A telemetry_count == 2", r1 and r1["telemetry_count"] == 2, f"got {r1 and r1['telemetry_count']}")
+        check("任务A 名称回读", r1 and r1["task_description"] == "起飞1m→飞往(3,2)")
+        check("任务A last_active 非空", r1 and r1["last_active"] is not None)
+        r2 = by_id.get("20260805200000")
+        check("任务B 空统计兜底 0", r2 and r2["conv_count"] == 0 and r2["telemetry_count"] == 0)
+        # 按创建时间倒序: 新任务在前
+        check("倒序排列", rows[0]["id"] == "20260805200000", f"got {rows[0]['id']}")
+
+        # 级联删除
+        ok = await delete_session(s, "20260805100000")
+        check("删除返回 True", ok is True)
+        check("会话行已删", await get_session(s, "20260805100000") is None)
+        check("对话级联已删", len(await _conv(s, "20260805100000")) == 0)
+        check("遥测级联已删", len(await _tel(s, "20260805100000")) == 0)
+        # 删除不存在 → False
+        check("删除不存在 → False", await delete_session(s, "nonexistent") is False)
+
+asyncio.run(test_task_manage())
+
 # ── Test 7: TelemetryBuffer ──
 print("\n📋 Test 7: TelemetryBuffer 批量写入")
 

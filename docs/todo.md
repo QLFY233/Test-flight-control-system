@@ -4,7 +4,7 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-05 (β 工具调用卡死修复 — #7 流式改造回归)
+最近更新：2026-08-06 (任务管理功能 — [ BETA AI ] 表头右侧任务面板)
 
 > **2026-08-05 (β 工具调用卡死修复 — #7 流式改造回归)**:
 > 现象: β 回复「我来帮你规划…让我同步查询」后无输出（工具调用后 agent 卡死）；curl 复现：get_field_map 等工具调用后流永不继续
@@ -12,6 +12,14 @@
 > 修复 (sse.py): 改 `run_stream_events()` 逐事件流 — TextPartDelta.content_delta（增量文本）→ text 事件；FunctionToolCallEvent/FunctionToolResultEvent → tool_call_start/tool_call_result 事件（前端 sse.js 已支持）；累积 full_text 存对话持久化；plan 事件逻辑不变
 > 验证: curl「查询场地边界」→ tool_call_start(get_field_map) → tool_call_result(场地信息) → 流式文本继续；「帮我规划一次飞行任务」→ 5 次工具调用全部执行 + 569 个 text 事件（10KB 完整回复）零卡死
 > 重启: run_a.py 已重启生效
+
+> **2026-08-06 (新功能 — 任务管理面板完成)**:
+> ① **需求**: [ BETA AI ] 一栏最右侧任务管理 — 新建/删除/重命名/恢复任务; 任务绑定 β/α 对话记录 + 飞行数据记录
+> ② **后端**: `db/repos.py` 新增 `list_sessions_with_stats` (任务列表+对话条数+遥测条数+最后活跃) + `delete_session` (级联删 conversations/telemetry/会话行); `web/routes.py` GET /api/sessions 改用统计版; 新增 `POST /api/sessions/{id}/activate` (恢复=切换当前会话, 清旧任务待审提议防串扰) + `DELETE /api/sessions/{id}` (删当前任务时置空 session_id + 清 pending); POST /api/sessions 新建时清 pending_proposal/pending_task_name
+> ③ **前端**: 新组件 `js/components/TaskPanel.js` — 表头最右侧「☰任务」按钮 (监听 chat-panel-rendered 幂等重挂, 面板挂 body 避免 sidebar overflow 裁剪) + 下拉面板 (新建/恢复/重命名行内编辑/删除行内确认/当前徽标/β对话数·飞行数据数); `ChatPanel.js` render() 末尾 emit chat-panel-rendered; `app.js` 重构 `loadTaskContext(sid)` (会话详情+β/α 对话映射(α tool_call→[α] 动作序列 N 条)+遥测轨迹降采样≤600) + 监听 task-restore 事件; `api.js` 新增 getTaskList/createTask/renameTask/deleteTask/activateTask
+> ④ **修复**: 行内操作按钮 (重命名/删除确认) 同步重渲染后事件目标脱离 DOM → document 点击监听误关面板 — 加 stopPropagation + isConnected 守卫
+> ⑤ **验证**: 后端 83/83 (新增 Test 6c: 列表统计+级联删除); Playwright 全流程 — 新建(聊天区清空+当前徽标)/重命名(前后端一致)/恢复(19 条 β 对话载入+session 切换)/删除(行内确认+DB 三级联清零)/删当前任务自动新建承接; console 零错误
+> ⑥ 备注: 验证期间 WSL 意外重启 → start_all.sh 全链路恢复后复测通过
 
 ## 待办事项与已知问题（2026-08-05 用户反馈）
 

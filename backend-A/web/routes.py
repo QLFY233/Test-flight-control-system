@@ -153,19 +153,9 @@ async def reject_proposal(proposal_id: str):
 async def list_sessions(limit: int = Query(10, le=100)):  # N5: limit 上限 100, 防 ?limit=100000 拖垮 DB
     try:
         async with _db_factory() as session:
-            from db.repos import get_recent_sessions
-            rows = await get_recent_sessions(session, limit=limit)
-            return {
-                "sessions": [
-                    {
-                        "id": r.id,
-                        "created_at": str(r.created_at) if r.created_at else None,
-                        "task_description": r.task_description,
-                        "status": r.status,
-                    }
-                    for r in rows
-                ]
-            }
+            from db.repos import list_sessions_with_stats
+            rows = await list_sessions_with_stats(session, limit=limit)
+            return {"sessions": rows}
     except Exception as e:
         logger.exception(f"Failed: {e}")
         raise HTTPException(500, "Internal server error")
@@ -184,6 +174,9 @@ async def create_session_endpoint(req: CreateSessionRequest):
                 await session.commit()
             if _state_ref:
                 _state_ref.session_id = session_id
+                # 新建任务: 旧任务的待审提议/自动命名不串入新任务 (防跨任务批准)
+                _state_ref.pending_proposal = None
+                _state_ref.pending_task_name = None
             return {
                 "id": fs.id,
                 "status": fs.status,
@@ -231,6 +224,64 @@ async def update_session_endpoint(session_id: str, req: UpdateSessionRequest):
     except Exception as e:
         logger.exception(f"Failed: {e}")
         raise HTTPException(500, "Internal server error")
+
+
+@router.post("/sessions/{session_id}/activate")
+async def activate_session_endpoint(session_id: str):
+    """恢复任务: 切换当前会话到指定任务 (前端任务管理面板)。
+
+    仅切 AppState.session_id (后续 β 对话/α 动作/遥测写入该任务);
+    旧任务的在内存待审提议清空, 防跨任务批准串扰。
+    """
+    try:
+        async with _db_factory() as session:
+            from db.repos import get_session as _get_session
+            fs = await _get_session(session, session_id)
+            if fs is None:
+                raise HTTPException(404, f"session {session_id} not found")
+            status = fs.status
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed: {e}")
+        raise HTTPException(500, "Internal server error")
+
+    s = _state_ref
+    if s:
+        s.session_id = session_id
+        s.pending_proposal = None
+        logger.info(f"[routes] task activated: {session_id}")
+    return {"id": session_id, "status": status}
+
+
+@router.delete("/sessions/{session_id}")
+async def delete_session_endpoint(session_id: str):
+    """删除任务记录: 级联删除对话 + 遥测 + 会话行。
+
+    若删除的是当前任务, 清空 AppState.session_id + 待审提议
+    (前端随即新建任务承接; 期间遥测缓冲不落库, 毫秒级窗口可接受)。
+    """
+    try:
+        async with _db_factory() as session:
+            from db.repos import delete_session as _delete_session
+            deleted = await _delete_session(session, session_id)
+            if not deleted:
+                raise HTTPException(404, f"session {session_id} not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed: {e}")
+        raise HTTPException(500, "Internal server error")
+
+    s = _state_ref
+    was_active = False
+    if s and s.session_id == session_id:
+        s.session_id = None
+        s.pending_proposal = None
+        s.pending_task_name = None
+        was_active = True
+    logger.info(f"[routes] task deleted: {session_id} (was_active={was_active})")
+    return {"status": "deleted", "session_id": session_id, "was_active": was_active}
 
 
 @router.post("/sessions/{session_id}/abort")

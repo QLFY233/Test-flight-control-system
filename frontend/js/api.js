@@ -100,6 +100,36 @@ class ApiManager {
         return this.post('/api/sessions', config);
     }
 
+    // ==========================================================
+    // 任务管理 (任务 = flight session; 绑定 β/α 对话 + 飞行数据)
+    // ==========================================================
+
+    /** GET /api/sessions?limit=100 — 任务列表 (含对话/遥测计数, 任务面板用) */
+    async getTaskList(limit = 100) {
+        const res = await this.get('/api/sessions', { limit });
+        return res?.sessions || [];
+    }
+
+    /** POST /api/sessions — 新建任务 (后端自动切换为当前会话) */
+    async createTask(config = {}) {
+        return this.post('/api/sessions', config);
+    }
+
+    /** PATCH /api/sessions/{id} — 重命名任务 */
+    async renameTask(taskId, name) {
+        return this.patch(`/api/sessions/${encodeURIComponent(taskId)}`, { task_description: name });
+    }
+
+    /** DELETE /api/sessions/{id} — 删除任务记录 (级联删对话+遥测) */
+    async deleteTask(taskId) {
+        return this.delete(`/api/sessions/${encodeURIComponent(taskId)}`);
+    }
+
+    /** POST /api/sessions/{id}/activate — 恢复任务 (切换当前会话) */
+    async activateTask(taskId) {
+        return this.post(`/api/sessions/${encodeURIComponent(taskId)}/activate`);
+    }
+
     /** GET /api/sessions/{id} — 会话详情 (含 task_description/beta_plan/alpha_actions, #11 刷新恢复) */
     async getSessionDetail(sessionId) {
         return this.get(`/api/sessions/${encodeURIComponent(sessionId)}`);

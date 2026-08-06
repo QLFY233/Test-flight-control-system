@@ -84,6 +84,64 @@ async def get_recent_sessions(session: AsyncSession, limit: int = 6) -> list[Fli
     return result.scalars().all()
 
 
+async def list_sessions_with_stats(session: AsyncSession, limit: int = 100) -> list[dict]:
+    """任务列表: 会话基础字段 + 对话条数 + 遥测条数 + 最后活跃时间。
+
+    前端任务管理面板用 (恢复/重命名/删除时展示 β/α 对话与飞行数据绑定情况)。
+    """
+    conv_cnt = (
+        select(func.count()).select_from(Conversation)
+        .where(Conversation.session_id == FlightSession.id)
+        .scalar_subquery()
+    )
+    tel_cnt = (
+        select(func.count()).select_from(Telemetry)
+        .where(Telemetry.session_id == FlightSession.id)
+        .scalar_subquery()
+    )
+    last_active = (
+        select(func.max(Conversation.created_at)).select_from(Conversation)
+        .where(Conversation.session_id == FlightSession.id)
+        .scalar_subquery()
+    )
+    stmt = (
+        select(
+            FlightSession,
+            conv_cnt.label("conv_count"),
+            tel_cnt.label("telemetry_count"),
+            last_active.label("last_active"),
+        )
+        .order_by(FlightSession.created_at.desc())
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    rows = []
+    for fs, cc, tc, la in result.all():
+        rows.append({
+            "id": fs.id,
+            "created_at": str(fs.created_at) if fs.created_at else None,
+            "task_description": fs.task_description,
+            "status": fs.status,
+            "conv_count": cc or 0,
+            "telemetry_count": tc or 0,
+            "last_active": str(la) if la else None,
+        })
+    return rows
+
+
+async def delete_session(session: AsyncSession, session_id: str) -> bool:
+    """删除任务记录: 级联删除对话 + 遥测 + 会话行。返回会话是否存在。"""
+    fs = await session.get(FlightSession, session_id)
+    if fs is None:
+        return False
+    from sqlalchemy import delete as _delete
+    await session.execute(_delete(Conversation).where(Conversation.session_id == session_id))
+    await session.execute(_delete(Telemetry).where(Telemetry.session_id == session_id))
+    await session.delete(fs)
+    await session.commit()
+    return True
+
+
 # ── Telemetry ──
 
 async def get_telemetry_range(
