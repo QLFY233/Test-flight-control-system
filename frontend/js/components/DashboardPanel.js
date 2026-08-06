@@ -6,13 +6,27 @@
  * 时序图随机数)。时序面板 (altitude_line/velocity_line/accel_line) 订阅 store.drone 实时写入环形缓冲,
  * 增量 setOption 更新图表; value 卡片 (source=altitude|speed|progress) 订阅 store 实时渲染,
  * 无数据时显示 '--'。accel_line 数据源为 store.drone.accel (2026-08-06 接入)。
+ * bar 面板 (ANOMALIES) 订阅 bus 'alert' 实时累计 (同 code 计数), 取代硬编码假数据。
  */
 
 import store from '../state.js';
+import bus from '../event-bus.js';
 import { esc, escAttr } from '../escape.js';
 
 // 环形缓冲上限: 60s @ 10Hz = 600 点 (对齐 spec 默认 window '60s')
 const MAX_POINTS = 600;
+
+// 模块级告警累计 (跨面板实例/页面导航保留, 刷新清空) — 对齐 Scene3D trailStore 模式;
+// bar 面板 (ANOMALIES) 数据源, 取代硬编码假数据
+const alertStore = {
+    counts: new Map(),   // code -> {count, level, lastDetail, lastTs}
+};
+
+// 告警 code → 中文标签 (bar 面板 x 轴可读性)
+const ALERT_LABELS = {
+    overaccel: '加速度超限', out_of_boundary: '越界', floor_breach: '贴地',
+    stale: '数据停产', offboard_lost: '失控降级', high_speed: '超速',
+};
 
 class DashboardPanel {
     /**
@@ -28,6 +42,7 @@ class DashboardPanel {
         // 具名订阅引用: unmount 时真正解绑, 防泄漏 (对齐 HistoryChart.js 模式)
         this._droneUnsub = null;
         this._flightUnsub = null;
+        this._alertUnsub = null;  // bus 'alert' → bar 面板告警统计
         // 实时数据环形缓冲 (按面板类型只维护需要的)
         this._bufs = {
             altitude: [],   // [ts, z]
@@ -43,6 +58,9 @@ class DashboardPanel {
         // 订阅实时数据: drone (pose 10Hz) / flight (status)
         this._droneUnsub = store.subscribe('drone', () => this._onDroneUpdate());
         this._flightUnsub = store.subscribe('flight', () => this._onFlightUpdate());
+        // 订阅告警: WS alert → bus 'alert' → bar 面板统计
+        this._boundOnAlert = (p) => this._onAlert(p);
+        bus.on('alert', this._boundOnAlert);
         // mount 时用当前 store 值立即渲染一次 (页面加载时已有缓存数据)
         this._onDroneUpdate();
         this._onFlightUpdate();
@@ -51,11 +69,13 @@ class DashboardPanel {
     unmount() {
         if (this._droneUnsub) { this._droneUnsub(); this._droneUnsub = null; }
         if (this._flightUnsub) { this._flightUnsub(); this._flightUnsub = null; }
+        if (this._boundOnAlert) { bus.off('alert', this._boundOnAlert); this._boundOnAlert = null; }
         if (this.chart && typeof this.chart.dispose === 'function') {
             this.chart.dispose();
         }
         this.chart = null;
         this._valueEls = null;
+        this._bodyEl = null;
         this.container = null;
         window.removeEventListener('resize', this._boundResize);
     }
@@ -87,6 +107,7 @@ class DashboardPanel {
 
         const bodyEl = this.container.querySelector(`#dp-body-${CSS.escape(this.panelId)}`);
         if (!bodyEl) return;
+        this._bodyEl = bodyEl;
 
         this._renderContent(bodyEl);
         window.addEventListener('resize', this._boundResize);
@@ -125,6 +146,30 @@ class DashboardPanel {
         this.chart = echarts.init(container);
         const option = this._buildOption();
         this.chart.setOption(option);
+        if (this.spec.type === 'bar') {
+            this._toggleEmptyHint(container);
+        }
+    }
+
+    /**
+     * bar 面板无告警时显示空态标注 (有告警到达时移除)。
+     */
+    _toggleEmptyHint(container) {
+        if (!container) return;
+        const hasAlerts = alertStore.counts.size > 0;
+        let hint = container.querySelector('[data-role="dashboard-empty-hint"]');
+        if (hasAlerts) {
+            if (hint) hint.remove();
+            return;
+        }
+        if (!hint) {
+            container.style.position = 'relative';
+            hint = document.createElement('div');
+            hint.dataset.role = 'dashboard-empty-hint';
+            hint.style.cssText = 'position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;letter-spacing:0.08em;color:var(--color-text-disabled);pointer-events:none;';
+            hint.textContent = '// 无异常记录';
+            container.appendChild(hint);
+        }
     }
 
     _buildOption() {
@@ -178,13 +223,16 @@ class DashboardPanel {
                     })),
                     legend: { textStyle: { color: '#888', fontSize: 9 }, itemWidth: 10, itemHeight: 6 },
                 };
-            case 'bar':
+            case 'bar': {
+                const codes = [...alertStore.counts.keys()];
+                const labels = codes.map(c => ALERT_LABELS[c] || c);
                 return {
                     ...baseOption,
-                    xAxis: { type: 'category', data: ['异常1', '异常2', '异常3', '异常4', '异常5'], axisLabel: { color: '#888888', fontSize: 9 } },
+                    xAxis: { type: 'category', data: labels, axisLabel: { color: '#888888', fontSize: 9, interval: 0 } },
                     yAxis: { type: 'value', name: '次数', nameTextStyle: { fontSize: 9, color: '#AAAAAA' }, axisLabel: { color: '#888888' }, splitLine: { lineStyle: { color: '#1C1C1C' } } },
-                    series: [{ type: 'bar', data: [3, 7, 2, 5, 1], itemStyle: { color: '#FF2A2A' } }],
+                    series: [{ type: 'bar', data: codes.map(c => alertStore.counts.get(c).count), itemStyle: { color: '#FF2A2A' } }],
                 };
+            }
             default:
                 return baseOption;
         }
@@ -249,6 +297,18 @@ class DashboardPanel {
     _updateChart() {
         if (!this.chart || typeof this.chart.isDisposed === 'function' && this.chart.isDisposed()) return;
         const type = this.spec.type;
+
+        // bar 面板: 告警累计统计 (分类 + 计数都要增量更新)
+        if (type === 'bar') {
+            const codes = [...alertStore.counts.keys()];
+            this.chart.setOption({
+                xAxis: { data: codes.map(c => ALERT_LABELS[c] || c) },
+                series: [{ data: codes.map(c => alertStore.counts.get(c).count) }],
+            }, { lazyUpdate: true });
+            this._toggleEmptyHint(this._bodyEl);
+            return;
+        }
+
         let series = null;
         if (type === 'altitude_line') {
             series = [{ data: this._bufs.altitude }];
@@ -260,6 +320,22 @@ class DashboardPanel {
             return;
         }
         this.chart.setOption({ series }, { lazyUpdate: true });
+    }
+
+    /**
+     * 告警累计 (bus 'alert'): 同 code 计数 + 最新 level/detail/时间; bar 面板触发图表更新。
+     */
+    _onAlert(p) {
+        if (!p || !p.code) return;
+        const cur = alertStore.counts.get(p.code) || { count: 0, level: 'info', lastDetail: '', lastTs: null };
+        cur.count += 1;
+        if (p.level) cur.level = p.level;
+        if (p.detail) cur.lastDetail = p.detail;
+        cur.lastTs = p.ts || Date.now();
+        alertStore.counts.set(p.code, cur);
+        if (this.spec.type === 'bar') {
+            this._updateChart();
+        }
     }
 
     _renderValueCard(container) {
