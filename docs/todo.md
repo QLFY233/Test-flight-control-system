@@ -4,7 +4,7 @@
 > 规则见 [`CLAUDE.md`](../CLAUDE.md) §四：每模块完成时更新此文件 + todo 插件 + git push；开发前先 git pull。
 > 状态图例：⬜ 未开始 / 🚧 进行中 / ✅ 已完成 / ⏳ 远期
 
-最近更新：2026-08-06 (聊天区工具卡片紧凑化 + 历史页缓存修复 + args 答疑)
+最近更新：2026-08-06 (任务自动命名修复 — forward 路径 + 已存在会话补名)
 
 > **2026-08-06 (PX4 阶段2 飞机不动修复 — 双根因)**:
 > ① **现象**: α 输出 goto/takeoff 动作但飞机不动 (用户报告「飞回原点 → goto(0,0,0) 但飞机不动」)
@@ -47,6 +47,12 @@
 > ② **实现**: AlphaPage 左栏第三卡片 [ α OUT ] — 监听 bus 'alpha-output' (WS alpha_output 广播, remaining_actions→action.actions→actions 三级提取), 每条记录 = 时间戳 + 动作编码链 (takeoff → goto(3.0,2.0,1.5) → hover 2s); 去重 (与末条相同跳过, 防 2s 心跳重复刷屏); 上限 60 条滚动淘汰; 智能跟随滚动 (用户上滚查看时不打扰); CLEAR 清空按钮; 刷新/恢复任务后 actionSequence 异步载入时自动补首条 (订阅 trajectory.actionSequence 路径变更, 忽略 10Hz 遥测)
 > ③ **验证**: Playwright — 卡片位于 [ TASK ] 之后; 模拟 3 序列广播正确追加+重复去重; 70 条批量→上限 60; max-height 260px overflow-y auto 滚动生效; CLEAR 清空恢复等待提示; 真实广播路径 (WS→app.js→bus) 确认
 > ④ **注意**: SW 缓存旧版 components.css 导致新样式不生效 — 需清缓存重载 (硬刷新) 或等待 SW 后台更新
+
+> **2026-08-06 (任务自动命名修复 — forward 路径 + 已存在会话补名)**:
+> ① **现象**: 用户「直接执行：起飞到 3 米」等指令后任务仍无名字 (历史页显示 任务 #id / 无描述)
+> ② **根因**: 自动命名只覆盖 β 提议 (propose) 路径 — propose_to_alpha 设 pending_task_name; 免审直发 forward_last_human_message 不设 → α _log_action 建会话 task_desc=None; 且会话先由对话创建 (sse _ensure_session, task_desc=None) 后 α 执行动作时 existing 非 None → 永不补名
+> ③ **修复** (agents/alpha.py _log_action): 统一命名 — pending_task_name (propose) 优先, 否则从动作序列生成摘要名 (复用 tools/beta_tools._derive_task_name: 起飞2m→悬停3s); 会话已存在且 task_description 为空 → 补名; 已有名字不被覆盖
+> ④ **验证**: A 侧 86/86 (新增 Test 6d 三场景: forward 摘要名 / 已存在会话补名 / 已有名不覆盖); 真实链路「直接执行：起飞到 2 米悬停 3 秒」→ task named: 起飞2m→悬停3s → 任务列表 task_description 正确
 
 ## 待办事项与已知问题（2026-08-05 用户反馈）
 

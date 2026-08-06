@@ -277,17 +277,30 @@ class AlphaLoop:
             actions = action_cmd.get("actions", [])
             codes = [a.get("code", "") for a in actions]
 
+            # 任务自动命名 (#3): propose 的 pending_task_name 优先;
+            # forward 路径 (无提议) 从动作序列生成结构化摘要
+            # (对齐 beta_tools._derive_task_name: 起飞1m→飞往(3,2)→悬停2s…)
+            from tools.beta_tools import _derive_task_name
+            task_name = (
+                getattr(self._state, "pending_task_name", None)
+                or _derive_task_name(None, actions)
+            )
+
             async with _db_sess() as session:
                 # N8: 显式建 session 行 — 此前全仓无 create_session 调用,
                 # conversations/telemetry 全是孤儿行 (FK 悬空)
-                # #3: task_description 取最近提议自动生成的任务名 (pending_task_name)
                 existing = await _get_session(session, self._state.session_id)
                 if existing is None:
                     await _create_session(
                         session,
                         self._state.session_id,
-                        task_desc=getattr(self._state, "pending_task_name", None),
+                        task_desc=task_name,
                     )
+                elif task_name and not existing.task_description:
+                    # 会话先由对话创建 (task_desc=None) → 补名
+                    existing.task_description = task_name
+                    await session.commit()
+                    logger.info(f"[alpha] task named: {task_name}")
 
                 await save_conversation(
                     session,

@@ -293,6 +293,64 @@ async def test_task_manage():
 
 asyncio.run(test_task_manage())
 
+# ── Test 6d: 任务自动命名 — forward 路径摘要名 + 已存在会话补名 ──
+print("\n📋 Test 6d: 任务自动命名 (forward 路径 + 补名)")
+
+async def test_task_autoname():
+    from agents.alpha import AlphaLoop
+    from state import AppState, Config as StateConfig
+    from db.repos import get_session as _get
+
+    st = AppState(StateConfig())
+    translator_dummy = type("Dummy", (), {"translate": lambda self, i, p, e: {"actions": []}})()
+    loop = AlphaLoop(st, translator_dummy)
+
+    # 场景 1: forward 路径 (pending_task_name=None) → 从动作序列生成摘要名
+    import time as _t
+    sid1 = _t.strftime("%Y%m%d%H%M%S") + f"{_t.time_ns() % 100_000:05d}"
+    st.session_id = sid1
+    await loop._log_action({
+        "task_id": sid1,
+        "actions": [
+            {"code": "takeoff", "value": 3.0, "units": "m"},
+            {"code": "hover", "value": 2.0, "units": "s"},
+        ],
+    }, "forward")
+    async with async_session() as s:
+        fs = await _get(s, sid1)
+        check("forward 摘要名含起飞3m", fs and fs.task_description == "起飞3m→悬停2s",
+              f"got {fs and fs.task_description}")
+
+    # 场景 2: 会话先由对话创建 (task_desc=None) → α 执行后补名
+    sid2 = _t.strftime("%Y%m%d%H%M%S") + f"{_t.time_ns() % 100_000:05d}"
+    async with async_session() as s:
+        await create_flight_session(s, sid2, None)
+    st.session_id = sid2
+    await loop._log_action({
+        "task_id": sid2,
+        "actions": [{"code": "return_home"}],
+    }, "forward")
+    async with async_session() as s:
+        fs = await _get(s, sid2)
+        check("已存在会话补名返航", fs and fs.task_description == "返航",
+              f"got {fs and fs.task_description}")
+
+    # 场景 3: 已有名字不被覆盖
+    sid3 = _t.strftime("%Y%m%d%H%M%S") + f"{_t.time_ns() % 100_000:05d}"
+    async with async_session() as s:
+        await create_flight_session(s, sid3, "自定义名")
+    st.session_id = sid3
+    await loop._log_action({
+        "task_id": sid3,
+        "actions": [{"code": "goto", "target": [1.0, 2.0, 0.0]}],
+    }, "forward")
+    async with async_session() as s:
+        fs = await _get(s, sid3)
+        check("已有名字不被覆盖", fs and fs.task_description == "自定义名",
+              f"got {fs and fs.task_description}")
+
+asyncio.run(test_task_autoname())
+
 # ── Test 7: TelemetryBuffer ──
 print("\n📋 Test 7: TelemetryBuffer 批量写入")
 
