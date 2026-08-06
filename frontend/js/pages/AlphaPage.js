@@ -16,7 +16,7 @@ import { esc } from '../escape.js';
 class AlphaPage {
     constructor() {
         this.container = null;
-        this.title = '飞控';
+        this.title = '状态';
         this.viewPanels = [];
         this.viewModeSelector = null;
         this._boundOnViewModeChanged = this._onViewModeChanged.bind(this);

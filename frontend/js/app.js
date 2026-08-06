@@ -44,7 +44,7 @@ function renderRootLayout(appEl) {
             <a class="nav-strip__item nav-strip__item--active" href="#/overview"><span class="nav-strip__code">OVR</span> 总览</a>
             <a class="nav-strip__item" href="#/beta"><span class="nav-strip__code">PLN</span> 规划</a>
             <a class="nav-strip__item" href="#/dashboard"><span class="nav-strip__code">DSH</span> 看板</a>
-            <a class="nav-strip__item" href="#/alpha"><span class="nav-strip__code">FLT</span> 飞控</a>
+            <a class="nav-strip__item" href="#/alpha"><span class="nav-strip__code">STA</span> 状态</a>
             <a class="nav-strip__item" href="#/history"><span class="nav-strip__code">HST</span> 历史</a>
             <a class="nav-strip__item" href="#/settings"><span class="nav-strip__code">CFG</span> 设置</a>
             <span class="nav-strip__sep">///</span>
@@ -59,7 +59,7 @@ function renderRootLayout(appEl) {
             <a class="tab-bar__item tab-bar__item--active" href="#/overview"><span class="tab-bar__item-icon">&#9638;</span><span>OVR</span></a>
             <a class="tab-bar__item" href="#/beta"><span class="tab-bar__item-icon">&#9874;</span><span>PLN</span></a>
             <a class="tab-bar__item" href="#/dashboard"><span class="tab-bar__item-icon">&#9643;</span><span>DSH</span></a>
-            <a class="tab-bar__item" href="#/alpha"><span class="tab-bar__item-icon">&#9992;</span><span>FLT</span></a>
+            <a class="tab-bar__item" href="#/alpha"><span class="tab-bar__item-icon">&#9992;</span><span>STA</span></a>
             <a class="tab-bar__item" href="#/history"><span class="tab-bar__item-icon">&#8986;</span><span>HST</span></a>
             <a class="tab-bar__item" href="#/settings"><span class="tab-bar__item-icon">&#9881;</span><span>CFG</span></a>
         </nav>
