@@ -20,7 +20,10 @@ pkill -9 -f "[b]in/px4|[m]ake px4_sitl|[s]itl_run|[g]zserver|[m]avros|[r]un_a.py
 sleep 2
 rm -f /tmp/flight_control_AB.sock
 
-source /opt/ros/noetic/setup.bash
+echo "  ✅ 清理完成 (残留: px4=$(pgrep -fc '[b]in/px4' 2>/dev/null || echo 0) roscore=$(pgrep -fc '[r]osmaster' 2>/dev/null || echo 0))"
+
+# set -e 下 source 失败会静默退出 — 显式报错便于定位
+source /opt/ros/noetic/setup.bash || { echo "ERROR: source /opt/ros/noetic/setup.bash 失败 (ROS Noetic 未装?)"; exit 1; }
 
 # [1/5] roscore
 echo "[1/5] 启动 roscore..."
@@ -37,7 +40,7 @@ if [ ! -d "$PX4_DIR" ]; then
 fi
 # rcS 参数补丁 (幂等注入, COM_RC_IN_MODE=3/BAT1_*/NAV_RCL_ACT/COM_OBL_ACT — 实测修正 §5.2)
 bash "$PROJ/patch_px4_rcs.sh" "$PX4_DIR"
-cd "$PX4_DIR"
+cd "$PX4_DIR" || { echo "ERROR: 无法进入 $PX4_DIR"; exit 1; }
 # v1.13.3 target 名为 gazebo_iris (gazebo-classic_* 是 v1.14+ 命名);
 # tail -f /dev/null | 保活 stdin — 否则本脚本退出后 pxh 读到 EOF, PX4 随即退出 (实测)
 tail -f /dev/null | HEADLESS=1 nohup make px4_sitl gazebo_iris &>/tmp/px4-sitl.log &
