@@ -296,15 +296,11 @@ class ChatPanel {
                 if (bubble) bubble.textContent = streamContent;
                 this._scrollToBottom(msgContainer);
             },
-            onToolCall: (toolName, args) => {
-                const toolMsg = { role: 'tool_call', toolName, toolArgs: args, timestamp: Date.now() };
-                msgContainer.appendChild(ChatMessage.render(toolMsg));
-                this._scrollToBottom(msgContainer);
+            onToolCall: (_toolName, _args) => {
+                // 工具调用是 β 的内部过程，不在用户对话区展示，避免连续轮询刷屏。
             },
-            onToolResult: (toolName, result) => {
-                const toolMsg = { role: 'tool_result', toolName, content: typeof result === 'string' ? result : JSON.stringify(result, null, 2), timestamp: Date.now() };
-                msgContainer.appendChild(ChatMessage.render(toolMsg));
-                this._scrollToBottom(msgContainer);
+            onToolResult: (_toolName, _result) => {
+                // 工具结果已用于生成最终回复，不在用户对话区重复展示。
             },
             onPlan: (plan) => bus.emit('plan-received', plan),
             onComplete: (fullText) => {
