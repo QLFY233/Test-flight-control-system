@@ -731,6 +731,32 @@ select.input {
     cursor: pointer;
 }
 
+/* History playback control refinement */
+.timeline-control {
+    display: grid;
+    grid-template-columns: auto auto auto 1fr auto auto;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-surface-raised);
+    border: var(--border-hair);
+}
+.timeline-control__btn {
+    width: 30px;
+    height: 30px;
+    background: var(--color-surface);
+    transition: transform var(--duration-fast) var(--ease-out-back), border-color var(--duration-fast) var(--ease-out-expo), color var(--duration-fast) var(--ease-out-expo);
+}
+.timeline-control__btn:hover { transform: translateY(-1px); }
+.timeline-control__seek { grid-column: 1 / -1; width: 100% !important; height: 4px; }
+.timeline-control__speed { justify-self: end; }
+@media (max-width: 600px) {
+    .timeline-control { grid-template-columns: auto auto auto 1fr; }
+    .timeline-control #tl-speed { grid-column: 4; }
+    .timeline-control #tl-time { grid-row: 2; grid-column: 1 / 3; }
+    .timeline-control #tl-pct { grid-row: 2; grid-column: 3 / 5; text-align: right; }
+}
+
 /* ============================================================
    FLIGHT PLAN CARD
    ============================================================ */

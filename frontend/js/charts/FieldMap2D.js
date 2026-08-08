@@ -41,6 +41,9 @@ class FieldMap2D {
         });
 
         this._buildOption();
+        // field 配置通常在页面初始化后异步到达，ECharts 首次可能使用默认范围。
+        // 移到布局完成后的下一帧再按容器尺寸刷新；旧 dataZoom 缩放由 setOption notMerge 重置。
+        requestAnimationFrame(() => this.chart?.resize({ animation: { duration: 0 } }));
         this._resizeHandler = () => this.chart && this.chart.resize();
         window.addEventListener('resize', this._resizeHandler);
 
@@ -398,7 +401,7 @@ class FieldMap2D {
             ],
             animation: true,
             animationDuration: 400,
-        });
+        }, { notMerge: true });
     }
 }
 

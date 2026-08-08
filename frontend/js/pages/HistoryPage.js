@@ -60,6 +60,13 @@ class HistoryPage {
         this.container.innerHTML = `
             <div class="history-page">
                 <div class="history-page__left">
+                    <div class="history-page__header">
+                        <div>
+                            <div class="history-page__eyebrow">FLIGHT ARCHIVE</div>
+                            <div class="history-page__heading">历史任务</div>
+                        </div>
+                        <span class="history-page__count" id="history-session-count">--</span>
+                    </div>
                     <div class="tabs" id="history-sub-tabs">
                         <div class="tabs__tab ${this.activeSubTab === 'flight' ? 'tabs__tab--active' : ''}" data-tab="flight">
                             按任务
@@ -69,13 +76,19 @@ class HistoryPage {
                         </div>
                     </div>
                     <div class="history-page__filters">
-                        <input type="date" class="input input--sm" id="filter-date-from" title="开始日期" style="width: 130px;">
-                        <span style="color: var(--color-text-disabled);">-</span>
-                        <input type="date" class="input input--sm" id="filter-date-to" title="结束日期" style="width: 130px;">
-                        <input type="text" class="input input--sm" id="filter-keyword" placeholder="关键词搜索..." style="width: 140px;">
-                        <button class="btn btn--ghost btn--sm" id="btn-filter-apply">筛选</button>
+                        <div class="history-page__filter-label">时间范围</div>
+                        <div class="history-page__filter-row">
+                            <input type="date" class="input input--sm" id="filter-date-from" title="开始日期">
+                            <span class="history-page__range-mark">至</span>
+                            <input type="date" class="input input--sm" id="filter-date-to" title="结束日期">
+                        </div>
+                        <div class="history-page__filter-row">
+                            <input type="text" class="input input--sm history-page__keyword" id="filter-keyword" placeholder="搜索任务名称">
+                            <button class="btn btn--ghost btn--sm" id="btn-filter-apply">筛选</button>
+                        </div>
                     </div>
                     <div class="history-page__toolbar">
+                        <span class="history-page__toolbar-label">已选择 <strong id="history-selected-count">0</strong> 项</span>
                         <button class="btn btn--secondary btn--sm" id="btn-send-to-beta" disabled>发送到 Beta</button>
                     </div>
                     <div class="history-page__sessions" id="history-session-list">
@@ -156,6 +169,8 @@ class HistoryPage {
         }
 
         const listEl = this.container?.querySelector('#history-session-list');
+        const countEl = this.container?.querySelector('#history-session-count');
+        if (countEl) countEl.textContent = String(this.sessions.length).padStart(2, '0');
         if (!listEl) return;
 
         if (this.sessions.length === 0) {
@@ -186,7 +201,9 @@ class HistoryPage {
                             this.selectedSessions.delete(s.id);
                         }
                         const sendBtn = this.container?.querySelector('#btn-send-to-beta');
+                        const selectedCount = this.container?.querySelector('#history-selected-count');
                         if (sendBtn) sendBtn.disabled = this.selectedSessions.size === 0;
+                        if (selectedCount) selectedCount.textContent = this.selectedSessions.size;
                     },
                     onChanged: () => this._loadSessions(),
                 });
@@ -304,23 +321,27 @@ class HistoryPage {
                     <div id="timeline-control-container"></div>
                 </div>
 
-                <div class="history-page__detail-section" style="flex:1;min-height:420px;min-width:0;">
-                    <div style="display:flex;gap:var(--space-3);height:100%;min-height:0;flex-wrap:wrap;">
-                        <!-- 左: 看板数据 (统计 + 任务摘要, 值型非坐标图) -->
-                        <div style="flex:0 0 340px;min-width:280px;display:flex;flex-direction:column;gap:var(--space-3);min-height:0;">
-                            <div class="history-page__detail-title">看板数据</div>
-                            <div id="history-panels-container" style="flex:1;overflow-y:auto;"></div>
-                        </div>
-                        <!-- 右: 轨迹 (2D 场地俯视 + 3D) -->
-                        <div style="flex:1;min-width:420px;display:flex;flex-direction:column;gap:var(--space-3);min-height:0;">
-                            <div class="history-page__detail-title">轨迹回放 · 场地俯视 + 3D</div>
-                            <div style="flex:1;min-height:0;display:flex;gap:var(--space-3);flex-wrap:wrap;">
-                                <div id="history-map-2d" style="flex:1;min-width:240px;height:320px;border:1px solid var(--color-border);border-radius:var(--radius-md);"></div>
-                                <div id="history-scene-3d" style="flex:1;min-width:240px;height:320px;border:1px solid var(--color-border);border-radius:var(--radius-md);"></div>
+                    <div class="history-page__detail-section history-page__visual-section">
+                        <div class="history-page__visual-layout">
+                            <div class="history-page__metrics-column">
+                                <div class="history-page__detail-title">看板数据</div>
+                                <div id="history-panels-container"></div>
+                            </div>
+                            <div class="history-page__trajectory-column">
+                                <div class="history-page__detail-title"><span>轨迹回放</span><small>场地俯视 + 3D 视图</small></div>
+                                <div class="history-page__visual-grid">
+                                    <div class="history-page__visual-card">
+                                        <div class="history-page__visual-label">FIELD / TOP VIEW</div>
+                                        <div id="history-map-2d"></div>
+                                    </div>
+                                    <div class="history-page__visual-card">
+                                        <div class="history-page__visual-label">FLIGHT / 3D VIEW</div>
+                                        <div id="history-scene-3d"></div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
             </div>
         `;
 

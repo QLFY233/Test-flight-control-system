@@ -45,6 +45,7 @@ class Scene3D {
         this._keyDownHandler = null;
         this._keyUpHandler = null;
         this._blurHandler = null;
+        this._fieldFramed = false;
     }
 
     mount(container) {
@@ -82,8 +83,18 @@ class Scene3D {
         this.camera = new THREE.PerspectiveCamera(
             60, el.clientWidth / el.clientHeight, 0.1, 500
         );
-        this.camera.position.set(8, 8, 6);
-        this.camera.lookAt(0, 0, 0);
+        // 以场地中心为观察中心，并按边界自动拉开镜头，避免正坐标场地被裁到右上角。
+        const b = this._boundary();
+        const cx = (b.xMin + b.xMax) / 2;
+        const cy = (b.yMin + b.yMax) / 2;
+        const ground = b.zMin || 0;
+        const span = Math.max(b.xMax - b.xMin, b.yMax - b.yMin, 1);
+        const w = this.container.clientWidth;
+        const h = this.container.clientHeight;
+        const aspect = w > 0 && h > 0 ? w / h : 1;
+        const viewScale = Math.max(1, 1 / aspect);
+        this.camera.position.set(cx + span * 1.15 * viewScale, ground + span * 1.05 * viewScale, cy + span * 1.15 * viewScale);
+        this.camera.lookAt(cx, ground, cy);
 
         // --- Controls ---
         if (typeof THREE.OrbitControls !== 'undefined') {
@@ -91,6 +102,8 @@ class Scene3D {
             this.controls.enableDamping = true;
             this.controls.dampingFactor = 0.05;
             this.controls.maxPolarAngle = Math.PI / 2 - 0.05;
+            this.controls.target.set(cx, ground, cy);
+            this.controls.update();
         }
 
         // --- Lights ---
@@ -557,11 +570,43 @@ class Scene3D {
         this.trailLine.geometry.computeBoundingSphere();
     }
 
+    _fitCameraToField() {
+        if (!this.camera || !this.container) return;
+        const b = this._boundary();
+        const cx = (b.xMin + b.xMax) / 2;
+        const cy = (b.yMin + b.yMax) / 2;
+        const ground = b.zMin || 0;
+        const span = Math.max(b.xMax - b.xMin, b.yMax - b.yMin, 1);
+        const w = this.container.clientWidth;
+        const h = this.container.clientHeight;
+        const aspect = w > 0 && h > 0 ? w / h : 1;
+        const viewScale = Math.max(1, 1 / aspect);
+        this.camera.position.set(cx + span * 1.15 * viewScale, ground + span * 1.05 * viewScale, cy + span * 1.15 * viewScale);
+        this.camera.lookAt(cx, ground, cy);
+        if (this.controls) {
+            this.controls.target.set(cx, ground, cy);
+            this.controls.update();
+        }
+        const w = this.container.clientWidth;
+        const h = this.container.clientHeight;
+        if (w > 0 && h > 0) {
+            this.camera.aspect = w / h;
+            this.camera.updateProjectionMatrix();
+            this.renderer?.setSize(w, h);
+        }
+    }
+
     _updateField() {
         this._disposeObject(this.floorMesh);
         this.floorMesh = null;
         this._buildFloor();
         this._buildHome();
+        // 配置异步恢复时，旧镜头仍按默认 [-50,50] 场地，导致真实 5x4m 场地只占很小一块。
+        // 场地更新后重新按真实边界取景，确保刷新和首次进入一致。
+        if (!this._fieldFramed) {
+            this._fitCameraToField();
+            this._fieldFramed = true;
+        }
     }
 
     _disposeObject(obj) {
