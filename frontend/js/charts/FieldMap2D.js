@@ -100,8 +100,12 @@ class FieldMap2D {
         const pts = ds?.points || [];
         const idx = store.get('history.playback.index') || 0;
         const p = pts[idx];
-        const data = (p && p.x != null && p.y != null) ? [[p.x, p.y]] : [];
-        this.chart.setOption({ series: [{ id: 'fieldmap-playback', data }] });
+        const markerData = (p && p.x != null && p.y != null) ? [[p.x, p.y]] : [];
+        const flownData = pts.slice(0, Math.max(0, idx) + 1).map(point => [point.x, point.y]);
+        this.chart.setOption({ series: [
+            { id: 'fieldmap-playback', data: markerData },
+            { id: 'history-flown', data: flownData },
+        ] });
     }
 
     // 无人机位置标记: 10Hz 增量更新 (series 固定 id, ECharts 按 id 合并)
@@ -201,6 +205,7 @@ class FieldMap2D {
             const pts = ds?.points || [];
             if (pts.length > 1) {
                 plannedSeries.push({
+                    id: 'history-flown',
                     name: 'HistoryFlown',
                     type: 'line',
                     data: pts.map(p => [p.x, p.y]),

@@ -233,14 +233,32 @@ class HistoryPage {
         ]);
         let raw = (res && Array.isArray(res.data)) ? res.data : [];
 
-        // 遥测 → 回放点 (定长数值, 兼容端点已做 NULL→0)
+        // 遥测 → 回放点。回放引擎使用相对时间轴，不能直接把数据库 epoch 时间传给 seek。
+        const rawStart = raw.length ? (raw[0].t ?? 0) : 0;
         const points = raw.map(r => ({
-            t: r.t ?? 0,
+            t: (r.t ?? rawStart) - rawStart,
             x: r.pos?.[0] ?? 0, y: r.pos?.[1] ?? 0, z: r.pos?.[2] ?? 0,
             vx: r.vel?.[0] ?? 0, vy: r.vel?.[1] ?? 0, vz: r.vel?.[2] ?? 0,
             ax: r.accel?.[0] ?? 0, ay: r.accel?.[1] ?? 0, az: r.accel?.[2] ?? 0,
             wx: r.angular_vel?.[0] ?? 0, wy: r.angular_vel?.[1] ?? 0, wz: r.angular_vel?.[2] ?? 0,
         }));
+
+        // 从飞机真正开始运动的时刻开始回放：允许后续出现悬停/等待，不裁剪动作中的停止段。
+        // 结合速度与相邻位置位移，过滤静止起始阶段的传感器噪声。
+        let motionStart = 0;
+        for (let i = 1; i < points.length; i++) {
+            const p = points[i];
+            const prev = points[i - 1];
+            const speed = Math.hypot(p.vx, p.vy, p.vz);
+            const displacement = Math.hypot(p.x - prev.x, p.y - prev.y, p.z - prev.z);
+            if (speed >= 0.05 || displacement >= 0.03) {
+                motionStart = i;
+                break;
+            }
+        }
+        const playbackPoints = motionStart > 0 ? points.slice(motionStart) : points;
+        const playbackStart = playbackPoints.length ? playbackPoints[0].t : 0;
+        playbackPoints.forEach(p => { p.t -= playbackStart; });
 
         // alpha_actions (ActionCommand JSON) → 目标点序列 + 动作数 (任务进度面板用)
         let planned = [];
@@ -259,15 +277,15 @@ class HistoryPage {
             } catch (e) { /* 解析失败忽略 */ }
         }
 
-        const tStart = points.length ? points[0].t : 0;
-        const tEnd = points.length ? points[points.length - 1].t : 0;
+        const tStart = 0;
+        const tEnd = playbackPoints.length ? playbackPoints[playbackPoints.length - 1].t : 0;
 
         // 提交前守卫: 期间用户已切到别的会话 → 丢弃本次结果 (防慢响应竞态覆盖新选择)
         if (store.get('history.selectedSession')?.id !== sid) return 0;
 
         store.set('history.playback.dataset', {
             sessionId: sid,
-            points,
+            points: playbackPoints,
             tStart,
             tEnd,
             duration: Math.max(tEnd - tStart, 0),
@@ -276,14 +294,14 @@ class HistoryPage {
                 status: session.status || (detail?.status ?? 'idle'),
                 totalActions,
                 convCount: session.conv_count ?? 0,
-                telemetryCount: points.length,
+                telemetryCount: playbackPoints.length,
             },
             planned,
         });
         store.set('history.playback.index', 0);
         store.set('history.playbackTime', 0);
         store.set('history.playbackState', 'stopped');
-        return points.length;
+        return playbackPoints.length;
     }
 
     _renderDetail(session) {
