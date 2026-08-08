@@ -219,6 +219,7 @@ const initial = {
         planned: [],            // [{x, y, z}, ...]
         actionSequence: [],     // ActionCommand entries: [{code, params: {target, speed, ...}}]
         currentTarget: null,    // {x, y, z}
+        frozen: false,          // true = 还原冻结: 暂停实时遥测追加轨迹 (清空后不被回填)
     },
 
     // Beta (planning) state

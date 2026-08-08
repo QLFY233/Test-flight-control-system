@@ -345,12 +345,15 @@ function registerWsHandlers() {
             if (pos) {
                 store.set('drone.position', pos);
                 // 已飞轨迹追加 (10Hz; 连续同点跳过, 上限 600)
-                const flown = store.get('trajectory.flown') || [];
-                const last = flown[flown.length - 1];
-                if (!last || Math.hypot(pos.x - last.x, pos.y - last.y, pos.z - last.z) >= 0.01) {
-                    const next = flown.length >= 600 ? flown.slice(flown.length - 599) : flown.slice();
-                    next.push({ x: pos.x, y: pos.y, z: pos.z });
-                    store.set('trajectory.flown', next);
+                // 还原冻结期间 (trajectory.frozen) 暂停追加, 避免清空后被实时遥测立即回填
+                if (!store.get('trajectory.frozen')) {
+                    const flown = store.get('trajectory.flown') || [];
+                    const last = flown[flown.length - 1];
+                    if (!last || Math.hypot(pos.x - last.x, pos.y - last.y, pos.z - last.z) >= 0.01) {
+                        const next = flown.length >= 600 ? flown.slice(flown.length - 599) : flown.slice();
+                        next.push({ x: pos.x, y: pos.y, z: pos.z });
+                        store.set('trajectory.flown', next);
+                    }
                 }
             }
             if (Array.isArray(p.vel)) store.set('drone.velocity', { vx: p.vel[0], vy: p.vel[1], vz: p.vel[2] });
@@ -391,6 +394,8 @@ function registerWsHandlers() {
     });
     w.on('alpha_output', p => {
         if (!p) return;
+        // 新动作序列下达 → 解冻实时轨迹追加 (还原冻结期间, 新规划到达后恢复记录)
+        store.set('trajectory.frozen', false);
         // 正式计划已下达 → 清除待批准预览 (黄色 → 青色覆盖)
         store.set('trajectory.pending', null);
         // 动作源: WS remaining_actions 优先, 兼容 action.actions (后端广播格式) 兑底

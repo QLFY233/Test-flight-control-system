@@ -11,6 +11,7 @@ import { renderTwoColumn, wsManager, apiManager } from '../shared.js';
 import { ViewModeSelector } from '../components/ViewModeSelector.js';
 import { ViewPanel } from '../components/ViewPanel.js';
 import { FlightPlanCard } from '../components/FlightPlanCard.js';
+import { resetScene3DTrail } from '../charts/Scene3D.js';
 import { esc } from '../escape.js';
 
 class BetaPage {
@@ -87,8 +88,15 @@ class BetaPage {
         // Right panel: FieldMap2D by default
         const toolbarEl = document.getElementById('right-toolbar');
         if (toolbarEl) {
-            this.viewModeSelector = new ViewModeSelector(toolbarEl);
+            // 视图选择器用独立容器渲染，避免其 innerHTML 覆盖还原按钮
+            toolbarEl.innerHTML = `
+                <div id="view-mode-selector-container" class="view-mode-selector-container"></div>
+                <button type="button" class="btn btn--ghost btn--sm" id="btn-plan-reset" title="一键还原任务，清空两个视图内容">⟲ 还原</button>
+            `;
+            const selectorContainer = toolbarEl.querySelector('#view-mode-selector-container');
+            this.viewModeSelector = new ViewModeSelector(selectorContainer);
             this.viewModeSelector.render();
+            toolbarEl.querySelector('#btn-plan-reset')?.addEventListener('click', () => this._resetPlan());
         }
 
         const viewArea = document.getElementById('right-view-area');
@@ -194,7 +202,46 @@ class BetaPage {
         flightPlanCard.mount(planArea);
     }
 
+    /**
+     * 一键还原: 清空待批准提议、计划/轨迹数据、3D 飞行轨迹缓冲，并重建视图。
+     * 让两个视图 (2D 场地俯视 + 3D) 回到未规划的空态。
+     */
+    _resetPlan() {
+        store.batch(() => {
+            store.set('beta.currentPlan', null);
+            store.set('trajectory.pending', null);
+            store.set('trajectory.planned', []);
+            store.set('trajectory.flown', []);
+            store.set('trajectory.actionSequence', []);
+            store.set('trajectory.currentTarget', null);
+            store.set('trajectory.frozen', true);   // 冻结实时遥测追加, 防清空后被回填
+            store.set('flight.progress', 0);
+            store.set('flight.currentAction', 0);
+            store.set('flight.totalActions', 0);
+            store.set('flight.currentActionCode', '');
+            store.set('flight.currentActionParams', null);
+        });
+        resetScene3DTrail();
+
+        // 飞行计划区恢复默认提示
+        const planArea = document.getElementById('beta-plan-area');
+        if (planArea) {
+            planArea.innerHTML = `
+                <div class="beta-page__chat-hint">
+                    使用右下角 <strong style="color: var(--color-cyan);">Beta 对话</strong> 与 AI 助手沟通生成飞行计划
+                </div>
+            `;
+        }
+
+        // 重建两个视图 (清空 2D/3D 内容)
+        const viewArea = document.getElementById('right-view-area');
+        if (viewArea) this._setupViews(viewArea);
+
+        bus.emit('toast', { message: '已还原任务，视图已清空', level: 'success' });
+    }
+
     _onPlanReceived(plan) {
+        store.set('trajectory.frozen', false);   // 新计划到达 → 解冻实时轨迹追加
         store.set('beta.currentPlan', plan);
         const planArea = document.getElementById('beta-plan-area');
         if (planArea) {

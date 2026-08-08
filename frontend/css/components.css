@@ -731,6 +731,12 @@ select.input {
     cursor: pointer;
 }
 
+.view-mode-selector-container {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
 /* History playback control refinement */
 .timeline-control {
     display: grid;

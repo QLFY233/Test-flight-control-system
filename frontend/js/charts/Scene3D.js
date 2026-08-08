@@ -550,6 +550,7 @@ class Scene3D {
 
     _appendTrailPoint(x, y, z) {
         if (!this.trailLine) return;
+        if (store.get('trajectory.frozen')) return;   // 还原冻结: 暂停追加 3D 轨迹
         if (trailStore.last && Math.abs(x - trailStore.last[0]) < MIN_TRAIL_STEP &&
             Math.abs(y - trailStore.last[1]) < MIN_TRAIL_STEP && Math.abs(z - trailStore.last[2]) < MIN_TRAIL_STEP) {
             return;
@@ -587,8 +588,6 @@ class Scene3D {
             this.controls.target.set(cx, ground, cy);
             this.controls.update();
         }
-        const w = this.container.clientWidth;
-        const h = this.container.clientHeight;
         if (w > 0 && h > 0) {
             this.camera.aspect = w / h;
             this.camera.updateProjectionMatrix();
@@ -694,3 +693,9 @@ class Scene3D {
 }
 
 export { Scene3D };
+
+/** 一键还原任务时清空实时飞行轨迹缓冲 (模块级共享, 跨实例保留)。 */
+export function resetScene3DTrail() {
+    trailStore.len = 0;
+    trailStore.last = null;
+}
