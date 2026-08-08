@@ -320,6 +320,39 @@
     flex-shrink: 0;
 }
 
+/* 看板数据统计 — 2 行 x 3 列网格, 每项固定占比不挤压错位 */
+.history-panels__stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--color-border);
+    border: var(--border-hair);
+}
+.history-panels__stat {
+    background: var(--color-surface);
+    padding: var(--space-2) var(--space-2);
+    min-width: 0;
+}
+.history-panels__stat-label {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    letter-spacing: var(--track-wide);
+    color: var(--color-text-disabled);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.history-panels__stat-value {
+    font-family: var(--font-mono);
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: var(--color-text);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .history-panels__grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -451,27 +484,27 @@
 }
 .history-page__visual-layout {
     display: grid;
-    grid-template-columns: minmax(300px, 0.72fr) minmax(520px, 1.8fr);
+    grid-template-columns: minmax(280px, 0.75fr) minmax(480px, 1.25fr);
     gap: var(--space-5);
     min-height: 500px;
 }
 .history-page__metrics-column,
 .history-page__trajectory-column { min-width: 0; display: flex; flex-direction: column; }
 .history-page__metrics-column #history-panels-container { flex: 1; min-height: 0; }
-.history-page__visual-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); flex: 1; min-height: 420px; }
-.history-page__visual-card { position: relative; min-width: 0; min-height: 420px; overflow: hidden; border: var(--border-hair); background: var(--color-surface); box-shadow: var(--shadow-panel); }
+/* 轨迹图纵向堆叠: 2D 场地俯视全宽在上、3D 在下, 横向面积更充分 (用户: 并排时每个太窄) */
+.history-page__visual-grid { display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; gap: var(--space-3); flex: 1; min-height: 420px; }
+.history-page__visual-card { position: relative; min-width: 0; min-height: 200px; overflow: hidden; border: var(--border-hair); background: var(--color-surface); box-shadow: var(--shadow-panel); }
 .history-page__visual-label { position: absolute; z-index: 2; top: var(--space-3); left: var(--space-3); padding: 3px 6px; color: var(--color-text-disabled); background: rgba(10, 10, 10, 0.82); font-family: var(--font-mono); font-size: var(--text-2xs); letter-spacing: var(--track-wide); pointer-events: none; }
 .history-page__visual-card #history-map-2d,
-.history-page__visual-card #history-scene-3d { width: 100%; height: 100%; min-height: 420px; border: 0; border-radius: 0; }
+.history-page__visual-card #history-scene-3d { width: 100%; height: 100%; min-height: 200px; border: 0; border-radius: 0; }
 @media (max-width: 1180px) {
-    .history-page__visual-layout { grid-template-columns: minmax(280px, 0.7fr) minmax(420px, 1.3fr); gap: var(--space-3); }
-    .history-page__visual-grid { grid-template-columns: 1fr; }
-    .history-page__visual-card, .history-page__visual-card #history-map-2d, .history-page__visual-card #history-scene-3d { min-height: 300px; }
+    .history-page__visual-layout { grid-template-columns: minmax(260px, 0.7fr) minmax(380px, 1.3fr); gap: var(--space-3); }
+    .history-page__visual-card, .history-page__visual-card #history-map-2d, .history-page__visual-card #history-scene-3d { min-height: 240px; }
 }
 @media (max-width: 767px) {
     .history-page__visual-section { min-height: 0; }
     .history-page__visual-layout, .history-page__visual-grid { grid-template-columns: 1fr; min-height: 0; }
-    .history-page__visual-card, .history-page__visual-card #history-map-2d, .history-page__visual-card #history-scene-3d { min-height: 320px; }
+    .history-page__visual-card, .history-page__visual-card #history-map-2d, .history-page__visual-card #history-scene-3d { min-height: 280px; }
 }
 
 .settings-page {

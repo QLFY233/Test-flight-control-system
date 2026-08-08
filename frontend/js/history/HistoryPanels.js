@@ -71,13 +71,13 @@ class HistoryPanels {
         }
         const dur = ds?.duration || 0;
         const stat = (label, val) => `
-            <div style="flex:1;min-width:0;padding:var(--space-2) var(--space-3);border-right:var(--border-hair);">
-                <div style="font-family:var(--font-mono);font-size:var(--text-2xs);letter-spacing:var(--track-wide);color:var(--color-text-disabled);">${esc(label)}</div>
-                <div style="font-family:var(--font-mono);font-size:var(--font-md);font-weight:600;color:var(--color-text);margin-top:2px;">${esc(val)}</div>
+            <div class="history-panels__stat">
+                <div class="history-panels__stat-label">${esc(label)}</div>
+                <div class="history-panels__stat-value">${esc(val)}</div>
             </div>`;
         const fmt = (n, d = 1) => (Number.isFinite(n) ? n.toFixed(d) : '--');
         return `
-            <div class="history-panels__stats" style="display:flex;flex-wrap:wrap;border:var(--border-hair);background:var(--color-surface);border-radius:var(--radius-md);overflow:hidden;">
+            <div class="history-panels__stats">
                 ${stat('时长', fmt(dur) + 's')}
                 ${stat('里程', fmt(distance) + 'm')}
                 ${stat('最大速度', fmt(vmax) + 'm/s')}
