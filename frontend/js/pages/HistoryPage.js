@@ -349,12 +349,12 @@ class HistoryPage {
                                 <div class="history-page__detail-title"><span>轨迹回放</span><small>场地俯视 + 3D 视图</small></div>
                                 <div class="history-page__visual-grid">
                                     <div class="history-page__visual-card">
-                                        <div class="history-page__visual-label">FIELD / TOP VIEW</div>
-                                        <div id="history-map-2d"></div>
-                                    </div>
-                                    <div class="history-page__visual-card">
                                         <div class="history-page__visual-label">FLIGHT / 3D VIEW</div>
                                         <div id="history-scene-3d"></div>
+                                    </div>
+                                    <div class="history-page__visual-card">
+                                        <div class="history-page__visual-label">FIELD / TOP VIEW</div>
+                                        <div id="history-map-2d"></div>
                                     </div>
                                 </div>
                             </div>

@@ -3,7 +3,7 @@
 // 避免 Cache First 导致的「代码更新后永不清缓存」。
 // 版本号变更（发布新版本时更新 BUILD_ID）会自动废弃旧缓存。
 
-const BUILD_ID = '2026-08-08-history-layout-fix';
+const BUILD_ID = '2026-08-08-history-50-50';
 const CACHE_NAME = 'flight-control-v1-' + BUILD_ID;
 const STATIC_ASSETS = [
   '/',
